@@ -52,7 +52,6 @@ public class StructureRegionCache {
 
     public List<BlockPos> getNearestVillages(BlockPos pos) {
         StructureRegionPos centerRegionPos = new StructureRegionPos(pos);
-//        StructureRegion centerRegion = getRegion(centerRegionPos);
         ChunkPos centerChunkPos = new ChunkPos(pos);
 
         BlockPos village1 = new BlockPos(pos);

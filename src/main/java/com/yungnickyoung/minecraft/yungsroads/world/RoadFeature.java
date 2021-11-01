@@ -54,8 +54,17 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
         for (int localX = 0; localX < 16; localX++) {
             for (int localZ = 0; localZ < 16; localZ++) {
                 mutable.setPos(startX + localX, 110, startZ + localZ);
+
+                // Only draw path between the points
+                if (mutable.getX() < village1.getX() || mutable.getX() > village2.getX()) {
+                    continue;
+                }
+
+                // Calculate X/Z slope at this current point
                 double currPointSlope = (mutable.getZ() - village1.getZ()) / ((double) (mutable.getX() - village1.getX()));
-                if (currPointSlope < villageSlope + .01 && currPointSlope > villageSlope - .01) {
+
+                // Draw path if slope at current point is very close to slope between village centers
+                if (currPointSlope < villageSlope + .02 && currPointSlope > villageSlope - .02) {
                     for (int testX = -2; testX <= 2; testX++) {
                         for (int testZ = -2; testZ <= 2; testZ++) {
                             if (testX * testX + testZ * testZ <= 4) {
