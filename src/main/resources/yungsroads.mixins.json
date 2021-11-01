@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.yungnickyoung.minecraft.yungsroads.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "yungsroads.refmap.json",
+  "mixins": [
+    "DebugOverlayGuiMixin",
+    "ServerWorldMixin",
+    "accessor.ChunkManagerAccessor",
+    "accessor.StructureAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
