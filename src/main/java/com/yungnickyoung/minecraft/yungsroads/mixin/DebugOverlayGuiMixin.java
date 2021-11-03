@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.mixin;
 
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.AbstractGui;
 import net.minecraft.client.gui.overlay.DebugOverlayGui;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.server.ServerWorld;
@@ -15,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.List;
 
 @Mixin(DebugOverlayGui.class)
-public abstract class DebugOverlayGuiMixin {
+public abstract class DebugOverlayGuiMixin extends AbstractGui {
     @Shadow
     protected abstract ServerWorld func_238515_d_();
 

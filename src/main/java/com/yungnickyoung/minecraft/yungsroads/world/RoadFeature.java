@@ -1,24 +1,20 @@
 package com.yungnickyoung.minecraft.yungsroads.world;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
-import com.yungnickyoung.minecraft.yungsroads.debug.PathImageCommand;
+import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.vector.Vector3i;
 import net.minecraft.world.ISeedReader;
 import net.minecraft.world.gen.ChunkGenerator;
-import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.Feature;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
 @ParametersAreNonnullByDefault
 public class RoadFeature extends Feature<NoFeatureConfig> {
@@ -38,8 +34,8 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
 
         YungsRoads.LOGGER.info(closestVillages);
 
-        BlockPos village1 =  closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(0) : closestVillages.get(1);
-        BlockPos village2 =  closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(1) : closestVillages.get(0);
+        BlockPos village1 = closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(0) : closestVillages.get(1);
+        BlockPos village2 = closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(1) : closestVillages.get(0);
 
         int villageXDist = village2.getX() - village1.getX();
         int villageZDist = village2.getZ() - village1.getZ();
@@ -70,6 +66,9 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
                             if (testX * testX + testZ * testZ <= 4) {
                                 mutable.setPos(startX + localX + testX, 110, startZ + localZ + testZ);
                                 world.setBlockState(mutable, Blocks.GRASS_PATH.getDefaultState(), 2);
+                                double distToVillage1 = village1.distanceSq(mutable);
+                                double distToVillage2 = village2.distanceSq(mutable);
+                                DebugRenderer.getInstance().addPath(new ChunkPos(mutable), new ChunkPos(distToVillage1 <= distToVillage2 ? village1 : village2));
                             }
                         }
                     }

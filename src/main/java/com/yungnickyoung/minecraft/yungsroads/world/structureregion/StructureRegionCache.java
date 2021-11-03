@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
+import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkManagerAccessor;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.StructureAccessor;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
@@ -77,6 +78,8 @@ public class StructureRegionCache {
                         dist2 = sqDist;
                         village2 = candidateChunkPos.asBlockPos();
                     }
+
+                    DebugRenderer.getInstance().addVillage(candidateChunkPos);
                 }
             }
         }
