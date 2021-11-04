@@ -32,18 +32,13 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider)world.getWorld()).getStructureRegionCache();
         List<BlockPos> closestVillages = structureRegionCache.getNearestVillages(pos);
 
-        YungsRoads.LOGGER.info(closestVillages);
-
         BlockPos village1 = closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(0) : closestVillages.get(1);
         BlockPos village2 = closestVillages.get(0).getX() <= closestVillages.get(1).getX() ? closestVillages.get(1) : closestVillages.get(0);
 
         int villageXDist = village2.getX() - village1.getX();
         int villageZDist = village2.getZ() - village1.getZ();
         double villageSlope = villageZDist / (double) villageXDist;
-
-        int pointXDist = pos.getX() - village1.getX();
-        int pointZDist = pos.getZ() - village1.getZ();
-        double pointSlope = pointZDist / (double) pointXDist;
+        // z = (villageSlope * (x - x1)) + z1
 
         BlockPos.Mutable mutable = new BlockPos.Mutable();
 
@@ -56,11 +51,16 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
                     continue;
                 }
 
+                int globalX = localX + startX;
+                int globalZ = localZ + startZ;
+                int targetGlobalZ = (int) (villageSlope * (globalX - village1.getX())) + village1.getZ();
+
                 // Calculate X/Z slope at this current point
-                double currPointSlope = (mutable.getZ() - village1.getZ()) / ((double) (mutable.getX() - village1.getX()));
+//                double currPointSlope = (mutable.getZ() - village1.getZ()) / ((double) (mutable.getX() - village1.getX()));
 
                 // Draw path if slope at current point is very close to slope between village centers
-                if (currPointSlope < villageSlope + .02 && currPointSlope > villageSlope - .02) {
+//                if (currPointSlope < villageSlope + .02 && currPointSlope > villageSlope - .02) {
+                if (globalZ == targetGlobalZ) {
                     for (int testX = -2; testX <= 2; testX++) {
                         for (int testZ = -2; testZ <= 2; testZ++) {
                             if (testX * testX + testZ * testZ <= 4) {
@@ -75,41 +75,6 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
                 }
             }
         }
-//
-//        if (pointSlope < villageSlope + .1 && pointSlope > villageSlope - .1) {
-//            for (int x = 0; x < 16; x++) {
-//                int z = (int) (x * pointSlope);
-//                if (z >= 0 && z < 16) {
-//                    // Offset z if slope is negative
-//                    if (pointSlope < 0) z = 15 - z;
-//
-//                    // Place square of path
-//                    for (int xOffset = -2; xOffset <= 2; xOffset++) {
-//                        for (int zOffset = -2; zOffset <= 2; zOffset++) {
-//                            mutable.setPos(startX + x + xOffset, 110, startZ + z + zOffset);
-////                            mutable.setY(world.getHeight(Heightmap.Type.MOTION_BLOCKING, mutable).getY());
-//                            world.setBlockState(mutable, Blocks.GRASS_PATH.getDefaultState(), 2);
-//                        }
-//                    }
-//                }
-//            }
-//        }
-
-
-//        BlockPos.Mutable mutable = new BlockPos.Mutable();
-//        for (BlockPos villagePos : closestVillages) {
-//            mutable.setPos(villagePos);
-//            for (int y = 60; y < 100; y++) {
-//                mutable.setY(y);
-//                world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
-//            }
-//        }
-
-//        for (Long point : closestVillages) {
-//            PathImageCommand.getInstance().addPoint(new ChunkPos(point).asBlockPos());
-//        }
-
-//        YungsRoads.LOGGER.info(closestVillages);
 
         return true;
     }

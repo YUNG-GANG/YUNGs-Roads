@@ -60,15 +60,15 @@ public class StructureRegionCache {
         int dist1 = Integer.MAX_VALUE;
         int dist2 = Integer.MAX_VALUE;
 
-        for (int regionXOffset = -2; regionXOffset <= 2; regionXOffset++) {
-            for (int regionZOffset = -2; regionZOffset <= 2; regionZOffset++) {
+        for (int regionXOffset = -1; regionXOffset <= 1; regionXOffset++) {
+            for (int regionZOffset = -1; regionZOffset <= 1; regionZOffset++) {
                 StructureRegionPos currRegionPos = new StructureRegionPos(centerRegionPos.getX() + regionXOffset, centerRegionPos.getZ() + regionZOffset);
                 StructureRegion currRegion = getRegion(currRegionPos);
 
                 for (long chunkLong : currRegion.getVillageChunks()) {
                     ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
                     int sqDist = (candidateChunkPos.x - centerChunkPos.x) * (candidateChunkPos.x - centerChunkPos.x)
-                            + (candidateChunkPos.z - centerChunkPos.z) * (candidateChunkPos.z) - centerChunkPos.z;
+                            + (candidateChunkPos.z - centerChunkPos.z) * (candidateChunkPos.z - centerChunkPos.z);
                     if (sqDist < dist1) {
                         dist2 = dist1;
                         village2 = village1;
