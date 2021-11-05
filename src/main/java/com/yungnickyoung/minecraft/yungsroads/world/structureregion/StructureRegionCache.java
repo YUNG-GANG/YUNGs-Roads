@@ -1,13 +1,16 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
-import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkManagerAccessor;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.StructureAccessor;
+import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.LinearRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.util.math.BlockPos;
@@ -16,8 +19,10 @@ import net.minecraft.world.gen.feature.structure.Structure;
 import net.minecraft.world.gen.settings.StructureSeparationSettings;
 import net.minecraft.world.server.ServerWorld;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 public class StructureRegionCache {
@@ -25,12 +30,14 @@ public class StructureRegionCache {
     private final ServerWorld world;
     private final SharedSeedRandom random;
     private final Long2ObjectLinkedOpenHashMap<StructureRegion> structureRegionCache;
+    private final IRoadGenerator roadGenerator;
     private final int spacing, separation, salt;
 
     public StructureRegionCache(ServerWorld world) {
         this.world = world;
         this.random = new SharedSeedRandom();
         this.structureRegionCache = new Long2ObjectLinkedOpenHashMap<>();
+        this.roadGenerator = new LinearRoadGenerator(this);
 
         // Extract separation settings
         StructureSeparationSettings separationSettings = world.getChunkProvider().getChunkGenerator().func_235957_b_().func_236197_a_(Structure.VILLAGE);
@@ -51,40 +58,38 @@ public class StructureRegionCache {
         }
     }
 
-    public List<BlockPos> getNearestVillages(BlockPos pos) {
-        StructureRegionPos centerRegionPos = new StructureRegionPos(pos);
-        ChunkPos centerChunkPos = new ChunkPos(pos);
+    public BlockPos getNearestVillage(BlockPos pos) {
+        StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
+        ChunkPos chunkPos = new ChunkPos(pos);
+        StructureRegion structureRegion = getRegion(structureRegionPos);
 
         BlockPos village1 = new BlockPos(pos);
-        BlockPos village2 = new BlockPos(pos);
+//        BlockPos village2 = new BlockPos(pos);
         int dist1 = Integer.MAX_VALUE;
-        int dist2 = Integer.MAX_VALUE;
+//        int dist2 = Integer.MAX_VALUE;
 
-        for (int regionXOffset = -1; regionXOffset <= 1; regionXOffset++) {
-            for (int regionZOffset = -1; regionZOffset <= 1; regionZOffset++) {
-                StructureRegionPos currRegionPos = new StructureRegionPos(centerRegionPos.getX() + regionXOffset, centerRegionPos.getZ() + regionZOffset);
-                StructureRegion currRegion = getRegion(currRegionPos);
-
-                for (long chunkLong : currRegion.getVillageChunks()) {
-                    ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
-                    int sqDist = (candidateChunkPos.x - centerChunkPos.x) * (candidateChunkPos.x - centerChunkPos.x)
-                            + (candidateChunkPos.z - centerChunkPos.z) * (candidateChunkPos.z - centerChunkPos.z);
-                    if (sqDist < dist1) {
-                        dist2 = dist1;
-                        village2 = village1;
-                        dist1 = sqDist;
-                        village1 = candidateChunkPos.asBlockPos();
-                    } else if (sqDist < dist2) {
-                        dist2 = sqDist;
-                        village2 = candidateChunkPos.asBlockPos();
-                    }
-
-                    DebugRenderer.getInstance().addVillage(candidateChunkPos);
-                }
+        for (long chunkLong : structureRegion.getVillageChunks()) {
+            ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
+            int sqDist = (candidateChunkPos.x - chunkPos.x) * (candidateChunkPos.x - chunkPos.x)
+                    + (candidateChunkPos.z - chunkPos.z) * (candidateChunkPos.z - chunkPos.z);
+            if (sqDist < dist1) {
+//                dist2 = dist1;
+//                village2 = village1;
+                dist1 = sqDist;
+                village1 = candidateChunkPos.asBlockPos();
             }
+//            } else if (sqDist < dist2) {
+//                dist2 = sqDist;
+//                village2 = candidateChunkPos.asBlockPos();
+//            }
+
+            DebugRenderer.getInstance().addVillage(candidateChunkPos);
         }
 
-        return Lists.newArrayList(village1, village2);
+//        return structureRegion.getRoadWithStartingPos(village1).orElse(null);
+
+//        return Lists.newArrayList(village1, village2);
+        return village1;
 
 //        try {
 //            saveRegionToFile(regionKey);
@@ -93,6 +98,11 @@ public class StructureRegionCache {
 //        }
     }
 
+    public List<Road> getRoads(BlockPos pos) {
+        StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
+        StructureRegion structureRegion = getRegion(structureRegionPos);
+        return structureRegion.getRoads();
+    }
 
     /**
      * Loads the {@link StructureRegion} for the given key.
@@ -130,17 +140,20 @@ public class StructureRegionCache {
     }
 
     private StructureRegion loadRegionFromFile(long regionKey) throws IOException {
-        StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
-        File inFile = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
-        CompoundNBT structureRegionNbt = CompressedStreamTools.readCompressed(inFile);
-        return new StructureRegion(regionKey, structureRegionNbt);
+//        StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
+//        File inFile = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
+//        CompoundNBT structureRegionNbt = CompressedStreamTools.readCompressed(inFile);
+//        CompoundNBT structureRegionNbt = CompressedStreamTools.read(inFile);
+//        return new StructureRegion(regionKey, structureRegionNbt);
+        throw new IOException();
     }
 
     public void saveRegionToFile(long regionKey) throws IOException {
         if (this.structureRegionCache.containsKey(regionKey)) {
             StructureRegion structureRegion = this.structureRegionCache.get(regionKey);
             File outFile = new File(savePath.toString(), structureRegion.getFileName());
-            CompressedStreamTools.writeCompressed(structureRegion.toNbt(), outFile);
+//            CompressedStreamTools.writeCompressed(structureRegion.toNbt(), outFile);
+            CompressedStreamTools.write(structureRegion.toNbt(), outFile);
         } else {
             StructureRegion structureRegion = new StructureRegion(regionKey);
             YungsRoads.LOGGER.warn("Unable to save uncached region {} ({}, {}). This shouldn't happen!",
@@ -156,10 +169,11 @@ public class StructureRegionCache {
      */
     private StructureRegion generateRegion(long regionKey) {
         StructureRegionPos regionPos = new StructureRegionPos(regionKey);
-        LongOpenHashSet villageChunks = new LongOpenHashSet();
+        LongOpenHashSet villageSet = new LongOpenHashSet();
         ChunkPos minChunkPos = regionPos.getMinChunkPosInRegion();
         ChunkPos maxChunkPos = regionPos.getMaxChunkPosInRegion();
 
+        // Begin locating villages in this region
         for (int chunkX = minChunkPos.x; chunkX <= maxChunkPos.x; chunkX++) {
             for (int chunkZ = minChunkPos.z; chunkZ <= maxChunkPos.z; chunkZ++) {
                 int xOffset, zOffset;
@@ -190,11 +204,47 @@ public class StructureRegionCache {
                         0,
                         (structureCandidateChunkPos.z << 2) + 2)
                         .getGenerationSettings().hasStructure(Structure.VILLAGE)) {
-                    villageChunks.add(structureCandidateChunkPos.asLong());
+                    villageSet.add(structureCandidateChunkPos.asLong());
                 }
             }
         }
 
-        return new StructureRegion(regionKey, villageChunks);
+        // Create set for storing the village chunks
+        LongList villageChunks = new LongArrayList(villageSet);
+
+        // Generate some roads connecting villages
+        List<Road> roads = new ArrayList<>();
+        int numRoads = random.nextInt(villageChunks.size() / 2);
+        int i = 0;
+        while (i < numRoads && villageChunks.size() > 1) {
+            // Choose first village
+            int startIndex = random.nextInt(villageChunks.size());
+            ChunkPos startVillage = new ChunkPos(villageChunks.getLong(startIndex));
+
+            // Remove start pos from the list now that it's chosen.
+            // We remove the start pos to prevent completely duplicate roads, but keep the end pos
+            // to allow for villages with multiple roads
+            villageChunks.removeLong(startIndex);
+
+            // Choose second village
+            ChunkPos endVillage = null;
+            for (Long candidateEnd : villageChunks) {
+                ChunkPos endCandidate = new ChunkPos(candidateEnd);
+
+                // End pos must be within 800 blocks of start pos (arbitrary max road length)
+                if (startVillage.asBlockPos().withinDistance(endCandidate.asBlockPos(), 800)) {
+                    endVillage = endCandidate;
+                    break;
+                }
+            }
+
+            if (endVillage != null) {
+                Road road = this.roadGenerator.generate(startVillage, endVillage);
+                roads.add(road);
+                i++;
+            }
+        }
+
+        return new StructureRegion(regionKey, villageSet, roads);
     }
 }

@@ -6,7 +6,9 @@ import net.minecraft.client.gui.AbstractGui;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
 
 public class DebugRenderer extends AbstractGui {
     /** Singleton logic **/

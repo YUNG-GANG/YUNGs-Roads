@@ -20,7 +20,7 @@ public class YRModFeatures {
     /* Features */
     public static final RegistryObject<Feature<NoFeatureConfig>> ROAD_FEATURE = FEATURES.register("road", RoadFeature::new);
 
-    public static void init () {
+    public static void init() {
         FEATURES.register(FMLJavaModLoadingContext.get().getModEventBus());
         FMLJavaModLoadingContext.get().getModEventBus().addListener(YRModFeatures::commonSetup);
         MinecraftForge.EVENT_BUS.addListener(YRModFeatures::onBiomeLoad);
