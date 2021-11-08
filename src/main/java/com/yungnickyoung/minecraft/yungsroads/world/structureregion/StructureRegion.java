@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.Optional;
 
 public class StructureRegion {
-    private StructureRegionPos pos;
-    private LongOpenHashSet villageChunks;
-    private List<Road> roads;
+    private final StructureRegionPos pos;
+    private final LongOpenHashSet villageChunks;
+    private final List<Road> roads;
 
     public StructureRegion(long regionKey) {
         this(regionKey, new LongOpenHashSet(), new ArrayList<>());
@@ -70,10 +70,6 @@ public class StructureRegion {
         compoundNbt.put("roads", roadsNbt);
 
         return compoundNbt;
-    }
-
-    public Optional<Road> getRoadWithStartingPos(BlockPos pos) {
-        return this.roads.stream().filter(road -> road.getVillageStart() == pos).findFirst();
     }
 
     public String getFileName() {

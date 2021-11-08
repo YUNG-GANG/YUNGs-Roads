@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class StructureRegionCache {
     private final Path savePath;
@@ -37,7 +38,7 @@ public class StructureRegionCache {
         this.world = world;
         this.random = new SharedSeedRandom();
         this.structureRegionCache = new Long2ObjectLinkedOpenHashMap<>();
-        this.roadGenerator = new LinearRoadGenerator(this);
+        this.roadGenerator = new LinearRoadGenerator(world);
 
         // Extract separation settings
         StructureSeparationSettings separationSettings = world.getChunkProvider().getChunkGenerator().func_235957_b_().func_236197_a_(Structure.VILLAGE);
@@ -64,31 +65,20 @@ public class StructureRegionCache {
         StructureRegion structureRegion = getRegion(structureRegionPos);
 
         BlockPos village1 = new BlockPos(pos);
-//        BlockPos village2 = new BlockPos(pos);
         int dist1 = Integer.MAX_VALUE;
-//        int dist2 = Integer.MAX_VALUE;
 
         for (long chunkLong : structureRegion.getVillageChunks()) {
             ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
             int sqDist = (candidateChunkPos.x - chunkPos.x) * (candidateChunkPos.x - chunkPos.x)
                     + (candidateChunkPos.z - chunkPos.z) * (candidateChunkPos.z - chunkPos.z);
             if (sqDist < dist1) {
-//                dist2 = dist1;
-//                village2 = village1;
                 dist1 = sqDist;
                 village1 = candidateChunkPos.asBlockPos();
             }
-//            } else if (sqDist < dist2) {
-//                dist2 = sqDist;
-//                village2 = candidateChunkPos.asBlockPos();
-//            }
 
             DebugRenderer.getInstance().addVillage(candidateChunkPos);
         }
 
-//        return structureRegion.getRoadWithStartingPos(village1).orElse(null);
-
-//        return Lists.newArrayList(village1, village2);
         return village1;
 
 //        try {
@@ -98,14 +88,14 @@ public class StructureRegionCache {
 //        }
     }
 
-    public List<Road> getRoads(BlockPos pos) {
+    public List<Road> getRoadsForPosition(BlockPos pos) {
         StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
         StructureRegion structureRegion = getRegion(structureRegionPos);
         return structureRegion.getRoads();
     }
 
     /**
-     * Loads the {@link StructureRegion} for the given key.
+     * Loads the {@link StructureRegion} with the given key.
      *
      * If a corresponding structure region file exists, we load the data from it.
      * If the file does not exist or is corrupt, generation is delegated to {@link #generateRegion}.
@@ -128,15 +118,7 @@ public class StructureRegionCache {
      * If the file does not exist or is corrupt, generation is delegated to {@link #generateRegion}.
      */
     private StructureRegion getRegion(StructureRegionPos regionPos) {
-        long regionKey = regionPos.asLong();
-        return this.structureRegionCache.computeIfAbsent(regionKey, newKey -> {
-            // Try to load region from file. If an error occurs, we generate the region anew
-            try {
-                return loadRegionFromFile(newKey);
-            } catch (IOException e) {
-                return generateRegion(newKey);
-            }
-        });
+        return this.getRegion(regionPos.asLong());
     }
 
     private StructureRegion loadRegionFromFile(long regionKey) throws IOException {
@@ -165,7 +147,8 @@ public class StructureRegionCache {
      * Generates a new {@link StructureRegion} for the given region key.
      *
      * Uses the structure's separation settings to reconstruct its structure location grid,
-     * then validates each position with a biome check.
+     * then validates each position with a biome check. From there, some of the structure locations
+     * are randomly selected as endpoints for roads, and the roads are constructed.
      */
     private StructureRegion generateRegion(long regionKey) {
         StructureRegionPos regionPos = new StructureRegionPos(regionKey);
@@ -238,10 +221,13 @@ public class StructureRegionCache {
                 }
             }
 
+            // If we found a second village, attempt to construct a Road connecting the two villages
             if (endVillage != null) {
-                Road road = this.roadGenerator.generate(startVillage, endVillage);
-                roads.add(road);
-                i++;
+                Optional<Road> roadOptional = this.roadGenerator.generate(startVillage, endVillage);
+                if (roadOptional.isPresent()) {
+                    roads.add(roadOptional.get());
+                    i++;
+                }
             }
         }
 
