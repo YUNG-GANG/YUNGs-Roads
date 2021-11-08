@@ -1,9 +1,12 @@
 package com.yungnickyoung.minecraft.yungsroads.world;
 
+import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
+import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.ISeedReader;
 import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.feature.Feature;
@@ -20,11 +23,15 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
     }
 
     @Override
-    public boolean generate(ISeedReader world, ChunkGenerator chunkGenerator, Random rand, BlockPos pos, NoFeatureConfig config) {
+    public boolean generate(ISeedReader world, ChunkGenerator chunkGenerator, Random rand, BlockPos blockPos, NoFeatureConfig config) {
+        ChunkPos chunkPos = new ChunkPos(blockPos);
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) world.getWorld()).getStructureRegionCache();
-        BlockPos nearestVillage = structureRegionCache.getNearestVillage(pos);
-        List<Road> roads = structureRegionCache.getRoadsForPosition(pos);
-        roads.forEach(road -> road.place(world, rand, pos, nearestVillage));
+        BlockPos nearestVillage = structureRegionCache.getNearestVillage(blockPos);
+
+        // Place roads
+        IRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
+        List<Road> roads = structureRegionCache.getRegion(new StructureRegionPos(blockPos)).getRoads();
+        roads.forEach(road -> roadGenerator.placeRoad(road, world, rand, chunkPos, nearestVillage));
 
         return true;
     }
