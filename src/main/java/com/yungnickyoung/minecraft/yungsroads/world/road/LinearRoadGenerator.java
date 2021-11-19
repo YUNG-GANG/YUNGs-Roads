@@ -56,6 +56,11 @@ public class LinearRoadGenerator implements IRoadGenerator {
 
     @Override
     public void placeRoad(Road road, ISeedReader world, Random rand, ChunkPos chunkPos, BlockPos nearestVillage) {
+        // Short-circuit if this chunk isn't between the start/end points of the road
+        if (chunkPos.asBlockPos().getX() + 15 < road.getVillageStart().getX() || chunkPos.asBlockPos().getX() > road.getVillageEnd().getX()) {
+            return;
+        }
+
         BlockPos.Mutable mutable = new BlockPos.Mutable();
 
         // Determine total slope of line from starting point to ending point

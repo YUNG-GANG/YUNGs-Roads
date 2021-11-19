@@ -53,7 +53,7 @@ public interface IRoadGenerator {
                 if (x * x + z * z < 9) {
                     mutable.setPos(pos.getX() + x, pos.getY(), pos.getZ() + z);
                     if (mutable.getX() >> 4 == chunkX && mutable.getZ() >> 4 == chunkZ) {
-                        mutable.setY(world.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
+                        mutable.setY(getSurfaceHeight(world, mutable));
                         placePathBlock(world, random, mutable, nearestVillage);
                     }
                 }
@@ -73,5 +73,13 @@ public interface IRoadGenerator {
             }
         }
         DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+    }
+
+    default boolean isInChunk(ChunkPos chunkPos, BlockPos blockPos) {
+        return chunkPos.equals(new ChunkPos(blockPos));
+    }
+
+    default int getSurfaceHeight(ISeedReader world, BlockPos pos) {
+        return world.getHeight(Heightmap.Type.WORLD_SURFACE_WG, pos.getX(), pos.getZ()) - 1;
     }
 }
