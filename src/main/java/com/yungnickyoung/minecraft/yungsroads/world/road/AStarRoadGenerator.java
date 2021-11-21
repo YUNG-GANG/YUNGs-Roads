@@ -79,7 +79,7 @@ public class AStarRoadGenerator implements IRoadGenerator {
     @Override
     public void placeRoad(Road road, ISeedReader world, Random rand, ChunkPos chunkPos, BlockPos nearestVillage) {
         // Short-circuit if this chunk isn't between the start/end points of the road
-        if (chunkPos.asBlockPos().getX() + 15 < road.getVillageStart().getX() || chunkPos.asBlockPos().getX() > road.getVillageEnd().getX()) {
+        if (!containsRoad(chunkPos, road)) {
             return;
         }
 
@@ -178,11 +178,6 @@ public class AStarRoadGenerator implements IRoadGenerator {
         int xDiff = node.pos.getX() - startPos.getX();
         int zDiff = node.pos.getZ() - startPos.getZ();
         return Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-    }
-
-    private boolean containsRoadSegment(ChunkPos chunkPos, RoadSegment roadSegment) {
-        return (roadSegment.getStartPos().getX() >= chunkPos.getXStart() || roadSegment.getEndPos().getX() >= chunkPos.getXStart())
-            && (roadSegment.getStartPos().getX() <= chunkPos.getXEnd() || roadSegment.getEndPos().getX() <= chunkPos.getXEnd());
     }
 
     static class Node implements Comparable<Node>{

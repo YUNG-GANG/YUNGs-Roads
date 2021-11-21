@@ -63,14 +63,10 @@ public interface IRoadGenerator {
 
     default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage) {
         BlockState currState = world.getBlockState(pos);
-        if (random.nextFloat() < .5f) {
-            if (currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState()) {
-                world.setBlockState(pos, Blocks.GRASS_PATH.getDefaultState(), 2);
-            } else if (currState == Blocks.SAND.getDefaultState() || currState == Blocks.RED_SAND.getDefaultState()) {
-                world.setBlockState(pos, Blocks.COBBLESTONE.getDefaultState(), 2);
-            } else if (currState.getMaterial() == Material.WATER) {
-                world.setBlockState(pos, Blocks.OAK_PLANKS.getDefaultState(), 2);
-            }
+        if ((currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState() || currState == Blocks.SAND.getDefaultState()) && random.nextFloat() < .5f) {
+            world.setBlockState(pos, Blocks.GRASS_PATH.getDefaultState(), 2);
+        } else if (currState.getMaterial() == Material.WATER) {
+            world.setBlockState(pos, Blocks.OAK_PLANKS.getDefaultState(), 2);
         }
         DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
     }
@@ -81,5 +77,15 @@ public interface IRoadGenerator {
 
     default int getSurfaceHeight(ISeedReader world, BlockPos pos) {
         return world.getHeight(Heightmap.Type.WORLD_SURFACE_WG, pos.getX(), pos.getZ()) - 1;
+    }
+
+    default boolean containsRoad(ChunkPos chunkPos, Road road) {
+        return (road.getVillageStart().getX() >= chunkPos.getXStart() || road.getVillageEnd().getX() >= chunkPos.getXStart())
+                && (road.getVillageStart().getX() <= chunkPos.getXEnd() || road.getVillageEnd().getX() <= chunkPos.getXEnd());
+    }
+
+    default boolean containsRoadSegment(ChunkPos chunkPos, RoadSegment roadSegment) {
+        return (roadSegment.getStartPos().getX() >= chunkPos.getXStart() || roadSegment.getEndPos().getX() >= chunkPos.getXStart())
+                && (roadSegment.getStartPos().getX() <= chunkPos.getXEnd() || roadSegment.getEndPos().getX() <= chunkPos.getXEnd());
     }
 }

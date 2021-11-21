@@ -6,6 +6,7 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class Road {
     public static final Codec<Road> CODEC = RecordCodecBuilder.create(builder -> builder
@@ -48,6 +49,13 @@ public class Road {
 
     public Road addRoadSegment(BlockPos startPos, BlockPos endPos) {
         RoadSegment roadSegment = new RoadSegment(startPos, endPos);
+        return this.addRoadSegment(roadSegment);
+    }
+
+    public Road addSplineRoadSegment(BlockPos startPos, BlockPos endPos, Random random) {
+        BlockPos p1 = startPos.add(random.nextInt(20) - 10, 0, random.nextInt(20) - 10);
+        BlockPos p2 = endPos.add(random.nextInt(20) - 10, 0, random.nextInt(20) - 10);
+        RoadSegment roadSegment = new RoadSegment(startPos, p1, p2, endPos);
         return this.addRoadSegment(roadSegment);
     }
 

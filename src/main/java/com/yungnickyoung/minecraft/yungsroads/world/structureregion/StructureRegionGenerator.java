@@ -1,10 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.StructureAccessor;
-import com.yungnickyoung.minecraft.yungsroads.world.road.AStarRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.LinearRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.*;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -27,7 +24,7 @@ public class StructureRegionGenerator {
     public StructureRegionGenerator(ServerWorld world) {
         this.world = world;
         this.random = new SharedSeedRandom();
-        this.roadGenerator = new AStarRoadGenerator(world);
+        this.roadGenerator = new SplineRoadGenerator(world);
 
         // Extract separation settings
         StructureSeparationSettings separationSettings = world.getChunkProvider().getChunkGenerator().func_235957_b_().func_236197_a_(Structure.VILLAGE);
