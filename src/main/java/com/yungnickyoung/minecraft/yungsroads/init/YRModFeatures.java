@@ -37,6 +37,6 @@ public class YRModFeatures {
      * Adds configured features to appropriate biomes.
      */
     private static void onBiomeLoad(BiomeLoadingEvent event) {
-        event.getGeneration().getFeatures(GenerationStage.Decoration.SURFACE_STRUCTURES).add(() -> YRModConfiguredFeatures.CONFIGURED_ROAD_FEATURE);
+        event.getGeneration().getFeatures(GenerationStage.Decoration.LOCAL_MODIFICATIONS).add(() -> YRModConfiguredFeatures.CONFIGURED_ROAD_FEATURE);
     }
 }

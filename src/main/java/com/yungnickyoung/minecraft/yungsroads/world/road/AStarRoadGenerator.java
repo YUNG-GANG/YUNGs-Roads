@@ -20,46 +20,19 @@ public class AStarRoadGenerator implements IRoadGenerator {
     @Override
     public Optional<Road> generateRoad(ChunkPos pos1, ChunkPos pos2) {
         // Make sure our starting position is always the one with lesser x value
-        BlockPos startPos = pos1.x <= pos2.x ? pos1.asBlockPos() : pos2.asBlockPos();
-        BlockPos endPos = pos1.x <= pos2.x ? pos2.asBlockPos() : pos1.asBlockPos();
+        BlockPos blockPos1 = pos1.x <= pos2.x ? pos1.asBlockPos() : pos2.asBlockPos();
+        BlockPos blockPos2 = pos1.x <= pos2.x ? pos2.asBlockPos() : pos1.asBlockPos();
 
-        int xDist = endPos.getX() - startPos.getX();
-        int zDist = endPos.getZ() - startPos.getZ();
+        int xDist = blockPos2.getX() - blockPos1.getX();
+        int zDist = blockPos2.getZ() - blockPos1.getZ();
 
-//        Road road = new Road(startPos, endPos)
-//                .addRoadSegment(
-//                        startPos,
-//                        startPos.add(xDist / 4, 0, zDist / 4))
-//                .addRoadSegment(
-//                        startPos.add(xDist / 4, 0, zDist / 4),
-//                        startPos.add(2 * xDist / 4, 0, 2 * zDist / 4))
-//                .addRoadSegment(
-//                        startPos.add(2 * xDist / 4, 0, 2 * zDist / 4),
-//                        startPos.add(3 * xDist / 4, 0, 3 * zDist / 4))
-//                .addRoadSegment(
-//                        startPos.add(3 * xDist / 4, 0, 3 * zDist / 4),
-//                        endPos);
-
-        Road road = new Road(startPos, endPos);
-        double slope = (endPos.getZ() - startPos.getZ()) / (double) (endPos.getX() - startPos.getX());
-        // z = slope * (x - endpos.x) + endpos.z
-
-        BlockPos.Mutable segmentStartPos = startPos.toMutable();
-        BlockPos.Mutable segmentEndPos = startPos.toMutable();
-
-        while (segmentStartPos.getX() <= endPos.getX()) {
-            // Set segment end pos
-            segmentEndPos.setX((segmentStartPos.getX() / 16) * 16 + 15);
-            if (segmentEndPos.getX() > endPos.getX()) segmentEndPos.setX(endPos.getX());
-            segmentEndPos.setZ((int) (slope * (segmentEndPos.getX() - endPos.getX())) + endPos.getZ());
-
-            // Add segment
-            road.addRoadSegment(new BlockPos(segmentStartPos), new BlockPos(segmentEndPos));
-
-            // Update segment start pos
-            segmentStartPos.setX(((segmentStartPos.getX() + 16) / 16) * 16);
-            segmentStartPos.setZ((int) (slope * segmentStartPos.getX()) + startPos.getZ());
-            segmentStartPos.setZ((int) (slope * (segmentStartPos.getX() - endPos.getX())) + endPos.getZ());
+        // Construct road & road segments
+        Road road = new Road(blockPos1, blockPos2);
+        int numSegments = 4;
+        for (int i = 0; i < numSegments; i++) {
+            road.addRoadSegment(
+                    blockPos1.add(xDist * i / numSegments, 0, zDist * i / numSegments),
+                    blockPos1.add(xDist * (i + 1) / numSegments, 0, zDist * (i + 1) / numSegments));
         }
 
         // Ensure road does not cross ocean

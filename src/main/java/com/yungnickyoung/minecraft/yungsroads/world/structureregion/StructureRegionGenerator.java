@@ -87,7 +87,8 @@ public class StructureRegionGenerator {
 
         // Generate some roads connecting villages
         List<Road> roads = new ArrayList<>();
-        int numRoads = random.nextInt(villageChunks.size() / 2);
+//        int numRoads = random.nextInt(villageChunks.size() / 2);
+        int numRoads = villageChunks.size() / 2;
         int i = 0;
         while (i < numRoads && villageChunks.size() > 1) {
             // Choose first village

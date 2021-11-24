@@ -4,10 +4,12 @@ import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.material.Material;
+import net.minecraft.util.Direction;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
 import net.minecraft.world.ISeedReader;
+import net.minecraft.world.biome.Biome;
 import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
@@ -39,6 +41,10 @@ public interface IRoadGenerator {
      */
     void placeRoad(Road road, ISeedReader world, Random rand, ChunkPos chunkPos, BlockPos nearestVillage);
 
+    default double getRoadWidth() {
+        return 2.83;
+    }
+
     default boolean isInRange(BlockPos pos, BlockPos targetPos) {
         double xDiff = pos.getX() - targetPos.getX();
         double zDiff = pos.getZ() - targetPos.getZ();
@@ -47,15 +53,30 @@ public interface IRoadGenerator {
 
     default void placePath(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage, int chunkX, int chunkZ) {
         BlockPos.Mutable mutable = pos.toMutable();
+        double roadWidthSq = getRoadWidth() * getRoadWidth();
 
-        for (int x = 0; x < 4; x++) {
-            for (int z = 0; z < 4; z++) {
-                if (x * x + z * z < 9) {
+        for (int x = -2; x < 3; x++) {
+            for (int z = -2; z < 3; z++) {
+                if (x * x + z * z < roadWidthSq) {
                     mutable.setPos(pos.getX() + x, pos.getY(), pos.getZ() + z);
-                    if (mutable.getX() >> 4 == chunkX && mutable.getZ() >> 4 == chunkZ) {
-                        mutable.setY(getSurfaceHeight(world, mutable));
-                        placePathBlock(world, random, mutable, nearestVillage);
-                    }
+                    mutable.setY(getSurfaceHeight(world, mutable));
+
+//                    int seaLevelDistance = mutable.getY() - world.getSeaLevel();
+//                    int yCompression = seaLevelDistance / 6;
+//
+//                    // Place air to destroy any floating plants and the like
+//                    if (yCompression > 0) {
+//                        mutable.move(Direction.UP);
+//                        world.setBlockState(mutable, Blocks.AIR.getDefaultState(), 2);
+//                        mutable.move(Direction.DOWN);
+//                    }
+//
+//                    for (int y = 0; y < yCompression; y++) {
+//                        world.setBlockState(mutable, Blocks.AIR.getDefaultState(), 2);
+//                        mutable.move(Direction.DOWN);
+//                    }
+
+                    placePathBlock(world, random, mutable, nearestVillage);
                 }
             }
         }
@@ -63,7 +84,7 @@ public interface IRoadGenerator {
 
     default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage) {
         BlockState currState = world.getBlockState(pos);
-        if ((currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState() || currState == Blocks.SAND.getDefaultState()) && random.nextFloat() < .5f) {
+        if ((currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState() || currState == Blocks.SAND.getDefaultState() || currState == Blocks.SANDSTONE.getDefaultState() || currState == Blocks.SNOW_BLOCK.getDefaultState()) && random.nextFloat() < .5f) {
             world.setBlockState(pos, Blocks.GRASS_PATH.getDefaultState(), 2);
         } else if (currState.getMaterial() == Material.WATER) {
             world.setBlockState(pos, Blocks.OAK_PLANKS.getDefaultState(), 2);
@@ -75,17 +96,40 @@ public interface IRoadGenerator {
         return chunkPos.equals(new ChunkPos(blockPos));
     }
 
+    default boolean isInValidRangeForChunk(ChunkPos chunkPos, BlockPos blockPos) {
+        ChunkPos targetChunkPos = new ChunkPos(blockPos);
+        return targetChunkPos.x >= chunkPos.x - 1 &&
+               targetChunkPos.x <= chunkPos.x + 1 &&
+               targetChunkPos.z >= chunkPos.z - 1 &&
+               targetChunkPos.z <= chunkPos.z + 1;
+
+    }
+
     default int getSurfaceHeight(ISeedReader world, BlockPos pos) {
         return world.getHeight(Heightmap.Type.WORLD_SURFACE_WG, pos.getX(), pos.getZ()) - 1;
     }
 
     default boolean containsRoad(ChunkPos chunkPos, Road road) {
-        return (road.getVillageStart().getX() >= chunkPos.getXStart() || road.getVillageEnd().getX() >= chunkPos.getXStart())
-                && (road.getVillageStart().getX() <= chunkPos.getXEnd() || road.getVillageEnd().getX() <= chunkPos.getXEnd());
+        int roadStartX = road.getVillageStart().getX();
+        int roadEndX = road.getVillageEnd().getX();
+        int chunkStartX = chunkPos.getXStart();
+        int chunkEndX = chunkPos.getXEnd();
+        int chunkPad = 64; // We pad the cutoff by 4 chunks to allow for curved roads that temporarily exceed the min or max x-value
+                           // defined by the road segment's start/end positions. The 4 here is arbitrary and may not cover
+                           // all scenarios, but covers most without incurring too much performance cost.
+        return (roadStartX >= chunkStartX - chunkPad || roadEndX >= chunkStartX - chunkPad)
+                && (roadStartX <= chunkEndX  + chunkPad || roadEndX <= chunkEndX + chunkPad);
     }
 
     default boolean containsRoadSegment(ChunkPos chunkPos, RoadSegment roadSegment) {
-        return (roadSegment.getStartPos().getX() >= chunkPos.getXStart() || roadSegment.getEndPos().getX() >= chunkPos.getXStart())
-                && (roadSegment.getStartPos().getX() <= chunkPos.getXEnd() || roadSegment.getEndPos().getX() <= chunkPos.getXEnd());
+        int roadSegmentStartX = roadSegment.getStartPos().getX();
+        int roadSegmentEndX = roadSegment.getEndPos().getX();
+        int chunkStartX = chunkPos.getXStart();
+        int chunkEndX = chunkPos.getXEnd();
+        int chunkPad = 64; // We pad the cutoff by 4 chunks to allow for curved roads that temporarily exceed the min or max x-value
+                           // defined by the road segment's start/end positions. The 4 here is arbitrary and may not cover
+                           // all scenarios, but covers most without incurring too much performance cost.
+        return (roadSegmentStartX >= chunkStartX - chunkPad || roadSegmentEndX >= chunkStartX - chunkPad)
+                && (roadSegmentStartX <= chunkEndX  + chunkPad || roadSegmentEndX <= chunkEndX + chunkPad);
     }
 }

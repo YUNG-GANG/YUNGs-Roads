@@ -28,6 +28,10 @@ public class RoadSegment {
         this.endPos = endPos;
     }
 
+    public BlockPos[] getPoints() {
+        return new BlockPos[]{startPos, p1, p2, endPos};
+    }
+
     public BlockPos getStartPos() {
         return startPos;
     }
