@@ -79,6 +79,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
         // Set seeds
         random.setLargeFeatureSeed(world.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
 
+        // Temporary chunk-local carving mask to prevent overprocessing a single block
+        BitSet blockMask = new BitSet(65536);
+
         for (RoadSegment roadSegment : roadSegments) {
             Vector3d[] pts = Arrays.stream(roadSegment.getPoints()).map(blockPos -> new Vector3d(blockPos.getX(), blockPos.getY(), blockPos.getZ())).toArray(Vector3d[]::new);
 
@@ -119,7 +122,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
 //                    placePath(world, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
                     BlockPos.Mutable mutable = new BlockPos.Mutable();
 
-                    if (isInValidRangeForChunk(chunkPos, pathPos)) {
+                    if (isInChunk(chunkPos, pathPos)) {
                         for (int x = -2; x < 3; x++) {
                             for (int z = -2; z < 3; z++) {
                                 double n = noise.GetNoise(mutable.getX(), mutable.getZ());
@@ -131,7 +134,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
                                     int currY = Math.min(surfaceHeight, 80);
                                     mutable.setY(currY);
 
-                                    placePathBlock(world, random, mutable, nearestVillage);
+                                    placePathBlock(world, random, mutable, nearestVillage, blockMask);
                                     if (currY == 80) {
                                         for (int i = 0; i < 4; i++) {
                                             mutable.move(Direction.UP);

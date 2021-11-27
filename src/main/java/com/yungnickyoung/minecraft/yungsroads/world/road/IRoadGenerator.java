@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road;
 
+import com.yungnickyoung.minecraft.yungsapi.world.BlockSetSelector;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -14,6 +15,7 @@ import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 
+import java.util.BitSet;
 import java.util.Optional;
 import java.util.Random;
 
@@ -82,14 +84,39 @@ public interface IRoadGenerator {
         }
     }
 
+    BlockSetSelector dirtReplacer = new BlockSetSelector(Blocks.DIRT.getDefaultState())
+            .addBlock(Blocks.GRASS_PATH.getDefaultState(), .6f)
+            .addBlock(Blocks.GRASS_BLOCK.getDefaultState(), .2f);
+    BlockSetSelector sandReplacer = new BlockSetSelector(Blocks.SAND.getDefaultState())
+            .addBlock(Blocks.GRAVEL.getDefaultState(), .6f)
+            .addBlock(Blocks.SANDSTONE.getDefaultState(), .3f);
+    BlockSetSelector snowReplacer = new BlockSetSelector(Blocks.SNOW_BLOCK.getDefaultState())
+            .addBlock(Blocks.ICE.getDefaultState(), .6f);
+    BlockSetSelector stoneReplacer = new BlockSetSelector(Blocks.STONE.getDefaultState())
+            .addBlock(Blocks.COBBLESTONE.getDefaultState(), .6f);
+
+    default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage, BitSet blockMask) {
+        int mask = Math.floorMod(pos.getX(), 16) | (Math.floorMod(pos.getZ(), 16) << 4) | (pos.getY() << 8);
+        if (blockMask.get(mask)) return;
+        placePathBlock(world, random, pos, nearestVillage);
+        blockMask.set(mask);
+    }
+
     default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage) {
         BlockState currState = world.getBlockState(pos);
-        if ((currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState() || currState == Blocks.SAND.getDefaultState() || currState == Blocks.SANDSTONE.getDefaultState() || currState == Blocks.SNOW_BLOCK.getDefaultState()) && random.nextFloat() < .5f) {
-            world.setBlockState(pos, Blocks.GRASS_PATH.getDefaultState(), 2);
-        } else if (currState.getMaterial() == Material.WATER) {
+        if (currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState()) {
+            world.setBlockState(pos, dirtReplacer.get(random), 2);
+        } else if (currState == Blocks.STONE.getDefaultState() || currState == Blocks.ANDESITE.getDefaultState() || currState == Blocks.GRANITE.getDefaultState()) {
+            world.setBlockState(pos, stoneReplacer.get(random), 2);
+        } else if (currState == Blocks.SNOW_BLOCK.getDefaultState()) {
+            world.setBlockState(pos, snowReplacer.get(random), 2);
+        } else if (currState == Blocks.SAND.getDefaultState() || currState == Blocks.SANDSTONE.getDefaultState()) {
+            world.setBlockState(pos, sandReplacer.get(random), 2);
+        } else if (currState.getMaterial() == Material.WATER && pos.getY() == world.getSeaLevel() - 1) {
             world.setBlockState(pos, Blocks.OAK_PLANKS.getDefaultState(), 2);
         }
         DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+
     }
 
     default boolean isInChunk(ChunkPos chunkPos, BlockPos blockPos) {
