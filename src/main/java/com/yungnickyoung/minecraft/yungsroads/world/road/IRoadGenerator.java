@@ -121,6 +121,9 @@ public interface IRoadGenerator {
         return chunkPos.equals(new ChunkPos(blockPos));
     }
 
+    /**
+     * Checks if the BlockPos is within a 1-chunk radius of the given ChunkPos.
+     */
     default boolean isInValidRangeForChunk(ChunkPos chunkPos, BlockPos blockPos) {
         ChunkPos targetChunkPos = new ChunkPos(blockPos);
         return targetChunkPos.x >= chunkPos.x - 1 &&

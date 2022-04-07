@@ -3,7 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkManagerAccessor;
-import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
+import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -11,7 +11,9 @@ import net.minecraft.world.server.ServerWorld;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Caches StructureRegions for a given world and exposes methods for retrieving them.
@@ -19,24 +21,14 @@ import java.nio.file.Path;
  */
 public class StructureRegionCache {
     private final Path savePath;
-    private final Long2ObjectLinkedOpenHashMap<StructureRegion> structureRegionCache;
+    private final ConcurrentHashMap<Long, StructureRegion> structureRegionCache;
     private final StructureRegionGenerator structureRegionGenerator;
 
     public StructureRegionCache(ServerWorld world) {
-        this.structureRegionCache = new Long2ObjectLinkedOpenHashMap<>();
+        this.structureRegionCache = new ConcurrentHashMap<>();
         this.structureRegionGenerator = new StructureRegionGenerator(world);
-
-        // Create save folder if it doesn't exist
         this.savePath = ((ChunkManagerAccessor) world.getChunkProvider().chunkManager).getDimensionDirectory().toPath().resolve("roads").toAbsolutePath();
-        try {
-            File saveDirectory = this.savePath.toFile();
-            if (saveDirectory.mkdirs()) {
-                YungsRoads.LOGGER.info("Creating 'roads' directory for dimension {}...", world.getDimensionKey().getLocation().toString());
-            }
-        } catch (Exception e) {
-            YungsRoads.LOGGER.error("Unable to create 'roads' directory for dimension {}. This shouldn't happen!", world.getDimensionKey().getLocation().toString());
-            YungsRoads.LOGGER.error(e.toString());
-        }
+        createDirectoryIfDoesNotExist();
     }
 
     /**
@@ -64,27 +56,37 @@ public class StructureRegionCache {
         }
 
         return village1;
-
-//        try {
-//            saveRegionToFile(regionKey);
-//        } catch (IOException e) {
-//            YungsRoads.LOGGER.error(e);
-//        }
     }
 
     /**
      * Loads the {@link StructureRegion} with the given key.
      *
      * If a corresponding structure region file exists, we load the data from it.
-     * If the file does not exist or is corrupt, generation is delegated to {@link StructureRegionGenerator#generateRegion}.
+     * If the file does not exist or is corrupt, generation is deferred to {@link StructureRegionGenerator#generateRegion}.
      */
     public StructureRegion getRegion(long regionKey) {
         return this.structureRegionCache.computeIfAbsent(regionKey, newKey -> {
-            // Try to load region from file. If an error occurs, we generate the region anew
+            StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
+            File file = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
+
+            // If file does not yet exist, generate the region and save the file.
+            if (!file.exists()) {
+                StructureRegion newStructureRegion = this.structureRegionGenerator.generateRegion(newKey);
+                writeStructureRegionFile(newStructureRegion);
+                return newStructureRegion;
+            }
+
+            // Attempt to read existing file.
             try {
-                return loadRegionFromFile(newKey);
+                CompoundNBT structureRegionNbt = CompressedStreamTools.read(file);
+                return new StructureRegion(regionKey, structureRegionNbt);
             } catch (IOException e) {
-                return this.structureRegionGenerator.generateRegion(newKey);
+                // Unable to read file. Log error & generate file anew.
+                YungsRoads.LOGGER.error("Unable to read roads file {}", file.toString());
+                YungsRoads.LOGGER.error(e);
+                StructureRegion newStructureRegion = this.structureRegionGenerator.generateRegion(newKey);
+                writeStructureRegionFile(newStructureRegion);
+                return newStructureRegion;
             }
         });
     }
@@ -93,7 +95,7 @@ public class StructureRegionCache {
      * Loads the {@link StructureRegion} with the given region position.
      *
      * If a corresponding structure region file exists, we load the data from it.
-     * If the file does not exist or is corrupt, generation is delegated to {@link StructureRegionGenerator#generateRegion}.
+     * If the file does not exist or is corrupt, generation is deferred to {@link StructureRegionGenerator#generateRegion}.
      */
     public StructureRegion getRegion(StructureRegionPos regionPos) {
         return this.getRegion(regionPos.asLong());
@@ -103,25 +105,28 @@ public class StructureRegionCache {
         return structureRegionGenerator;
     }
 
-    private StructureRegion loadRegionFromFile(long regionKey) throws IOException {
-//        StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
-//        File inFile = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
-//        CompoundNBT structureRegionNbt = CompressedStreamTools.readCompressed(inFile);
-//        CompoundNBT structureRegionNbt = CompressedStreamTools.read(inFile);
-//        return new StructureRegion(regionKey, structureRegionNbt);
-        throw new IOException();
+    private void writeStructureRegionFile(StructureRegion structureRegion) {
+        File file = new File(savePath.toString(), structureRegion.getFileName());
+
+        if (file.exists()) {
+            YungsRoads.LOGGER.warn("Found existing file for region {}!", structureRegion.getFileName());
+        }
+
+        try {
+            CompressedStreamTools.write(structureRegion.toNbt(), file);
+        } catch (IOException e) {
+            YungsRoads.LOGGER.error("Unable to write structure region file {}", structureRegion.getFileName());
+            YungsRoads.LOGGER.error(e);
+
+        }
     }
 
-    private void saveRegionToFile(long regionKey) throws IOException {
-        if (this.structureRegionCache.containsKey(regionKey)) {
-            StructureRegion structureRegion = this.structureRegionCache.get(regionKey);
-            File outFile = new File(savePath.toString(), structureRegion.getFileName());
-//            CompressedStreamTools.writeCompressed(structureRegion.toNbt(), outFile);
-            CompressedStreamTools.write(structureRegion.toNbt(), outFile);
-        } else {
-            StructureRegion structureRegion = new StructureRegion(regionKey);
-            YungsRoads.LOGGER.warn("Unable to save uncached region {} ({}, {}). This shouldn't happen!",
-                    regionKey, structureRegion.getPos().getX(), structureRegion.getPos().getZ());
+    private void createDirectoryIfDoesNotExist() {
+        try {
+            Files.createDirectories(this.savePath);
+        } catch (IOException e) {
+            YungsRoads.LOGGER.error("Unable to create roads save path {}", this.savePath);
+            YungsRoads.LOGGER.error(e);
         }
     }
 }

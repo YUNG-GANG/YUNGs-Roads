@@ -47,4 +47,9 @@ public class RoadSegment {
     public BlockPos getP2() {
         return p2;
     }
+
+    @Override
+    public String toString() {
+        return "Road Segment [" + startPos + ", "+ p1 + ", " + p2 + ", " + endPos + "]";
+    }
 }

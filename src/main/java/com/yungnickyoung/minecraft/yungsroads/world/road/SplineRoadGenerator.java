@@ -88,6 +88,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
             Vector3d[] pts = Arrays.stream(roadSegment.getPoints()).map(pos -> new Vector3d(pos.getX(), pos.getY(), pos.getZ())).toArray(Vector3d[]::new);
 
             // Debug markers
+            // Start pos
             if (isInChunk(chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z))) {
                 BlockPos.Mutable mutable = new BlockPos.Mutable(pts[0].x, pts[0].y, pts[0].z);
                 mutable.setY(getSurfaceHeight(world, mutable));
@@ -97,6 +98,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
                     world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
                 }
             }
+            // End pos
             if (isInChunk(chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z))) {
                 BlockPos.Mutable mutable = new BlockPos.Mutable(pts[3].x, pts[3].y, pts[3].z);
                 mutable.setY(getSurfaceHeight(world, mutable));
@@ -158,8 +160,6 @@ public class SplineRoadGenerator implements IRoadGenerator {
                         }
                     }
 
-
-
                     // Place normals at this point
 //                    normals = getNormals(pts, t);
 //                    for (Vector3d normal : normals) {
@@ -188,9 +188,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
                 t += 0.002f;
                 counter++;
             }
-        }
 
-        YungsRoads.LOGGER.info("Generated {}", road);
+            YungsRoads.LOGGER.debug("Generated {}", roadSegment);
+        }
     }
 
     @Override
