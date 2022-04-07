@@ -62,7 +62,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, ISeedReader world, Random rand, ChunkPos chunkPos, BlockPos nearestVillage) {
+    public void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, BlockPos nearestVillage) {
+        ChunkPos chunkPos = new ChunkPos(blockPos);
+
         // Short-circuit if this chunk isn't between the start/end points of the road
         if (!containsRoad(chunkPos, road)) {
             return;
@@ -83,7 +85,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         BitSet blockMask = new BitSet(65536);
 
         for (RoadSegment roadSegment : roadSegments) {
-            Vector3d[] pts = Arrays.stream(roadSegment.getPoints()).map(blockPos -> new Vector3d(blockPos.getX(), blockPos.getY(), blockPos.getZ())).toArray(Vector3d[]::new);
+            Vector3d[] pts = Arrays.stream(roadSegment.getPoints()).map(pos -> new Vector3d(pos.getX(), pos.getY(), pos.getZ())).toArray(Vector3d[]::new);
 
             // Debug markers
             if (isInChunk(chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z))) {

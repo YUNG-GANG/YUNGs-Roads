@@ -24,14 +24,13 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
 
     @Override
     public boolean generate(ISeedReader world, ChunkGenerator chunkGenerator, Random rand, BlockPos blockPos, NoFeatureConfig config) {
-        ChunkPos chunkPos = new ChunkPos(blockPos);
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) world.getWorld()).getStructureRegionCache();
         BlockPos nearestVillage = structureRegionCache.getNearestVillage(blockPos);
 
         // Place roads
         IRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
         List<Road> roads = structureRegionCache.getRegion(new StructureRegionPos(blockPos)).getRoads();
-        roads.forEach(road -> roadGenerator.placeRoad(road, world, rand, chunkPos, nearestVillage));
+        roads.forEach(road -> roadGenerator.placeRoad(road, world, rand, blockPos, nearestVillage));
 
         return true;
     }

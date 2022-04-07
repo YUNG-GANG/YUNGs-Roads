@@ -2,15 +2,13 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.yungnickyoung.minecraft.yungsapi.world.BlockSetSelector;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
+import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.material.Material;
-import net.minecraft.util.Direction;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
-import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
 import net.minecraft.world.ISeedReader;
-import net.minecraft.world.biome.Biome;
 import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
@@ -35,13 +33,13 @@ public interface IRoadGenerator {
      * @param road The {@link Road} to place.
      * @param world The world, passed in during feature generation.
      * @param rand Random passed in during feature generation.
-     * @param chunkPos The position of the chunk we want to operate on. Should be passed in during feature generation.
+     * @param blockPos A block pos within the chunk we want to operate on. Should be passed in during feature generation.
      *                 Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
      *                 even if they contain Road positions.
      * @param nearestVillage The location of the nearest village to this point.
      *                       Only used for rendering the debug view.
      */
-    void placeRoad(Road road, ISeedReader world, Random rand, ChunkPos chunkPos, BlockPos nearestVillage);
+    void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, BlockPos nearestVillage);
 
     default double getRoadWidth() {
         return 2.83;

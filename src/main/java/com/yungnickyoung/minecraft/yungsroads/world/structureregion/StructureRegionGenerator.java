@@ -15,6 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Class for generating new StructureRegions.
+ * Does not store any regions generated - this is handled by {@link StructureRegionCache}
+ */
 public class StructureRegionGenerator {
     private final int spacing, separation, salt;
     private final ServerWorld world;
@@ -102,12 +106,12 @@ public class StructureRegionGenerator {
 
             // Choose second village
             ChunkPos endVillage = null;
-            for (Long candidateEnd : villageChunks) {
-                ChunkPos endCandidate = new ChunkPos(candidateEnd);
+            for (Long endCandidate : villageChunks) {
+                ChunkPos endCandidateChunkPos = new ChunkPos(endCandidate);
 
                 // End pos must be within 800 blocks of start pos (arbitrary max road length)
-                if (startVillage.asBlockPos().withinDistance(endCandidate.asBlockPos(), 800)) {
-                    endVillage = endCandidate;
+                if (startVillage.asBlockPos().withinDistance(endCandidateChunkPos.asBlockPos(), 800)) {
+                    endVillage = endCandidateChunkPos;
                     break;
                 }
             }

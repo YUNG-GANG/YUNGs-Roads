@@ -13,6 +13,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 
+/**
+ * Caches StructureRegions for a given world and exposes methods for retrieving them.
+ * If a StructureRegion is not yet cached, generation is deferred to {@link StructureRegionGenerator}
+ */
 public class StructureRegionCache {
     private final Path savePath;
     private final Long2ObjectLinkedOpenHashMap<StructureRegion> structureRegionCache;
@@ -35,6 +39,10 @@ public class StructureRegionCache {
         }
     }
 
+    /**
+     * Finds the nearest village to the given position <i>within the StructureRegion the provided position is in.</i>
+     * This means the position returned may not actually be the closest village.
+     */
     public BlockPos getNearestVillage(BlockPos pos) {
         StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
         ChunkPos chunkPos = new ChunkPos(pos);
