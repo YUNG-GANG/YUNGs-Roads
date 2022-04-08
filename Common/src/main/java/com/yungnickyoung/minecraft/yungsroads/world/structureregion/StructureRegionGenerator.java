@@ -19,6 +19,7 @@ import net.minecraft.world.level.StructureFeatureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
@@ -90,28 +91,67 @@ public class StructureRegionGenerator {
             }
         }
 
+        List<Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>>> list = new ArrayList<>(placementToFeaturesMap.size());
+
+        for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry : placementToFeaturesMap.entrySet()) {
+            StructurePlacement structureplacement1 = entry.getKey();
+            if (structureplacement1 instanceof ConcentricRingsStructurePlacement) {
+                // TODO
+            } else if (structureplacement1 instanceof RandomSpreadStructurePlacement) {
+                list.add(entry);
+            }
+        }
+
         // Begin locating villages in this region
         for (int chunkX = minChunkPos.x; chunkX <= maxChunkPos.x; chunkX++) {
             for (int chunkZ = minChunkPos.z; chunkZ <= maxChunkPos.z; chunkZ++) {
-                List<Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>>> list = new ArrayList<>(placementToFeaturesMap.size());
-
-                for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry : placementToFeaturesMap.entrySet()) {
-                    StructurePlacement structureplacement1 = entry.getKey();
-                    if (structureplacement1 instanceof ConcentricRingsStructurePlacement) {
-                        // TODO
-                    } else if (structureplacement1 instanceof RandomSpreadStructurePlacement) {
-                        list.add(entry);
-                    }
-                }
-
+//                boolean structureFoundInChunk = false;
                 if (!list.isEmpty()) {
                     for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry1 : list) {
+//                        if (structureFoundInChunk) {
+//                            break;
+//                        }
+
                         RandomSpreadStructurePlacement randomspreadstructureplacement = (RandomSpreadStructurePlacement) entry1.getKey();
-                        int potentialChunkX = randomspreadstructureplacement.spacing() * chunkX;
-                        int potentialChunkZ = randomspreadstructureplacement.spacing() * chunkZ;
-                        ChunkPos chunkPos = randomspreadstructureplacement.getPotentialFeatureChunk(serverLevel.getSeed(), potentialChunkX, potentialChunkZ);
-//                        if (chunkPos.x == chunkX && chunkPos.z == chunkZ) {
+//                        int potentialChunkX = randomspreadstructureplacement.spacing() * chunkX;
+//                        int potentialChunkZ = randomspreadstructureplacement.spacing() * chunkZ;
+                        ChunkPos chunkPos = randomspreadstructureplacement.getPotentialFeatureChunk(serverLevel.getSeed(), chunkX, chunkZ);
+
+                        Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                                QuartPos.fromSection(chunkPos.x),
+                                QuartPos.fromBlock(serverLevel.getHeight(Heightmap.Types.WORLD_SURFACE_WG, chunkPos.getMinBlockX(), chunkPos.getMinBlockZ())),
+                                QuartPos.fromSection(chunkPos.z));
+
+                        if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value()) && regionPos.isChunkInRegion(chunkPos)) {
                             villageSet.add(chunkPos.toLong());
+                        }
+
+//                        if (chunkPos.x == chunkX && chunkPos.z == chunkZ) {
+//                            villageSet.add(chunkPos.toLong());
+//                        }
+
+                        // Check if any of the configured structures match this chunk
+//                        for (Holder<ConfiguredStructureFeature<?, ?>> holder : this.configuredStructureFeatures) {
+//                            StructureCheckResult structureCheckResult = this.serverLevel.structureFeatureManager().checkStructurePresence(chunkPos, holder.value(), false);
+//
+//                            if (structureCheckResult != StructureCheckResult.START_NOT_PRESENT) { // Structure found
+//
+//                                // If we don't require the chunk to be fully generated, and we found a structure start, we're done
+//                                if (structureCheckResult == StructureCheckResult.START_PRESENT) {
+//                                    villageSet.add(chunkPos.toLong());
+//                                    structureFoundInChunk = true;
+//                                    break;
+//                                }
+
+                                // Otherwise, chunk load is needed, so we ensure the chunk is loaded to the necessary status
+//                                ChunkAccess chunkAccess = this.serverLevel.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.STRUCTURE_STARTS);
+
+                                // Fetch chunk position from the structure start
+//                                StructureStart structureStart = this.serverLevel.structureFeatureManager().getStartForFeature(SectionPos.bottomOf(chunkAccess), holder.value(), chunkAccess);
+//                                if (structureStart != null && structureStart.isValid()) {
+//                                    villageSet.add(structureStart.getChunkPos().toLong());
+//                                }
+//                            }
 //                        }
                     }
                 }

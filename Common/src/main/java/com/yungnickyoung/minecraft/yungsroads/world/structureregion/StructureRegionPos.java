@@ -46,6 +46,15 @@ public class StructureRegionPos {
         return new ChunkPos(((this.x + 1) << 8) - 1, ((this.z + 1) << 8) - 1);
     }
 
+    public boolean isChunkInRegion(ChunkPos chunkPos) {
+        ChunkPos minChunkPosInRegion = this.getMinChunkPosInRegion();
+        ChunkPos maxChunkPosInRegion = this.getMaxChunkPosInRegion();
+        return chunkPos.x >= minChunkPosInRegion.x
+                && chunkPos.x <= maxChunkPosInRegion.x
+                && chunkPos.z >= minChunkPosInRegion.z
+                && chunkPos.z <= maxChunkPosInRegion.z;
+    }
+
     public String getFileName() {
         return "r." + x + "." + z + ".roads";
     }
