@@ -17,7 +17,7 @@ import java.util.*;
 
 public class SplineRoadGenerator implements IRoadGenerator {
     private final ServerWorld world;
-    private final SharedSeedRandom random = new SharedSeedRandom();
+    private final ThreadLocal<SharedSeedRandom> random = ThreadLocal.withInitial(SharedSeedRandom::new);
     private final FastNoise noise;
 
     public SplineRoadGenerator(ServerWorld world) {
@@ -37,7 +37,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         int xDist = blockPos2.getX() - blockPos1.getX();
         int zDist = blockPos2.getZ() - blockPos1.getZ();
 
-        random.setLargeFeatureSeedWithSalt(world.getSeed(), pos1.x, 0, pos1.z);
+        random.get().setLargeFeatureSeedWithSalt(world.getSeed(), pos1.x, 0, pos1.z);
 
         // Construct road & road segments
         Road road = new Road(blockPos1, blockPos2);
@@ -45,7 +45,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         for (int i = 0; i < numSegments; i++) {
             BlockPos.Mutable startPos = blockPos1.add(xDist * i / numSegments, 0, zDist * i / numSegments).toMutable();
             BlockPos.Mutable endPos = blockPos1.add(xDist * (i + 1) / numSegments, 0, zDist * (i + 1) / numSegments).toMutable();
-            road.addSplineRoadSegment(startPos, endPos, random);
+            road.addSplineRoadSegment(startPos, endPos, random.get());
         }
 
         // Ensure road does not cross ocean
@@ -80,7 +80,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         }
 
         // Set seeds
-        random.setLargeFeatureSeed(world.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
+        random.get().setLargeFeatureSeed(world.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
 
         // Temporary chunk-local carving mask to prevent overprocessing a single block
         BitSet blockMask = new BitSet(65536);
@@ -120,8 +120,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
             int counter = 0;
 
             while (t <= 1f) {
-
-                posVec = getPoint(pts, t);
+                posVec = getBezierPoint(pts, t);
                 pathPos.setPos(Math.round(posVec.x), Math.round(posVec.y), Math.round(posVec.z));
 
                 if (isInValidRangeForChunk(chunkPos, pathPos)) {
@@ -130,18 +129,27 @@ public class SplineRoadGenerator implements IRoadGenerator {
                     BlockPos.Mutable mutable = new BlockPos.Mutable();
 
                     if (isInChunk(chunkPos, pathPos)) {
+                        // At each path position, we place a small circle of blocks at surface height
                         for (int x = -2; x < 3; x++) {
                             for (int z = -2; z < 3; z++) {
-                                double n = noise.GetNoise(mutable.getX(), mutable.getZ());
-                                double width = getRoadWidth() * getRoadWidth() + n * 4;
-                                if (x * x + z * z < width) {
+                                // Determine path buffer space at this position.
+                                // This is used to subtly vary the path's width to make its shape more interesting.
+                                double pathBufferSpace = noise.GetNoise(mutable.getX(), mutable.getZ()) * 4;
+
+                                // Determine the furthest away a block can be placed from the current position.
+                                // Distances are kept as squared values as an optimization.
+                                double maxRoadDistSq = getRoadSizeRadius() * getRoadSizeRadius() + pathBufferSpace;
+                                if (x * x + z * z < maxRoadDistSq) {
                                     mutable.setPos(pathPos.getX() + x, 0, pathPos.getZ() + z);
 
+                                    // Adjust y-coordinate based on surface height
                                     int surfaceHeight = getSurfaceHeight(world, mutable);
-                                    int currY = Math.min(surfaceHeight, 80);
+                                    int currY = Math.min(surfaceHeight, 80); // Height of path cannot exceed y=80
                                     mutable.setY(currY);
 
-                                    placePathBlock(world, random, mutable, nearestVillage, blockMask);
+                                    placePathBlock(world, random.get(), mutable, nearestVillage, blockMask);
+
+                                    // If the surface is above y=80, we carve an opening to tunnel through the terrain.
                                     if (currY == 80) {
                                         for (int i = 0; i < 4; i++) {
                                             mutable.move(Direction.UP);
@@ -199,7 +207,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public double getRoadWidth() {
+    public double getRoadSizeRadius() {
         return 2;
     }
 
@@ -207,7 +215,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
      * Get point for given t-value.
      * This is a standard Bezier curve implementation.
      */
-    private Vector3d getPoint(Vector3d[] pts, float t) {
+    private Vector3d getBezierPoint(Vector3d[] pts, float t) {
         float omt = 1f - t;
         float omt2 = omt * omt;
         float t2 = t * t;

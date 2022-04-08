@@ -43,7 +43,7 @@ public interface IRoadGenerator {
      */
     void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage);
 
-    default double getRoadWidth() {
+    default double getRoadSizeRadius() {
         return 2.83;
     }
 
@@ -55,7 +55,7 @@ public interface IRoadGenerator {
 
     default void placePath(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage, int chunkX, int chunkZ) {
         BlockPos.Mutable mutable = pos.toMutable();
-        double roadWidthSq = getRoadWidth() * getRoadWidth();
+        double roadWidthSq = getRoadSizeRadius() * getRoadSizeRadius();
 
         for (int x = -2; x < 3; x++) {
             for (int z = -2; z < 3; z++) {
@@ -84,16 +84,25 @@ public interface IRoadGenerator {
         }
     }
 
-    BlockSetSelector dirtReplacer = new BlockSetSelector(Blocks.DIRT.getDefaultState())
-            .addBlock(Blocks.GRASS_PATH.getDefaultState(), .6f)
+//    BlockSetSelector dirtReplacer = new BlockSetSelector(Blocks.DIRT.getDefaultState())
+//            .addBlock(Blocks.GRASS_PATH.getDefaultState(), .6f)
+//            .addBlock(Blocks.GRASS_BLOCK.getDefaultState(), .2f);
+//    BlockSetSelector sandReplacer = new BlockSetSelector(Blocks.SAND.getDefaultState())
+//            .addBlock(Blocks.GRAVEL.getDefaultState(), .6f)
+//            .addBlock(Blocks.SANDSTONE.getDefaultState(), .3f);
+//    BlockSetSelector snowReplacer = new BlockSetSelector(Blocks.SNOW_BLOCK.getDefaultState())
+//            .addBlock(Blocks.ICE.getDefaultState(), .6f);
+//    BlockSetSelector stoneReplacer = new BlockSetSelector(Blocks.STONE.getDefaultState())
+//            .addBlock(Blocks.COBBLESTONE.getDefaultState(), .6f);
+
+    BlockSetSelector dirtReplacer = new BlockSetSelector(Blocks.GRASS_PATH.getDefaultState())
             .addBlock(Blocks.GRASS_BLOCK.getDefaultState(), .2f);
     BlockSetSelector sandReplacer = new BlockSetSelector(Blocks.SAND.getDefaultState())
-            .addBlock(Blocks.GRAVEL.getDefaultState(), .6f)
-            .addBlock(Blocks.SANDSTONE.getDefaultState(), .3f);
+            .addBlock(Blocks.GRAVEL.getDefaultState(), .8f);
     BlockSetSelector snowReplacer = new BlockSetSelector(Blocks.SNOW_BLOCK.getDefaultState())
             .addBlock(Blocks.ICE.getDefaultState(), .6f);
     BlockSetSelector stoneReplacer = new BlockSetSelector(Blocks.STONE.getDefaultState())
-            .addBlock(Blocks.COBBLESTONE.getDefaultState(), .6f);
+            .addBlock(Blocks.COBBLESTONE.getDefaultState(), .8f);
 
     default void placePathBlock(ISeedReader world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage, BitSet blockMask) {
         int mask = Math.floorMod(pos.getX(), 16) | (Math.floorMod(pos.getZ(), 16) << 4) | (pos.getY() << 8);
