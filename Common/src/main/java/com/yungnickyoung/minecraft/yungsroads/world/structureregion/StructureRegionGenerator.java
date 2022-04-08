@@ -1,6 +1,5 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
-import com.mojang.datafixers.util.Pair;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkGeneratorAccessor;
 import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
@@ -10,27 +9,22 @@ import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
-import net.minecraft.core.*;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.QuartPos;
+import net.minecraft.core.Registry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ConfiguredStructureTags;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.LevelReader;
-import net.minecraft.world.level.StructureFeatureManager;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
-import net.minecraft.world.level.levelgen.feature.StructureFeature;
-import net.minecraft.world.level.levelgen.structure.StructureCheckResult;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
 import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
 import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement;
 
-import javax.annotation.Nullable;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -102,57 +96,24 @@ public class StructureRegionGenerator {
             }
         }
 
-        // Begin locating villages in this region
+        // Locate target structures in this region
         for (int chunkX = minChunkPos.x; chunkX <= maxChunkPos.x; chunkX++) {
             for (int chunkZ = minChunkPos.z; chunkZ <= maxChunkPos.z; chunkZ++) {
-//                boolean structureFoundInChunk = false;
                 if (!list.isEmpty()) {
                     for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry1 : list) {
-//                        if (structureFoundInChunk) {
-//                            break;
-//                        }
-
                         RandomSpreadStructurePlacement randomspreadstructureplacement = (RandomSpreadStructurePlacement) entry1.getKey();
-//                        int potentialChunkX = randomspreadstructureplacement.spacing() * chunkX;
-//                        int potentialChunkZ = randomspreadstructureplacement.spacing() * chunkZ;
                         ChunkPos chunkPos = randomspreadstructureplacement.getPotentialFeatureChunk(serverLevel.getSeed(), chunkX, chunkZ);
 
-                        Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
-                                QuartPos.fromSection(chunkPos.x),
-                                QuartPos.fromBlock(serverLevel.getHeight(Heightmap.Types.WORLD_SURFACE_WG, chunkPos.getMinBlockX(), chunkPos.getMinBlockZ())),
-                                QuartPos.fromSection(chunkPos.z));
+                        if (regionPos.isChunkInRegion(chunkPos)) {
+                            Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                                    QuartPos.fromSection(chunkPos.x),
+                                    QuartPos.fromBlock(serverLevel.getHeight(Heightmap.Types.WORLD_SURFACE_WG, chunkPos.getMinBlockX(), chunkPos.getMinBlockZ())),
+                                    QuartPos.fromSection(chunkPos.z));
 
-                        if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value()) && regionPos.isChunkInRegion(chunkPos)) {
-                            villageSet.add(chunkPos.toLong());
+                            if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value())) {
+                                villageSet.add(chunkPos.toLong());
+                            }
                         }
-
-//                        if (chunkPos.x == chunkX && chunkPos.z == chunkZ) {
-//                            villageSet.add(chunkPos.toLong());
-//                        }
-
-                        // Check if any of the configured structures match this chunk
-//                        for (Holder<ConfiguredStructureFeature<?, ?>> holder : this.configuredStructureFeatures) {
-//                            StructureCheckResult structureCheckResult = this.serverLevel.structureFeatureManager().checkStructurePresence(chunkPos, holder.value(), false);
-//
-//                            if (structureCheckResult != StructureCheckResult.START_NOT_PRESENT) { // Structure found
-//
-//                                // If we don't require the chunk to be fully generated, and we found a structure start, we're done
-//                                if (structureCheckResult == StructureCheckResult.START_PRESENT) {
-//                                    villageSet.add(chunkPos.toLong());
-//                                    structureFoundInChunk = true;
-//                                    break;
-//                                }
-
-                                // Otherwise, chunk load is needed, so we ensure the chunk is loaded to the necessary status
-//                                ChunkAccess chunkAccess = this.serverLevel.getChunk(chunkPos.x, chunkPos.z, ChunkStatus.STRUCTURE_STARTS);
-
-                                // Fetch chunk position from the structure start
-//                                StructureStart structureStart = this.serverLevel.structureFeatureManager().getStartForFeature(SectionPos.bottomOf(chunkAccess), holder.value(), chunkAccess);
-//                                if (structureStart != null && structureStart.isValid()) {
-//                                    villageSet.add(structureStart.getChunkPos().toLong());
-//                                }
-//                            }
-//                        }
                     }
                 }
             }
@@ -200,57 +161,7 @@ public class StructureRegionGenerator {
 
         return new StructureRegion(regionKey, villageSet, roads);
     }
-
-    private static @Nullable
-    Pair<BlockPos, Holder<ConfiguredStructureFeature<?, ?>>> getNearestGeneratedStructure(Set<Holder<ConfiguredStructureFeature<?, ?>>> configuredStructures, LevelReader level, StructureFeatureManager structureFeatureManager, int originSectionX, int originSectionZ, int chunkDistFromOrigin, boolean requireChunkGenerated, long seed, RandomSpreadStructurePlacement placement) {
-        int spacing = placement.spacing();
-
-        for (int xChunkDist = -chunkDistFromOrigin; xChunkDist <= chunkDistFromOrigin; ++xChunkDist) {
-            boolean onXRim = xChunkDist == -chunkDistFromOrigin || xChunkDist == chunkDistFromOrigin;
-
-            for (int zChunkDist = -chunkDistFromOrigin; zChunkDist <= chunkDistFromOrigin; ++zChunkDist) {
-                boolean onZRim = zChunkDist == -chunkDistFromOrigin || zChunkDist == chunkDistFromOrigin;
-
-                if (onXRim || onZRim) {
-                    int potentialChunkX = originSectionX + spacing * xChunkDist;
-                    int potentialChunkZ = originSectionZ + spacing * zChunkDist;
-                    ChunkPos potentialChunkPos = placement.getPotentialFeatureChunk(seed, potentialChunkX, potentialChunkZ);
-
-                    // Check if any of the configured structures match this chunk
-                    for (Holder<ConfiguredStructureFeature<?, ?>> holder : configuredStructures) {
-                        StructureCheckResult structureCheckResult = structureFeatureManager.checkStructurePresence(potentialChunkPos, holder.value(), requireChunkGenerated);
-
-                        if (structureCheckResult != StructureCheckResult.START_NOT_PRESENT) { // Structure found
-
-                            // If we don't require the chunk to be fully generated and we found a structure start, we're done
-                            if (!requireChunkGenerated && structureCheckResult == StructureCheckResult.START_PRESENT) {
-                                return Pair.of(StructureFeature.getLocatePos(placement, potentialChunkPos), holder);
-                            }
-
-                            // Otherwise, chunk load is needed, so we ensure the chunk is loaded to the necessary status
-                            ChunkAccess chunkaccess = level.getChunk(potentialChunkPos.x, potentialChunkPos.z, ChunkStatus.STRUCTURE_STARTS);
-
-                            // Check that the structure start has been properly created
-                            StructureStart structurestart = structureFeatureManager.getStartForFeature(SectionPos.bottomOf(chunkaccess), holder.value(), chunkaccess);
-                            if (structurestart != null && structurestart.isValid()) {
-                                if (requireChunkGenerated && structurestart.canBeReferenced()) {
-                                    structureFeatureManager.addReference(structurestart);
-                                    return Pair.of(StructureFeature.getLocatePos(placement, structurestart.getChunkPos()), holder);
-                                }
-
-                                if (!requireChunkGenerated) {
-                                    return Pair.of(StructureFeature.getLocatePos(placement, structurestart.getChunkPos()), holder);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
+    
     public IRoadGenerator getRoadGenerator() {
         return this.roadGenerator;
     }
