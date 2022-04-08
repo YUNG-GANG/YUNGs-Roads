@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world;
 
+import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
 import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
@@ -25,7 +26,7 @@ public class RoadFeature extends Feature<NoFeatureConfig> {
     @Override
     public boolean generate(ISeedReader world, ChunkGenerator chunkGenerator, Random rand, BlockPos blockPos, NoFeatureConfig config) {
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) world.getWorld()).getStructureRegionCache();
-        BlockPos nearestVillage = structureRegionCache.getNearestVillage(blockPos);
+        BlockPos nearestVillage = YungsRoads.DEBUG_MODE ? structureRegionCache.getNearestVillage(blockPos) : null;
 
         // Place roads
         IRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();

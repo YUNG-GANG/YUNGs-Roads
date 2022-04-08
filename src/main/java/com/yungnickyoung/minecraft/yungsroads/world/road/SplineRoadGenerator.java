@@ -12,6 +12,7 @@ import net.minecraft.world.ISeedReader;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.server.ServerWorld;
 
+import javax.annotation.Nullable;
 import java.util.*;
 
 public class SplineRoadGenerator implements IRoadGenerator {
@@ -62,7 +63,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, BlockPos nearestVillage) {
+    public void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road
@@ -88,24 +89,26 @@ public class SplineRoadGenerator implements IRoadGenerator {
             Vector3d[] pts = Arrays.stream(roadSegment.getPoints()).map(pos -> new Vector3d(pos.getX(), pos.getY(), pos.getZ())).toArray(Vector3d[]::new);
 
             // Debug markers
-            // Start pos
-            if (isInChunk(chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z))) {
-                BlockPos.Mutable mutable = new BlockPos.Mutable(pts[0].x, pts[0].y, pts[0].z);
-                mutable.setY(getSurfaceHeight(world, mutable));
+            if (YungsRoads.DEBUG_MODE) {
+                // Start pos
+                if (isInChunk(chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z))) {
+                    BlockPos.Mutable mutable = new BlockPos.Mutable(pts[0].x, pts[0].y, pts[0].z);
+                    mutable.setY(getSurfaceHeight(world, mutable));
 
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
+                    for (int y = 0; y < 10; y++) {
+                        mutable.move(Direction.UP);
+                        world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
+                    }
                 }
-            }
-            // End pos
-            if (isInChunk(chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z))) {
-                BlockPos.Mutable mutable = new BlockPos.Mutable(pts[3].x, pts[3].y, pts[3].z);
-                mutable.setY(getSurfaceHeight(world, mutable));
+                // End pos
+                if (isInChunk(chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z))) {
+                    BlockPos.Mutable mutable = new BlockPos.Mutable(pts[3].x, pts[3].y, pts[3].z);
+                    mutable.setY(getSurfaceHeight(world, mutable));
 
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
+                    for (int y = 0; y < 10; y++) {
+                        mutable.move(Direction.UP);
+                        world.setBlockState(mutable, Blocks.DIAMOND_BLOCK.getDefaultState(), 2);
+                    }
                 }
             }
 
@@ -150,12 +153,14 @@ public class SplineRoadGenerator implements IRoadGenerator {
                         }
 
                         // Debug markers
-                        if (counter == 200 || counter == 400 || counter == 600 || counter == 800) {
-                            mutable.setY(getSurfaceHeight(world, mutable));
+                        if (YungsRoads.DEBUG_MODE) {
+                            if (counter == 200 || counter == 400 || counter == 600 || counter == 800) {
+                                mutable.setY(getSurfaceHeight(world, mutable));
 
-                            for (int y = 0; y < 10; y++) {
-                                mutable.move(Direction.UP);
-                                world.setBlockState(mutable, Blocks.GOLD_BLOCK.getDefaultState(), 2);
+                                for (int y = 0; y < 10; y++) {
+                                    mutable.move(Direction.UP);
+                                    world.setBlockState(mutable, Blocks.GOLD_BLOCK.getDefaultState(), 2);
+                                }
                             }
                         }
                     }
@@ -207,9 +212,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
         float omt2 = omt * omt;
         float t2 = t * t;
         return pts[0].scale(omt2 * omt).add(
-               pts[1].scale(3f * omt2 * t)).add(
-               pts[2].scale(3f * omt * t2)).add(
-               pts[3].scale(t2 * t));
+                pts[1].scale(3f * omt2 * t)).add(
+                pts[2].scale(3f * omt * t2)).add(
+                pts[3].scale(t2 * t));
     }
 
     private Vector3d getTangent(Vector3d[] pts, float t) {
@@ -217,9 +222,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
         double omt2 = omt * omt;
         double t2 = t * t;
         Vector3d tangent = pts[0].scale(-omt2).add(
-                           pts[1].scale(3f * omt2 - 2 * omt)).add(
-                           pts[2].scale(-3f * t2 + 2 * t)).add(
-                           pts[3].scale(t2));
+                pts[1].scale(3f * omt2 - 2 * omt)).add(
+                pts[2].scale(-3f * t2 + 2 * t)).add(
+                pts[3].scale(t2));
         return tangent.normalize();
     }
 }

@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.debug;
 
 import com.mojang.blaze3d.matrix.MatrixStack;
+import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.AbstractGui;
 import net.minecraft.util.math.BlockPos;
@@ -21,6 +22,7 @@ public class DebugRenderer extends AbstractGui {
     public boolean enabled = true;
     public final Map<ChunkPos, Integer> villages = new HashMap<>();
     public final Map<ChunkPos, Integer> paths = new HashMap<>();
+    public final Map<StructureRegionPos, Integer> structureRegions = new HashMap<>();
     private final Random random = new Random();
 
     public void render(Minecraft mc, MatrixStack matrixStack) {
@@ -35,8 +37,17 @@ public class DebugRenderer extends AbstractGui {
 
         BlockPos playerPos = mc.player == null ? null : mc.player.getPosition();
         if (playerPos != null) {
-            // Render paths
             ChunkPos playerChunkPos = new ChunkPos(playerPos);
+            // Render strucure regions
+            synchronized (structureRegions) {
+                structureRegions.forEach(((structureRegionPos, color) -> {
+                    ChunkPos relativeChunkStartPos = new ChunkPos(structureRegionPos.getX() * 256 - playerChunkPos.x, structureRegionPos.getZ() * 256 - playerChunkPos.z);
+                    int renderXStart = xCenter + relativeChunkStartPos.x - 1;
+                    int renderYStart = yCenter + relativeChunkStartPos.z - 1;
+                    fill(matrixStack, renderXStart, renderYStart, renderXStart + 256, renderYStart + 256, color);
+                }));
+            }
+            // Render paths
             synchronized (paths) {
                 for (ChunkPos pathPos : paths.keySet()) {
                     int color = paths.get(pathPos);
@@ -71,6 +82,12 @@ public class DebugRenderer extends AbstractGui {
     public void addPath(ChunkPos pathPos, ChunkPos nearestVillagePos) {
         synchronized (paths) {
             paths.putIfAbsent(pathPos, villages.getOrDefault(nearestVillagePos, 0xFF000000));
+        }
+    }
+
+    public void addStructureRegion(StructureRegionPos pos) {
+        synchronized (structureRegions) {
+            structureRegions.putIfAbsent(pos, (random.nextInt() | 0xFF000000) & 0x20FFFFFF);
         }
     }
 

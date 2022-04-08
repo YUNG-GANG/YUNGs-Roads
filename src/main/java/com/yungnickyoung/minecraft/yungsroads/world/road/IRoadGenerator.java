@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.yungnickyoung.minecraft.yungsapi.world.BlockSetSelector;
+import com.yungnickyoung.minecraft.yungsroads.YungsRoads;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
 import net.minecraft.block.BlockState;
@@ -13,6 +14,7 @@ import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 
+import javax.annotation.Nullable;
 import java.util.BitSet;
 import java.util.Optional;
 import java.util.Random;
@@ -39,7 +41,7 @@ public interface IRoadGenerator {
      * @param nearestVillage The location of the nearest village to this point.
      *                       Only used for rendering the debug view.
      */
-    void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, BlockPos nearestVillage);
+    void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage);
 
     default double getRoadWidth() {
         return 2.83;
@@ -93,14 +95,14 @@ public interface IRoadGenerator {
     BlockSetSelector stoneReplacer = new BlockSetSelector(Blocks.STONE.getDefaultState())
             .addBlock(Blocks.COBBLESTONE.getDefaultState(), .6f);
 
-    default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage, BitSet blockMask) {
+    default void placePathBlock(ISeedReader world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage, BitSet blockMask) {
         int mask = Math.floorMod(pos.getX(), 16) | (Math.floorMod(pos.getZ(), 16) << 4) | (pos.getY() << 8);
         if (blockMask.get(mask)) return;
         placePathBlock(world, random, pos, nearestVillage);
         blockMask.set(mask);
     }
 
-    default void placePathBlock(ISeedReader world, Random random, BlockPos pos, BlockPos nearestVillage) {
+    default void placePathBlock(ISeedReader world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage) {
         BlockState currState = world.getBlockState(pos);
         if (currState == Blocks.GRASS_BLOCK.getDefaultState() || currState == Blocks.DIRT.getDefaultState()) {
             world.setBlockState(pos, dirtReplacer.get(random), 2);
@@ -113,8 +115,9 @@ public interface IRoadGenerator {
         } else if (currState.getMaterial() == Material.WATER && pos.getY() == world.getSeaLevel() - 1) {
             world.setBlockState(pos, Blocks.OAK_PLANKS.getDefaultState(), 2);
         }
-        DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
-
+        if (YungsRoads.DEBUG_MODE && nearestVillage != null) {
+            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+        }
     }
 
     default boolean isInChunk(ChunkPos chunkPos, BlockPos blockPos) {

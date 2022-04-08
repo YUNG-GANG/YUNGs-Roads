@@ -16,7 +16,7 @@ public class StructureRegionPos {
     }
 
     public StructureRegionPos(BlockPos blockPos) {
-        this.x = blockPos.getX() >> 12;
+        this.x = blockPos.getX() >> 12; // 1 structure region coordinate = 4096 blocks (256 chunks)
         this.z = blockPos.getZ() >> 12;
     }
 

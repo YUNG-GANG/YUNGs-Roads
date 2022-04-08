@@ -7,6 +7,7 @@ import net.minecraft.world.ISeedReader;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.server.ServerWorld;
 
+import javax.annotation.Nullable;
 import java.util.Optional;
 import java.util.Random;
 
@@ -55,7 +56,7 @@ public class LinearRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, BlockPos nearestVillage) {
+    public void placeRoad(Road road, ISeedReader world, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road

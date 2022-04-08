@@ -11,6 +11,7 @@ import org.apache.logging.log4j.Logger;
 public class YungsRoads {
     public static final String MOD_ID = "yungsroads";
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
+    public static final boolean DEBUG_MODE = false;
 
     public YungsRoads() {
         init();
@@ -19,6 +20,8 @@ public class YungsRoads {
     private void init() {
         YRModConfig.init();
         YRModFeatures.init();
-        YRModDebug.init();
+        if (DEBUG_MODE) {
+            YRModDebug.init();
+        }
     }
 }

@@ -52,7 +52,9 @@ public class StructureRegionCache {
                 village1 = candidateChunkPos.asBlockPos();
             }
 
-            DebugRenderer.getInstance().addVillage(candidateChunkPos);
+            if (YungsRoads.DEBUG_MODE) {
+                DebugRenderer.getInstance().addVillage(candidateChunkPos);
+            }
         }
 
         return village1;
@@ -60,13 +62,16 @@ public class StructureRegionCache {
 
     /**
      * Loads the {@link StructureRegion} with the given key.
-     *
+     * <p>
      * If a corresponding structure region file exists, we load the data from it.
      * If the file does not exist or is corrupt, generation is deferred to {@link StructureRegionGenerator#generateRegion}.
      */
     public StructureRegion getRegion(long regionKey) {
         return this.structureRegionCache.computeIfAbsent(regionKey, newKey -> {
             StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
+            if (YungsRoads.DEBUG_MODE) {
+                DebugRenderer.getInstance().addStructureRegion(structureRegionPos);
+            }
             File file = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
 
             // If file does not yet exist, generate the region and save the file.
@@ -93,7 +98,7 @@ public class StructureRegionCache {
 
     /**
      * Loads the {@link StructureRegion} with the given region position.
-     *
+     * <p>
      * If a corresponding structure region file exists, we load the data from it.
      * If the file does not exist or is corrupt, generation is deferred to {@link StructureRegionGenerator#generateRegion}.
      */
