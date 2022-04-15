@@ -9,12 +9,12 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.material.Material;
 
 import javax.annotation.Nullable;
-import java.util.BitSet;
 import java.util.Optional;
 import java.util.Random;
 
@@ -83,37 +83,35 @@ public interface IRoadGenerator {
         }
     }
 
-//    BlockSetSelector dirtReplacer = new BlockSetSelector(Blocks.DIRT.defaultBlockState()())
-//            .addBlock(Blocks.GRASS_PATH.defaultBlockState()(), .6f)
-//            .addBlock(Blocks.GRASS_BLOCK.defaultBlockState()(), .2f);
-//    BlockSetSelector sandReplacer = new BlockSetSelector(Blocks.SAND.defaultBlockState()())
-//            .addBlock(Blocks.GRAVEL.defaultBlockState()(), .6f)
-//            .addBlock(Blocks.SANDSTONE.defaultBlockState()(), .3f);
-//    BlockSetSelector snowReplacer = new BlockSetSelector(Blocks.SNOW_BLOCK.defaultBlockState()())
-//            .addBlock(Blocks.ICE.defaultBlockState()(), .6f);
-//    BlockSetSelector stoneReplacer = new BlockSetSelector(Blocks.STONE.defaultBlockState()())
-//            .addBlock(Blocks.COBBLESTONE.defaultBlockState()(), .6f);
-
     BlockStateRandomizer dirtReplacer = new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
-            .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), .2f);
+            .addBlock(Blocks.COBBLESTONE.defaultBlockState(), .25f)
+            .addBlock(Blocks.STONE.defaultBlockState(), .25f)
+            .addBlock(Blocks.ANDESITE.defaultBlockState(), .25f)
+            .addBlock(Blocks.GRAVEL.defaultBlockState(), .25f);
     BlockStateRandomizer sandReplacer = new BlockStateRandomizer(Blocks.SAND.defaultBlockState())
-            .addBlock(Blocks.GRAVEL.defaultBlockState(), .8f);
+            .addBlock(Blocks.GRAVEL.defaultBlockState(), .6f)
+            .addBlock(Blocks.COBBLESTONE.defaultBlockState(), .2f)
+            .addBlock(Blocks.ANDESITE.defaultBlockState(), .2f);
     BlockStateRandomizer snowReplacer = new BlockStateRandomizer(Blocks.SNOW_BLOCK.defaultBlockState())
-            .addBlock(Blocks.ICE.defaultBlockState(), .6f);
+            .addBlock(Blocks.DIRT_PATH.defaultBlockState(), .95f);
     BlockStateRandomizer stoneReplacer = new BlockStateRandomizer(Blocks.STONE.defaultBlockState())
-            .addBlock(Blocks.COBBLESTONE.defaultBlockState(), .8f);
+            .addBlock(Blocks.COBBLESTONE.defaultBlockState(), .7f)
+            .addBlock(Blocks.ANDESITE.defaultBlockState(), .2f);
 
-    default void placePathBlock(WorldGenLevel world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage, BitSet blockMask) {
-        int mask = Math.floorMod(pos.getX(), 16) | (Math.floorMod(pos.getZ(), 16) << 4) | (pos.getY() << 8);
-        if (blockMask.get(mask)) return;
+    default void placePathBlock(WorldGenLevel world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage, CarvingMask blockMask) {
+        if (blockMask.get(pos.getX(), pos.getY(), pos.getZ())) return;
         placePathBlock(world, random, pos, nearestVillage);
-        blockMask.set(mask);
+        blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
 
     default void placePathBlock(WorldGenLevel world, Random random, BlockPos pos, @Nullable BlockPos nearestVillage) {
         BlockState currState = world.getBlockState(pos);
-        if (currState == Blocks.GRASS_BLOCK.defaultBlockState() || currState == Blocks.DIRT.defaultBlockState()) {
-            world.setBlock(pos, dirtReplacer.get(random), 2);
+        if (currState == Blocks.GRASS_BLOCK.defaultBlockState() || currState == Blocks.DIRT.defaultBlockState() || currState == Blocks.PODZOL.defaultBlockState()) {
+            if (world.getBiome(pos).value().coldEnoughToSnow(pos)) {
+                world.setBlock(pos, snowReplacer.get(random), 2);
+            } else {
+                world.setBlock(pos, dirtReplacer.get(random), 2);
+            }
         } else if (currState == Blocks.STONE.defaultBlockState() || currState == Blocks.ANDESITE.defaultBlockState() || currState == Blocks.GRANITE.defaultBlockState()) {
             world.setBlock(pos, stoneReplacer.get(random), 2);
         } else if (currState == Blocks.SNOW_BLOCK.defaultBlockState()) {

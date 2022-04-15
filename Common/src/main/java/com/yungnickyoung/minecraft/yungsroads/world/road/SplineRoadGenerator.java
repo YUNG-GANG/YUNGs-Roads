@@ -4,12 +4,15 @@ import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.phys.Vec3;
@@ -50,13 +53,25 @@ public class SplineRoadGenerator implements IRoadGenerator {
             road.addSplineRoadSegment(startPos, endPos, random.get());
         }
 
-        // Ensure road does not cross ocean
+        // Biome validation
+        int riverCount = 0;
         for (RoadSegment roadSegment : road.getRoadSegments()) {
-            if (serverLevel.getChunkSource().getGenerator().getNoiseBiome(
-                            QuartPos.fromBlock(roadSegment.getStartPos().getX()),
-                            QuartPos.fromBlock(0),
-                            QuartPos.fromBlock(roadSegment.getStartPos().getZ()))
-                    .is(BiomeTags.IS_OCEAN)) {
+            Holder<Biome> biomeAtStart = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                    QuartPos.fromBlock(roadSegment.getStartPos().getX()),
+                    QuartPos.fromBlock(serverLevel.getSeaLevel()),
+                    QuartPos.fromBlock(roadSegment.getStartPos().getZ()));
+            Holder<Biome> biomeAtP2 = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                    QuartPos.fromBlock(roadSegment.getP2().getX()),
+                    QuartPos.fromBlock(serverLevel.getSeaLevel()),
+                    QuartPos.fromBlock(roadSegment.getP2().getZ()));
+            // Road cannot cross river more than once
+            if (biomeAtStart.is(BiomeTags.IS_RIVER)) riverCount++;
+            if (biomeAtP2.is(BiomeTags.IS_RIVER)) riverCount++;
+            if (riverCount > 1) {
+                return Optional.empty();
+            }
+            // Road cannot cross ocean
+            if (biomeAtStart.is(BiomeTags.IS_OCEAN)) {
                 return Optional.empty();
             }
         }
@@ -85,7 +100,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         random.get().setLargeFeatureSeed(level.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
 
         // Temporary chunk-local carving mask to prevent overprocessing a single block
-        BitSet blockMask = new BitSet(65536);
+        CarvingMask blockMask = new CarvingMask(level.getHeight(), level.getMinBuildHeight());
 
         for (RoadSegment roadSegment : roadSegments) {
             Vec3[] pts = Arrays.stream(roadSegment.getPoints()).map(pos -> new Vec3(pos.getX(), pos.getY(), pos.getZ())).toArray(Vec3[]::new);
@@ -146,18 +161,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
                                     // Adjust y-coordinate based on surface height
                                     int surfaceHeight = getSurfaceHeight(level, mutable);
-                                    int currY = Math.min(surfaceHeight, 80); // Height of path cannot exceed y=80
-                                    mutable.setY(currY);
+                                    mutable.setY(surfaceHeight);
 
                                     placePathBlock(level, random.get(), mutable, nearestVillage, blockMask);
-
-                                    // If the surface is above y=80, we carve an opening to tunnel through the terrain.
-                                    if (currY == 80) {
-                                        for (int i = 0; i < 4; i++) {
-                                            mutable.move(Direction.UP);
-                                            level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
-                                        }
-                                    }
                                 }
                             }
                         }

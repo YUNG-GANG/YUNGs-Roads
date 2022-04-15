@@ -1,0 +1,8 @@
+{
+  "text.autoconfig.YungsRoads-fabric-1_18.title": "YUNG's Roads",
+  "text.autoconfig.YungsRoads-fabric-1_18.option.general.structures": "Valid Structures",
+  "text.autoconfig.YungsRoads-fabric-1_18.option.general.structures.@Tooltip[0]": "List of configured structure tags that can act as endpoints for roads.",
+  "text.autoconfig.YungsRoads-fabric-1_18.option.general.structures.@Tooltip[1]": "Each entry can be a configured structure feature resource location OR a tag.",
+  "text.autoconfig.YungsRoads-fabric-1_18.option.general.structures.@Tooltip[2]": "Must be a comma-separated list, encased in square brackets.",
+  "text.autoconfig.YungsRoads-fabric-1_18.option.general.structures.@Tooltip[3]": "Example: \"[#minecraft:village,minecraft:shipwreck_beached]"
+}

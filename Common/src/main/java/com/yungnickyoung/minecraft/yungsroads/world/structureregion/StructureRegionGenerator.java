@@ -13,11 +13,11 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.tags.ConfiguredStructureTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
@@ -44,9 +44,9 @@ public class StructureRegionGenerator {
         this.roadGenerator = new SplineRoadGenerator(serverLevel);
 
         // Extract info into HolderSet of configured features
-        // TODO - make this customizable (either list of configured features, or a tag?)
-        Optional<HolderSet.Named<ConfiguredStructureFeature<?, ?>>> optional = serverLevel.registryAccess().registryOrThrow(Registry.CONFIGURED_STRUCTURE_FEATURE_REGISTRY).getTag(ConfiguredStructureTags.VILLAGE);
-        this.configuredStructureFeatures = optional.isPresent() ? optional.get() : HolderSet.direct();
+        List<Holder<ConfiguredStructureFeature<?,?>>> holders = new ArrayList<>();
+        holders.addAll(serverLevel.registryAccess().registryOrThrow(Registry.CONFIGURED_STRUCTURE_FEATURE_REGISTRY).getTag(TagKey.create(Registry.CONFIGURED_STRUCTURE_FEATURE_REGISTRY, new ResourceLocation("village"))).get().stream().toList());
+        this.configuredStructureFeatures = HolderSet.direct(holders);
     }
 
     /**
@@ -107,7 +107,7 @@ public class StructureRegionGenerator {
                         if (regionPos.isChunkInRegion(chunkPos)) {
                             Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
                                     QuartPos.fromSection(chunkPos.x),
-                                    QuartPos.fromBlock(serverLevel.getHeight(Heightmap.Types.WORLD_SURFACE_WG, chunkPos.getMinBlockX(), chunkPos.getMinBlockZ())),
+                                    QuartPos.fromBlock(serverLevel.getSeaLevel()),
                                     QuartPos.fromSection(chunkPos.z));
 
                             if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value())) {
@@ -161,8 +161,12 @@ public class StructureRegionGenerator {
 
         return new StructureRegion(regionKey, villageSet, roads);
     }
-    
+
     public IRoadGenerator getRoadGenerator() {
         return this.roadGenerator;
+    }
+
+    public void setConfiguredStructureFeatures(HolderSet<ConfiguredStructureFeature<?, ?>> configuredStructureFeatures) {
+        this.configuredStructureFeatures = configuredStructureFeatures;
     }
 }
