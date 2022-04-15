@@ -68,9 +68,11 @@ public class StructureRegionCache {
     public StructureRegion getRegion(long regionKey) {
         return this.structureRegionCache.computeIfAbsent(regionKey, newKey -> {
             StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
+
             if (YungsRoadsCommon.DEBUG_MODE) {
                 DebugRenderer.getInstance().addStructureRegion(structureRegionPos);
             }
+
             File file = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
 
             // If file does not yet exist, generate the region and save the file.

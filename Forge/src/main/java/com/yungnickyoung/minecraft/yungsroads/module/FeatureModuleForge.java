@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
+import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.levelgen.GenerationStep;

@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.world.RoadFeature;
+import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
 import net.fabricmc.fabric.api.biome.v1.ModificationPhase;
 import net.minecraft.core.Registry;

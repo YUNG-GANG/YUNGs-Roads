@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
@@ -57,7 +58,7 @@ public class LinearRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage) {
+    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road

@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -80,7 +81,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, @Nullable BlockPos nearestVillage) {
+    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road
@@ -163,7 +164,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
                                     int surfaceHeight = getSurfaceHeight(level, mutable);
                                     mutable.setY(surfaceHeight);
 
-                                    placePathBlock(level, random.get(), mutable, nearestVillage, blockMask);
+                                    placePathBlock(level, random.get(), mutable, config, nearestVillage, blockMask);
                                 }
                             }
                         }
