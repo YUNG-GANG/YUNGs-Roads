@@ -1,8 +1,14 @@
-package com.yungnickyoung.minecraft.yungsroads.world.road;
+package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.AbstractRoadDecoration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.BushRoadDecoration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.SmallWoodBenchRoadDecoration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.StoneLampPostRoadDecoration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -19,12 +25,16 @@ import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
 
 public class SplineRoadGenerator implements IRoadGenerator {
     private final ServerLevel serverLevel;
     private final ThreadLocal<WorldgenRandom> random = ThreadLocal.withInitial(() -> new WorldgenRandom(new LegacyRandomSource(0)));
     private final FastNoise noise;
+    private final List<AbstractRoadDecoration> decorations;
 
     public SplineRoadGenerator(ServerLevel serverLevel) {
         this.serverLevel = serverLevel;
@@ -32,6 +42,12 @@ public class SplineRoadGenerator implements IRoadGenerator {
         this.noise.SetNoiseType(FastNoise.NoiseType.Simplex);
         this.noise.SetFrequency(.012f);
         this.noise.SetFractalOctaves(1);
+        this.decorations = new ArrayList<>();
+        this.decorations.add(new BushRoadDecoration(.3f));
+        this.decorations.add(new StoneLampPostRoadDecoration(.3f));
+        this.decorations.add(new SmallWoodBenchRoadDecoration(.3f));
+//        this.decorations.add(new FeatureRoadDecoration(.5f, Holder.direct(ConfiguredFeatureModule.FLOWER_DEFAULT_DECORATION_PLACED)));
+//        this.decorations.add(new FeatureRoadDecoration(.5f, Holder.direct(ConfiguredFeatureModule.SUNFLOWER_DECORATION_PLACED)));
     }
 
     @Override
@@ -89,6 +105,31 @@ public class SplineRoadGenerator implements IRoadGenerator {
             return;
         }
 
+        // Debug markers at road endpoints points
+        if (YungsRoadsCommon.DEBUG_MODE) {
+            // Start pos
+            if (isInValidRangeForChunk(chunkPos, road.getVillageStart())) {
+                BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
+                mutable.setY(getSurfaceHeight(level, mutable));
+
+                for (int y = 0; y < 10; y++) {
+                    mutable.move(Direction.UP);
+                    level.setBlock(mutable, Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
+                }
+            }
+
+            // End pos
+            if (isInValidRangeForChunk(chunkPos, road.getVillageEnd())) {
+                BlockPos.MutableBlockPos mutable = road.getVillageEnd().mutable();
+                mutable.setY(getSurfaceHeight(level, mutable));
+
+                for (int y = 0; y < 10; y++) {
+                    mutable.move(Direction.UP);
+                    level.setBlock(mutable, Blocks.REDSTONE_BLOCK.defaultBlockState(), 2);
+                }
+            }
+        }
+
         // Determine road segments we need to process for this chunk
         List<RoadSegment> roadSegments = new ArrayList<>();
         for (RoadSegment roadSegment : road.getRoadSegments()) {
@@ -98,73 +139,95 @@ public class SplineRoadGenerator implements IRoadGenerator {
         }
 
         // Set seeds
-        random.get().setLargeFeatureSeed(level.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
+//        random.get().setLargeFeatureSeed(level.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
 
         // Temporary chunk-local carving mask to prevent overprocessing a single block
         CarvingMask blockMask = new CarvingMask(level.getHeight(), level.getMinBuildHeight());
 
+        // Place road segments in this chunk
         for (RoadSegment roadSegment : roadSegments) {
-            Vec3[] pts = Arrays.stream(roadSegment.getPoints()).map(pos -> new Vec3(pos.getX(), pos.getY(), pos.getZ())).toArray(Vec3[]::new);
+            Vec3[] pts = roadSegment.getPointsAsVec();
 
-            // Debug markers
+            // Debug markers at road segment endpoints
             if (YungsRoadsCommon.DEBUG_MODE) {
                 // Start pos
-                if (isInChunk(chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z))) {
-                    BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(pts[0].x, pts[0].y, pts[0].z);
-                    mutable.setY(getSurfaceHeight(level, mutable));
-
-                    for (int y = 0; y < 10; y++) {
-                        mutable.move(Direction.UP);
-                        level.setBlock(mutable, Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
-                    }
-                }
+                placeDebugMarker(level, chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
                 // End pos
-                if (isInChunk(chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z))) {
-                    BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(pts[3].x, pts[3].y, pts[3].z);
-                    mutable.setY(getSurfaceHeight(level, mutable));
-
-                    for (int y = 0; y < 10; y++) {
-                        mutable.move(Direction.UP);
-                        level.setBlock(mutable, Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
-                    }
-                }
+                placeDebugMarker(level, chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
             }
 
-            // Bezier curve path placement
+            // Begin Bezier curve path placement
             float t = 0;
-            Vec3 posVec;
-            BlockPos.MutableBlockPos pathPos = new BlockPos.MutableBlockPos();
-            Vec3[] normals;
             int counter = 0;
+            Vec3 posVec;
+            BlockPos.MutableBlockPos pathPosCenter = new BlockPos.MutableBlockPos();
+            BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
             while (t <= 1f) {
                 posVec = getBezierPoint(pts, t);
-                pathPos.set(Math.round(posVec.x), Math.round(posVec.y), Math.round(posVec.z));
+                pathPosCenter.set(Math.round(posVec.x), Math.round(posVec.y), Math.round(posVec.z));
+                mutable.set(pathPosCenter);
 
-                if (isInValidRangeForChunk(chunkPos, pathPos)) {
-                    // Place path at this point
-//                    placePath(world, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                    BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+                // Attempt to place path at this position
+                if (isInValidRangeForChunk(chunkPos, pathPosCenter)) {
+                    if (isInChunk(chunkPos, pathPosCenter)) {
+                        // Determine path buffer space at this position.
+                        // This is used to subtly vary the path's width to make its shape more interesting.
+                        double pathBufferSpace = (noise.GetNoise(pathPosCenter.getX(), pathPosCenter.getZ()) + 1) * 2;
 
-                    if (isInChunk(chunkPos, pathPos)) {
+                        // Determine the furthest away a block can be placed from the current position.
+                        // Distances are kept as squared values as an optimization.
+                        double maxRoadDistSq = getRoadSizeRadius() * getRoadSizeRadius() + pathBufferSpace;
+
                         // At each path position, we place a small circle of blocks at surface height
                         for (int x = -2; x < 3; x++) {
                             for (int z = -2; z < 3; z++) {
-                                // Determine path buffer space at this position.
-                                // This is used to subtly vary the path's width to make its shape more interesting.
-                                double pathBufferSpace = noise.GetNoise(mutable.getX(), mutable.getZ()) * 4;
-
-                                // Determine the furthest away a block can be placed from the current position.
-                                // Distances are kept as squared values as an optimization.
-                                double maxRoadDistSq = getRoadSizeRadius() * getRoadSizeRadius() + pathBufferSpace;
                                 if (x * x + z * z < maxRoadDistSq) {
-                                    mutable.set(pathPos.getX() + x, 0, pathPos.getZ() + z);
+                                    mutable.set(pathPosCenter.getX() + x, 0, pathPosCenter.getZ() + z);
 
                                     // Adjust y-coordinate based on surface height
                                     int surfaceHeight = getSurfaceHeight(level, mutable);
                                     mutable.setY(surfaceHeight);
 
-                                    placePathBlock(level, random.get(), mutable, config, nearestVillage, blockMask);
+                                    placePathBlock(level, rand, mutable, config, nearestVillage, blockMask);
+                                }
+                            }
+                        }
+
+                        // Attempt placing decoration at this point
+                        Vec3[] normals = getNormals(pts, t);
+                        Vec3 tangent = getTangent(pts, t);
+
+                        if (counter >= 50 && counter % 50 == 0) {
+                            for (Vec3 normal : normals) {
+                                mutable.set(pathPosCenter);
+                                mutable.move((int) Math.round(normal.x() * (getRoadSizeRadius() + 1)), 0, (int) Math.round(normal.z() * (getRoadSizeRadius() + 1)));
+                                mutable.setY(getSurfaceHeight(level, mutable) + 1);
+
+                                List<AbstractRoadDecoration> decorationsCopy = new ArrayList<>(this.decorations);
+
+//                            BlockState surfaceBlock = level.getBlockState(mutable);
+//                            int seaLevelDistance = mutable.getY() - level.getSeaLevel();
+//                            int yCompression = seaLevelDistance / (10 + (3 * normalOffset));
+                                // Place air to destroy any floating plants and the like
+//                            if (yCompression > 0) {
+//                                mutable.move(Direction.UP);
+//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
+//                                mutable.move(Direction.DOWN);
+//                            }
+//                            for (int y = 0; y < yCompression; y++) {
+//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
+//                                mutable.move(Direction.DOWN);
+//                            }
+//                            level.setBlock(mutable, surfaceBlock, 2);
+
+                                while (decorationsCopy.size() > 0) {
+                                    AbstractRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
+                                    if (decoration.chancePlace(level, rand, mutable, normal, tangent)) {
+                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
+                                        break;
+                                    }
+                                    decorationsCopy.remove(decoration);
                                 }
                             }
                         }
@@ -172,40 +235,10 @@ public class SplineRoadGenerator implements IRoadGenerator {
                         // Debug markers
                         if (YungsRoadsCommon.DEBUG_MODE) {
                             if (counter == 200 || counter == 400 || counter == 600 || counter == 800) {
-                                mutable.setY(getSurfaceHeight(level, mutable));
-
-                                for (int y = 0; y < 10; y++) {
-                                    mutable.move(Direction.UP);
-                                    level.setBlock(mutable, Blocks.GOLD_BLOCK.defaultBlockState(), 2);
-                                }
+                                placeDebugMarker(level, chunkPos, pathPosCenter, Blocks.GOLD_BLOCK.defaultBlockState());
                             }
                         }
                     }
-
-                    // Place normals at this point
-//                    normals = getNormals(pts, t);
-//                    for (Vector3d normal : normals) {
-//                        for (int normalOffset = 0; normalOffset < 3; normalOffset++) {
-//                            // Inner normal
-//                            mutable.setPos(pathPos);
-//                            mutable.move((int) Math.round(normal.getX() * (getRoadWidth() + normalOffset)), 0, (int) Math.round(normal.getZ() * (getRoadWidth() + normalOffset)));
-//                            mutable.setY(getSurfaceHeight(world, mutable));
-//                            BlockState surfaceBlock = world.getBlockState(mutable);
-//                            int seaLevelDistance = mutable.getY() - world.getSeaLevel();
-//                            int yCompression = seaLevelDistance / (10 + (3 * normalOffset));
-//                            // Place air to destroy any floating plants and the like
-//                            if (yCompression > 0) {
-//                                mutable.move(Direction.UP);
-//                                world.setBlockState(mutable, Blocks.AIR.getDefaultState(), 2);
-//                                mutable.move(Direction.DOWN);
-//                            }
-//                            for (int y = 0; y < yCompression; y++) {
-//                                world.setBlockState(mutable, Blocks.AIR.getDefaultState(), 2);
-//                                mutable.move(Direction.DOWN);
-//                            }
-//                            world.setBlockState(mutable, surfaceBlock, 2);
-//                        }
-//                    }
                 }
                 t += 0.002f;
                 counter++;
@@ -217,7 +250,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
     @Override
     public double getRoadSizeRadius() {
-        return 2;
+        return 1.5;
     }
 
     /**
@@ -243,5 +276,14 @@ public class SplineRoadGenerator implements IRoadGenerator {
                 pts[2].scale(-3f * t2 + 2 * t)).add(
                 pts[3].scale(t2));
         return tangent.normalize();
+    }
+
+    private Vec3 getNormal(Vec3[] pts, float t) {
+        return getTangent(pts, t).yRot((float) Math.PI / 2F).normalize();
+    }
+
+    private Vec3[] getNormals(Vec3[] pts, float t) {
+        Vec3 normal = getNormal(pts, t);
+        return new Vec3[]{normal, normal.reverse()};
     }
 }

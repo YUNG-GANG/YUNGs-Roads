@@ -1,4 +1,4 @@
-package com.yungnickyoung.minecraft.yungsroads.world.road;
+package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.world.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
@@ -7,7 +7,10 @@ import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfigurat
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
+import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
@@ -154,6 +157,18 @@ public interface IRoadGenerator {
         }
         if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
             DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+        }
+    }
+
+    default void placeDebugMarker(WorldGenLevel level, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
+        if (isInChunk(chunkPos, blockPos)) {
+            BlockPos.MutableBlockPos mutable = blockPos.mutable();
+            mutable.setY(getSurfaceHeight(level, mutable));
+
+            for (int y = 0; y < 10; y++) {
+                mutable.move(Direction.UP);
+                level.setBlock(mutable, markerBlock, 2);
+            }
         }
     }
 

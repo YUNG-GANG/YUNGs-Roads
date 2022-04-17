@@ -5,23 +5,38 @@ import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.data.BuiltinRegistries;
+import net.minecraft.data.worldgen.features.TreeFeatures;
+import net.minecraft.data.worldgen.features.VegetationFeatures;
+import net.minecraft.data.worldgen.placement.PlacementUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+import net.minecraft.world.level.levelgen.placement.BlockPredicateFilter;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
+import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ConfiguredFeatureModule {
+    /** Map of all placed features */
+    private static final Map<String, PlacedFeature> placedFeatures = new HashMap<>();
+
+    /* Road Feature */
     public static final ConfiguredFeature<?, ?> ROAD_CONFIGURED = new ConfiguredFeature<>(FeatureModule.ROAD, new RoadFeatureConfiguration(
             List.of(
                     new RoadTypeSettings(
                             List.of(Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.PODZOL, Blocks.DIRT_PATH),
                             TempEnum.ANY,
-                            new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())),
+                            new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
+                                    .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f)),
                     new RoadTypeSettings(
                             List.of(Blocks.STONE, Blocks.ANDESITE, Blocks.GRANITE, Blocks.GRAVEL),
                             TempEnum.ANY,
@@ -43,8 +58,17 @@ public class ConfiguredFeatureModule {
             ),
             new BlockStateRandomizer(Blocks.OAK_PLANKS.defaultBlockState())
     ));
-    public static final PlacedFeature ROAD_PLACED = new PlacedFeature(
+    public static final PlacedFeature ROAD_PLACED = createPlacedFeature("road",
             Holder.direct(ROAD_CONFIGURED),
+            List.of());
+
+    /* Decoration features */
+    public static final PlacedFeature SUNFLOWER_DECORATION_PLACED = createPlacedFeature("sunflower_decoration",
+            VegetationFeatures.PATCH_SUNFLOWER,
+            List.of());
+
+    public static final PlacedFeature FLOWER_DEFAULT_DECORATION_PLACED = createPlacedFeature("flower_decoration",
+            VegetationFeatures.FLOWER_DEFAULT,
             List.of());
 
     public static void registerConfiguredFeatures() {
@@ -52,6 +76,14 @@ public class ConfiguredFeatureModule {
     }
 
     public static void registerPlacedFeatures() {
-        Registry.register(BuiltinRegistries.PLACED_FEATURE, new ResourceLocation(YungsRoadsCommon.MOD_ID, "road"), ROAD_PLACED);
+        placedFeatures.forEach((name, placedFeature) -> {
+            Registry.register(BuiltinRegistries.PLACED_FEATURE, new ResourceLocation(YungsRoadsCommon.MOD_ID, name), placedFeature);
+        });
+    }
+
+    private static PlacedFeature createPlacedFeature(String name, Holder<? extends ConfiguredFeature<?, ?>> holder, List<PlacementModifier> list) {
+        PlacedFeature placedFeature = new PlacedFeature(Holder.hackyErase(holder), list);
+        placedFeatures.put(name, placedFeature);
+        return placedFeature;
     }
 }

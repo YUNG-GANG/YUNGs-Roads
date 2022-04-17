@@ -3,6 +3,9 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.Arrays;
 
 public class RoadSegment {
     public static final Codec<RoadSegment> CODEC = RecordCodecBuilder.create(builder -> builder
@@ -30,6 +33,10 @@ public class RoadSegment {
 
     public BlockPos[] getPoints() {
         return new BlockPos[]{startPos, p1, p2, endPos};
+    }
+
+    public Vec3[] getPointsAsVec() {
+        return Arrays.stream(getPoints()).map(pos -> new Vec3(pos.getX(), pos.getY(), pos.getZ())).toArray(Vec3[]::new);
     }
 
     public BlockPos getStartPos() {

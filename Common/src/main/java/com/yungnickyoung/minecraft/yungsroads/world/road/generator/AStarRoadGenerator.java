@@ -1,7 +1,9 @@
-package com.yungnickyoung.minecraft.yungsroads.world.road;
+package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.QuartPos;

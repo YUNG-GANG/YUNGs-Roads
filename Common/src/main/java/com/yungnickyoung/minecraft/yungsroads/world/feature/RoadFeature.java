@@ -2,7 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.feature;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
-import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.IRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;

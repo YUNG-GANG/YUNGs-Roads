@@ -1,9 +1,9 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkGeneratorAccessor;
-import com.yungnickyoung.minecraft.yungsroads.world.road.IRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.IRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.SplineRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.SplineRoadGenerator;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -143,14 +143,15 @@ public class StructureRegionGenerator {
                 ChunkPos endCandidateChunkPos = new ChunkPos(endCandidate);
 
                 // End pos must be within 800 blocks of start pos (arbitrary max road length)
-                if (startVillage.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), 800)) {
+                // TODO config for min/max road length
+                if (startVillage.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), 800) && !startVillage.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), 50)) {
                     endVillage = endCandidateChunkPos;
                     break;
                 }
             }
 
             // If we found a second village, attempt to construct a Road connecting the two villages
-            if (endVillage != null) {
+            if (endVillage != null && !endVillage.equals(startVillage)) {
                 Optional<Road> roadOptional = this.roadGenerator.generateRoad(startVillage, endVillage);
                 if (roadOptional.isPresent()) {
                     roads.add(roadOptional.get());
