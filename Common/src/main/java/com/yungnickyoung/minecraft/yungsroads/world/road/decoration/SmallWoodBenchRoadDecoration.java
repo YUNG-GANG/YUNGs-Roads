@@ -9,18 +9,16 @@ import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.phys.Vec3;
 
-import javax.annotation.Nullable;
 import java.util.Random;
 
-public class SmallWoodBenchRoadDecoration extends AbstractRoadDecoration {
-    public SmallWoodBenchRoadDecoration(float chance) {
-        super("SmallWoodBench", chance);
+public class SmallWoodBenchRoadDecoration extends ManualRoadDecoration {
+    public SmallWoodBenchRoadDecoration(String name) {
+        super(name);
     }
 
     @Override
-    protected boolean place(WorldGenLevel level, Random random, BlockPos blockPos, @Nullable Vec3 normal, @Nullable Vec3 tangent) {
+    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         BlockPos.MutableBlockPos mutable = blockPos.mutable();
-        mutable.move((int) (1 * Math.round(normal.x)), 0, (int) (1 * Math.round(normal.z)));
 
         Direction towardPath = Direction.fromNormal((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
         if (towardPath == null) return false;

@@ -3,12 +3,10 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
-import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.AbstractRoadDecoration;
-import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.BushRoadDecoration;
-import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.SmallWoodBenchRoadDecoration;
-import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.StoneLampPostRoadDecoration;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.ConfiguredRoadDecoration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
@@ -19,9 +17,11 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.material.Material;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
@@ -34,7 +34,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
     private final ServerLevel serverLevel;
     private final ThreadLocal<WorldgenRandom> random = ThreadLocal.withInitial(() -> new WorldgenRandom(new LegacyRandomSource(0)));
     private final FastNoise noise;
-    private final List<AbstractRoadDecoration> decorations;
+//    private final List<AbstractRoadDecoration> decorations;
 
     public SplineRoadGenerator(ServerLevel serverLevel) {
         this.serverLevel = serverLevel;
@@ -42,10 +42,10 @@ public class SplineRoadGenerator implements IRoadGenerator {
         this.noise.SetNoiseType(FastNoise.NoiseType.Simplex);
         this.noise.SetFrequency(.012f);
         this.noise.SetFractalOctaves(1);
-        this.decorations = new ArrayList<>();
-        this.decorations.add(new BushRoadDecoration(.3f));
-        this.decorations.add(new StoneLampPostRoadDecoration(.3f));
-        this.decorations.add(new SmallWoodBenchRoadDecoration(.3f));
+//        this.decorations = new ArrayList<>();
+//        this.decorations.add(new BushRoadDecoration(.3f));
+//        this.decorations.add(new StoneLampPostRoadDecoration(.3f));
+//        this.decorations.add(new SmallWoodBenchRoadDecoration(.3f));
 //        this.decorations.add(new FeatureRoadDecoration(.5f, Holder.direct(ConfiguredFeatureModule.FLOWER_DEFAULT_DECORATION_PLACED)));
 //        this.decorations.add(new FeatureRoadDecoration(.5f, Holder.direct(ConfiguredFeatureModule.SUNFLOWER_DECORATION_PLACED)));
     }
@@ -194,17 +194,53 @@ public class SplineRoadGenerator implements IRoadGenerator {
                             }
                         }
 
-                        // Attempt placing decoration at this point
-                        Vec3[] normals = getNormals(pts, t);
-                        Vec3 tangent = getTangent(pts, t);
-
                         if (counter >= 50 && counter % 50 == 0) {
+                            // Attempt placing decoration at this point.
+                            // We use normals to find the approximate edge of the road at this point.
+                            // The tangent is provided for decorations should they choose to use it.
+                            Vec3[] normals = getNormals(pts, t);
+                            Vec3 tangent = getTangent(pts, t);
+
                             for (Vec3 normal : normals) {
+                                // Move the mutable to the edge of the road at this position.
                                 mutable.set(pathPosCenter);
                                 mutable.move((int) Math.round(normal.x() * (getRoadSizeRadius() + 1)), 0, (int) Math.round(normal.z() * (getRoadSizeRadius() + 1)));
                                 mutable.setY(getSurfaceHeight(level, mutable) + 1);
 
-                                List<AbstractRoadDecoration> decorationsCopy = new ArrayList<>(this.decorations);
+                                BlockState currState = level.getBlockState(mutable);
+                                BlockState belowState = level.getBlockState(mutable.below());
+
+                                // Check for water, in which case no decorations are placed.
+                                if (belowState.getMaterial() == Material.WATER) {
+                                    continue;
+                                }
+
+                                // Determine decorations that can be placed at this point.
+                                // The decorations list is fetched from a RoadTypeSettings, based on the existing
+                                // block at this position.
+                                RoadTypeSettings roadTypeSettings = null;
+                                for (RoadTypeSettings settings : config.roadTypes) {
+                                    if (settings.matches(level, mutable.below())) {
+                                        roadTypeSettings = settings;
+                                        break;
+                                    }
+                                }
+
+                                if (roadTypeSettings == null) {
+                                    continue;
+                                }
+
+                                // Attempt to place a decoration
+                                List<ConfiguredRoadDecoration> decorationsCopy = new ArrayList<>(roadTypeSettings.decorations);
+
+                                while (decorationsCopy.size() > 0) {
+                                    ConfiguredRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
+                                    if (decoration.place(level, rand, mutable, normal, tangent)) {
+                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
+                                        break;
+                                    }
+                                    decorationsCopy.remove(decoration);
+                                }
 
 //                            BlockState surfaceBlock = level.getBlockState(mutable);
 //                            int seaLevelDistance = mutable.getY() - level.getSeaLevel();
@@ -220,15 +256,6 @@ public class SplineRoadGenerator implements IRoadGenerator {
 //                                mutable.move(Direction.DOWN);
 //                            }
 //                            level.setBlock(mutable, surfaceBlock, 2);
-
-                                while (decorationsCopy.size() > 0) {
-                                    AbstractRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
-                                    if (decoration.chancePlace(level, rand, mutable, normal, tangent)) {
-                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
-                                        break;
-                                    }
-                                    decorationsCopy.remove(decoration);
-                                }
                             }
                         }
 

@@ -34,7 +34,7 @@ public abstract class ServerLevelMixin extends Level implements IStructureRegion
     }
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void attachStructureRegionCache(MinecraftServer minecraftServer,
+    private void yungsroads_attachStructureRegionCache(MinecraftServer minecraftServer,
                                           Executor executor,
                                           LevelStorageSource.LevelStorageAccess levelStorageAccess,
                                           ServerLevelData serverLevelData,

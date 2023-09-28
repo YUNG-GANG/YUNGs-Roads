@@ -5,19 +5,14 @@ import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.RoadDecorations;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.data.BuiltinRegistries;
-import net.minecraft.data.worldgen.features.TreeFeatures;
 import net.minecraft.data.worldgen.features.VegetationFeatures;
-import net.minecraft.data.worldgen.placement.PlacementUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.levelgen.blockpredicates.BlockPredicate;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
-import net.minecraft.world.level.levelgen.placement.BlockPredicateFilter;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 
@@ -36,25 +31,45 @@ public class ConfiguredFeatureModule {
                             List.of(Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.PODZOL, Blocks.DIRT_PATH),
                             TempEnum.ANY,
                             new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
-                                    .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f)),
+                                    .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f),
+                            List.of(
+                                    RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.STONE_LAMP_POST.configured().withChance(0.3f)
+                            )),
                     new RoadTypeSettings(
                             List.of(Blocks.STONE, Blocks.ANDESITE, Blocks.GRANITE, Blocks.GRAVEL),
                             TempEnum.ANY,
                             new BlockStateRandomizer(Blocks.STONE.defaultBlockState())
                                     .addBlock(Blocks.COBBLESTONE.defaultBlockState(), 0.7F)
-                                    .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F)),
+                                    .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F),
+                            List.of(
+                                    RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.STONE_LAMP_POST.configured().withChance(0.3f)
+                            )),
                     new RoadTypeSettings(
                             List.of(Blocks.SNOW_BLOCK, Blocks.ICE),
                             TempEnum.ANY,
                             new BlockStateRandomizer(Blocks.SNOW_BLOCK.defaultBlockState())
-                                    .addBlock(Blocks.DIRT_PATH.defaultBlockState(), 0.95F)),
+                                    .addBlock(Blocks.DIRT_PATH.defaultBlockState(), 0.95F),
+                            List.of(
+                                    RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.STONE_LAMP_POST.configured().withChance(0.3f)
+                            )),
                     new RoadTypeSettings(
                             List.of(Blocks.SAND, Blocks.SANDSTONE, Blocks.RED_SAND, Blocks.RED_SANDSTONE, Blocks.TERRACOTTA, Blocks.BROWN_TERRACOTTA, Blocks.ORANGE_TERRACOTTA, Blocks.RED_TERRACOTTA, Blocks.WHITE_TERRACOTTA, Blocks.LIGHT_GRAY_TERRACOTTA, Blocks.YELLOW_TERRACOTTA),
                             TempEnum.ANY,
                             new BlockStateRandomizer(Blocks.SAND.defaultBlockState())
                                     .addBlock(Blocks.GRAVEL.defaultBlockState(), 0.4F)
                                     .addBlock(Blocks.GRANITE.defaultBlockState(), 0.4F)
-                                    .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F))
+                                    .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F),
+                            List.of(
+                                    RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
+                                    RoadDecorations.STONE_LAMP_POST.configured().withChance(0.3f)
+                            ))
             ),
             new BlockStateRandomizer(Blocks.OAK_PLANKS.defaultBlockState())
     ));

@@ -25,7 +25,7 @@ public abstract class DebugScreenOverlayMixin extends GuiComponent {
     private Minecraft minecraft;
 
     @Inject(method = "getGameInformation", at = @At("RETURN"))
-    public void attachStructureRegionPosToDebugOverlay(CallbackInfoReturnable<List<String>> cir) {
+    public void yungsroads_attachStructureRegionPosToDebugOverlay(CallbackInfoReturnable<List<String>> cir) {
         List<String> list = cir.getReturnValue();
         ServerLevel serverworld = this.getServerLevel();
         if (serverworld != null) {

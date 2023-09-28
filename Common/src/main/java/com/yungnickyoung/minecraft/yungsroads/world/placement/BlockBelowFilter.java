@@ -1,4 +1,4 @@
-package com.yungnickyoung.minecraft.yungsroads.world;
+package com.yungnickyoung.minecraft.yungsroads.world.placement;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;

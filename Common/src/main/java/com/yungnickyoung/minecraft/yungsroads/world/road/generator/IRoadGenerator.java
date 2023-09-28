@@ -5,7 +5,6 @@ import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
-import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
@@ -110,26 +109,18 @@ public interface IRoadGenerator {
         blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    default void placePathBlock(WorldGenLevel world, Random random, BlockPos pos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
-        BlockState currState = world.getBlockState(pos);
+    default void placePathBlock(WorldGenLevel level, Random random, BlockPos pos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+        BlockState currState = level.getBlockState(pos);
 
         // Check for water to place bridge block.
         if (currState.getMaterial() == Material.WATER) {
-            world.setBlock(pos, config.bridgeBlockStates.get(random), 2);
+            level.setBlock(pos, config.bridgeBlockStates.get(random), 2);
         }
 
         for (RoadTypeSettings roadTypeSettings : config.roadTypes) {
-            // Validate biome temp
-            if (roadTypeSettings.targetTemperature == TempEnum.COLD && !world.getBiome(pos).value().coldEnoughToSnow(pos)) {
-                continue;
-            }
-            if (roadTypeSettings.targetTemperature == TempEnum.WARM && !world.getBiome(pos).value().warmEnoughToRain(pos)) {
-                continue;
-            }
-
-            // Check for matching target block
-            if (roadTypeSettings.targetBlocks.stream().anyMatch(block -> block == currState.getBlock())) {
-                world.setBlock(pos, roadTypeSettings.pathBlockStates.get(random), 2);
+            if (roadTypeSettings.matches(level, pos)) {
+                level.setBlock(pos, roadTypeSettings.pathBlockStates.get(random), 2);
+                break;
             }
         }
 
