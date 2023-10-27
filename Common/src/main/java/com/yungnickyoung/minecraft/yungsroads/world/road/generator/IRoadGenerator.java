@@ -29,7 +29,7 @@ public interface IRoadGenerator {
      * Note that this simply constructs the {@link Road} object. Blocks are not actually placed until
      * {@link RoadFeature#place(FeaturePlaceContext)}.
      *
-     * @return Road connecting the two positions, if one was successfully able to be generated.
+     * @return Road connecting the two positions, if one was successfully generated.
      */
     Optional<Road> generateRoad(ChunkPos pos1, ChunkPos pos2);
 
@@ -147,7 +147,7 @@ public interface IRoadGenerator {
             world.setBlock(pos, Blocks.OAK_PLANKS.defaultBlockState(), 2);
         }
         if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
-            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+//            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
         }
     }
 

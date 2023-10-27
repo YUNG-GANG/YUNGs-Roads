@@ -3,7 +3,6 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 import com.mojang.serialization.DataResult;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.LongArrayTag;
@@ -16,14 +15,14 @@ import java.util.Optional;
 
 public class StructureRegion {
     private final StructureRegionPos pos;
-    private final LongOpenHashSet villageChunks;
+    private final List<Long> villageChunks;
     private final List<Road> roads;
 
     public StructureRegion(long regionKey) {
-        this(regionKey, new LongOpenHashSet(), new ArrayList<>());
+        this(regionKey, new ArrayList<>(), new ArrayList<>());
     }
 
-    public StructureRegion(long regionKey, LongOpenHashSet villageChunks, List<Road> roads) {
+    public StructureRegion(long regionKey, List<Long> villageChunks, List<Road> roads) {
         this.pos = new StructureRegionPos(regionKey);
         this.villageChunks = villageChunks;
         this.roads = roads;
@@ -34,7 +33,10 @@ public class StructureRegion {
 
         // Villages
         long[] villagePositions = compoundTag.getLongArray("villageChunks");
-        this.villageChunks = new LongOpenHashSet(villagePositions);
+        this.villageChunks = new ArrayList<>();
+        for (long villagePos : villagePositions) {
+            this.villageChunks.add(villagePos);
+        }
 
         // Roads
         List<Road> roads = new ArrayList<>();
@@ -76,7 +78,7 @@ public class StructureRegion {
         return this.pos.getFileName();
     }
 
-    public LongOpenHashSet getVillageChunks() {
+    public List<Long> getVillageChunks() {
         return this.villageChunks;
     }
 

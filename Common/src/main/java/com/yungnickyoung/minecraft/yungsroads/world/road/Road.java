@@ -52,15 +52,6 @@ public class Road {
         return this.addRoadSegment(roadSegment);
     }
 
-    public Road addSplineRoadSegment(BlockPos startPos, BlockPos endPos, Random random) {
-        double length = Math.sqrt(startPos.distSqr(endPos));
-        int maxPointOffset = (int) (length);
-        BlockPos p1 = startPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 2, 0, random.nextInt(maxPointOffset) - maxPointOffset / 2);
-        BlockPos p2 = endPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 2, 0, random.nextInt(maxPointOffset) - maxPointOffset / 2);
-        RoadSegment roadSegment = new RoadSegment(startPos, p1, p2, endPos);
-        return this.addRoadSegment(roadSegment);
-    }
-
     @Override
     public String toString() {
         return String.format("Road %s - %s (%d segments)", villageStart, villageEnd, roadSegments.size());

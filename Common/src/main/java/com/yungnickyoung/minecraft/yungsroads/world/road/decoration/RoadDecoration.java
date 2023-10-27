@@ -9,7 +9,6 @@ import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessorType;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 import java.util.Map;

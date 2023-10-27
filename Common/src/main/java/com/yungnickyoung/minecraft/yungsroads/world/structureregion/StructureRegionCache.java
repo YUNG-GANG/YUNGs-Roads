@@ -20,11 +20,15 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class StructureRegionCache {
     private final Path savePath;
-    private final ConcurrentHashMap<Long, StructureRegion> structureRegionCache;
     private final StructureRegionGenerator structureRegionGenerator;
 
+    /**
+     * Cache of StructureRegions, keyed by region key.
+     */
+    private final ConcurrentHashMap<Long, StructureRegion> cache;
+
     public StructureRegionCache(ServerLevel level, Path dimensionPath) {
-        this.structureRegionCache = new ConcurrentHashMap<>();
+        this.cache = new ConcurrentHashMap<>();
         this.structureRegionGenerator = new StructureRegionGenerator(level);
         this.savePath = dimensionPath.resolve("roads").toAbsolutePath();
         createDirectoryIfDoesNotExist();
@@ -39,16 +43,16 @@ public class StructureRegionCache {
         ChunkPos chunkPos = new ChunkPos(pos);
         StructureRegion structureRegion = getRegion(structureRegionPos);
 
-        BlockPos village1 = new BlockPos(pos);
-        int dist1 = Integer.MAX_VALUE;
+        BlockPos nearestVillage = new BlockPos(pos);
+        int distance = Integer.MAX_VALUE;
 
         for (long chunkLong : structureRegion.getVillageChunks()) {
             ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
             int sqDist = (candidateChunkPos.x - chunkPos.x) * (candidateChunkPos.x - chunkPos.x)
                     + (candidateChunkPos.z - chunkPos.z) * (candidateChunkPos.z - chunkPos.z);
-            if (sqDist < dist1) {
-                dist1 = sqDist;
-                village1 = candidateChunkPos.getWorldPosition();
+            if (sqDist < distance) {
+                distance = sqDist;
+                nearestVillage = candidateChunkPos.getWorldPosition();
             }
 
             if (YungsRoadsCommon.DEBUG_MODE) {
@@ -56,7 +60,7 @@ public class StructureRegionCache {
             }
         }
 
-        return village1;
+        return nearestVillage;
     }
 
     /**
@@ -66,7 +70,7 @@ public class StructureRegionCache {
      * If the file does not exist or is corrupt, generation is deferred to {@link StructureRegionGenerator#generateRegion}.
      */
     public StructureRegion getRegion(long regionKey) {
-        return this.structureRegionCache.computeIfAbsent(regionKey, newKey -> {
+        return this.cache.computeIfAbsent(regionKey, newKey -> {
             StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
 
             if (YungsRoadsCommon.DEBUG_MODE) {
@@ -90,6 +94,7 @@ public class StructureRegionCache {
                 // Unable to read file. Log error & generate file anew.
                 YungsRoadsCommon.LOGGER.error("Unable to read roads file {}", file.toString());
                 YungsRoadsCommon.LOGGER.error(e);
+                YungsRoadsCommon.LOGGER.error("Regenerating structure region from scratch...");
                 StructureRegion newStructureRegion = this.structureRegionGenerator.generateRegion(newKey);
                 writeStructureRegionFile(newStructureRegion);
                 return newStructureRegion;

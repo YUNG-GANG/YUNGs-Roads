@@ -6,6 +6,7 @@ import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfigurat
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.SplineRoadSegment;
 import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.ConfiguredRoadDecoration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -67,7 +68,8 @@ public class SplineRoadGenerator implements IRoadGenerator {
         for (int i = 0; i < numSegments; i++) {
             BlockPos.MutableBlockPos startPos = blockPos1.offset(xDist * i / numSegments, 0, zDist * i / numSegments).mutable();
             BlockPos.MutableBlockPos endPos = blockPos1.offset(xDist * (i + 1) / numSegments, 0, zDist * (i + 1) / numSegments).mutable();
-            road.addSplineRoadSegment(startPos, endPos, random.get());
+            SplineRoadSegment splineRoadSegment = SplineRoadSegment.createSplineRoadSegment(startPos, endPos, random.get());
+            road.addRoadSegment(splineRoadSegment);
         }
 
         // Biome validation
@@ -77,13 +79,17 @@ public class SplineRoadGenerator implements IRoadGenerator {
                     QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                     QuartPos.fromBlock(serverLevel.getSeaLevel()),
                     QuartPos.fromBlock(roadSegment.getStartPos().getZ()));
-            Holder<Biome> biomeAtP2 = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
-                    QuartPos.fromBlock(roadSegment.getP2().getX()),
-                    QuartPos.fromBlock(serverLevel.getSeaLevel()),
-                    QuartPos.fromBlock(roadSegment.getP2().getZ()));
-            // Road cannot cross river more than once
             if (biomeAtStart.is(BiomeTags.IS_RIVER)) riverCount++;
-            if (biomeAtP2.is(BiomeTags.IS_RIVER)) riverCount++;
+
+            if (roadSegment instanceof SplineRoadSegment splineRoadSegment) {
+                Holder<Biome> biomeAtP2 = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                        QuartPos.fromBlock(splineRoadSegment.getP2().getX()),
+                        QuartPos.fromBlock(serverLevel.getSeaLevel()),
+                        QuartPos.fromBlock(splineRoadSegment.getP2().getZ()));
+                if (biomeAtP2.is(BiomeTags.IS_RIVER)) riverCount++;
+            }
+
+            // Road cannot cross river more than once
             if (riverCount > 1) {
                 return Optional.empty();
             }
@@ -141,12 +147,16 @@ public class SplineRoadGenerator implements IRoadGenerator {
         // Set seeds
 //        random.get().setLargeFeatureSeed(level.getSeed(), road.getVillageStart().getX() >> 4, road.getVillageEnd().getZ() >> 4);
 
-        // Temporary chunk-local carving mask to prevent overprocessing a single block
+        // Temporary chunk-local carving mask to prevent over-processing a single block
         CarvingMask blockMask = new CarvingMask(level.getHeight(), level.getMinBuildHeight());
 
         // Place road segments in this chunk
         for (RoadSegment roadSegment : roadSegments) {
-            Vec3[] pts = roadSegment.getPointsAsVec();
+            if ((!(roadSegment instanceof SplineRoadSegment splineRoadSegment))) {
+                YungsRoadsCommon.LOGGER.error("Road segment {} is not a SplineRoadSegment!", roadSegment);
+                continue;
+            }
+            Vec3[] pts = splineRoadSegment.getPointsAsVec();
 
             // Debug markers at road segment endpoints
             if (YungsRoadsCommon.DEBUG_MODE) {
@@ -236,7 +246,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
                                 while (decorationsCopy.size() > 0) {
                                     ConfiguredRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
                                     if (decoration.place(level, rand, mutable, normal, tangent)) {
-                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
+//                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
                                         break;
                                     }
                                     decorationsCopy.remove(decoration);
