@@ -1,15 +1,10 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
@@ -21,10 +16,11 @@ import javax.annotation.Nullable;
 import java.util.Optional;
 import java.util.Random;
 
-public class LinearRoadGenerator implements IRoadGenerator {
+public class LinearRoadGenerator extends AbstractRoadGenerator {
     private final ServerLevel serverLevel;
 
     public LinearRoadGenerator(ServerLevel serverLevel) {
+        super();
         this.serverLevel = serverLevel;
     }
 
@@ -52,7 +48,7 @@ public class LinearRoadGenerator implements IRoadGenerator {
                 blockPos2);
 
         // Ensure road does not cross ocean
-        for (RoadSegment roadSegment : road.getRoadSegments()) {
+        for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
             if (serverLevel.getChunkSource().getGenerator().getNoiseBiome(
                             QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                             QuartPos.fromBlock(0),
@@ -62,105 +58,24 @@ public class LinearRoadGenerator implements IRoadGenerator {
             }
         }
 
-        if (YungsRoadsCommon.DEBUG_MODE) {
-            int totalXDiff = road.getVillageEnd().getX() - road.getVillageStart().getX();
-            int totalZDiff = road.getVillageEnd().getZ() - road.getVillageStart().getZ();
-            double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
-            double slopeCounter = Math.abs(totalSlope);
-            int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
-            int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
-
-            BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-            mutable.set(road.getVillageStart());
-            ChunkPos chunkPos = new ChunkPos(mutable);
-
-            while (!isInRange(mutable, road.getVillageEnd())) {
-                // Move in z direction
-                while (slopeCounter >= 1 && !isInRange(mutable, road.getVillageEnd())) {
-                    if (isInValidRangeForChunk(chunkPos, mutable)) {
-                        chunkPos = new ChunkPos(mutable);
-//                        placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                        DebugRenderer.getInstance().addPath(chunkPos, null);
-                    }
-                    mutable.move(0, 0, zDir);
-                    slopeCounter--;
-                }
-
-                // Move in x direction
-                while (slopeCounter < 1 && !isInRange(mutable, road.getVillageEnd())) {
-                    if (isInValidRangeForChunk(chunkPos, mutable)) {
-                        chunkPos = new ChunkPos(mutable);
-//                        placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                        DebugRenderer.getInstance().addPath(chunkPos, null);
-                    }
-                    mutable.move(xDir, 0, 0);
-                    slopeCounter += Math.abs(totalSlope);
-                }
-
-                // Place path at final position
-                if (isInValidRangeForChunk(chunkPos, mutable)) {
-//                placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                    DebugRenderer.getInstance().addPath(chunkPos, null);
-                }
-            }
-
-//            for (RoadSegment roadSegment : road.getRoadSegments()) {
-//                ChunkPos startPos = new ChunkPos(roadSegment.getStartPos());
-//                ChunkPos endPos = new ChunkPos(roadSegment.getEndPos());
-//
-//                StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
-//
-//                for (int x = startPos.x; x <= endPos.x; x++) {
-//                    for (int z = startPos.z; z <= endPos.z; z++) {
-//                        ChunkPos chunkPos = new ChunkPos(x, z);
-//
-//
-//
-////                        BlockPos nearestVillage = YungsRoadsCommon.DEBUG_MODE ? structureRegionCache.getNearestVillage(chunkPos.getWorldPosition()) : null;
-//                        DebugRenderer.getInstance().addPath(chunkPos, null);
-//                    }
-//                }
-//            }
-        }
-
         return Optional.of(road);
     }
 
     @Override
     public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+        // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road
-        if (chunkPos.getWorldPosition().getX() + 15 < road.getVillageStart().getX() || chunkPos.getWorldPosition().getX() > road.getVillageEnd().getX()) {
+        if (!containsRoad(chunkPos, road)) {
             return;
         }
 
         // Debug markers at road endpoints points
         if (YungsRoadsCommon.DEBUG_MODE) {
-            // Start pos
-            if (isInValidRangeForChunk(chunkPos, road.getVillageStart())) {
-                BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
-                mutable.setY(getSurfaceHeight(level, mutable));
-
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    level.setBlock(mutable, Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
-                }
-            }
-
-            // End pos
-            if (isInValidRangeForChunk(chunkPos, road.getVillageEnd())) {
-                BlockPos.MutableBlockPos mutable = road.getVillageEnd().mutable();
-                mutable.setY(getSurfaceHeight(level, mutable));
-
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    level.setBlock(mutable, Blocks.REDSTONE_BLOCK.defaultBlockState(), 2);
-                }
-            }
+            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.REDSTONE_BLOCK.defaultBlockState());
         }
-
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         // Determine total slope of line from starting point to ending point
         int totalXDiff = road.getVillageEnd().getX() - road.getVillageStart().getX();
@@ -169,36 +84,32 @@ public class LinearRoadGenerator implements IRoadGenerator {
         int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
         int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
 
-        // Initialize mutable at starting point
-        mutable.set(road.getVillageStart());
-
-        YungsRoadsCommon.LOGGER.info(this);
-
         double slopeCounter = Math.abs(totalSlope);
+        BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
 
-        while (!isInRange(mutable, road.getVillageEnd())) {
+        while (!isWithin10Blocks(mutable, road.getVillageEnd())) {
             // Move in z direction
-            while (slopeCounter >= 1 && !isInRange(mutable, road.getVillageEnd())) {
-                if (isInValidRangeForChunk(chunkPos, mutable)) {
-                    placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                }
+            while (slopeCounter >= 1 && !isWithin10Blocks(mutable, road.getVillageEnd())) {
+                placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
                 mutable.move(0, 0, zDir);
                 slopeCounter--;
             }
 
             // Move in x direction
-            while (slopeCounter < 1 && !isInRange(mutable, road.getVillageEnd())) {
-                if (isInValidRangeForChunk(chunkPos, mutable)) {
-                    placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-                }
+            while (slopeCounter < 1 && !isWithin10Blocks(mutable, road.getVillageEnd())) {
+                placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
                 mutable.move(xDir, 0, 0);
                 slopeCounter += Math.abs(totalSlope);
             }
 
             // Place path at final position
-            if (isInValidRangeForChunk(chunkPos, mutable)) {
-                placePath(level, rand, mutable, nearestVillage, chunkPos.x, chunkPos.z);
-            }
+            placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
         }
+    }
+
+    private boolean isWithin10Blocks(BlockPos pos, BlockPos targetPos) {
+        double xDiff = pos.getX() - targetPos.getX();
+        double zDiff = pos.getZ() - targetPos.getZ();
+        return xDiff * xDiff + zDiff * zDiff < 10 * 10;
     }
 }

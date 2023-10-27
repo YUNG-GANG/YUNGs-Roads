@@ -1,9 +1,10 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.google.common.collect.Lists;
+import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.QuartPos;
@@ -11,14 +12,20 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Blocks;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.PriorityQueue;
+import java.util.Random;
 
-public class AStarRoadGenerator implements IRoadGenerator {
+public class AStarRoadGenerator extends AbstractRoadGenerator {
     public final ServerLevel serverLevel;
 
     public AStarRoadGenerator(ServerLevel serverLevel) {
+        super();
         this.serverLevel = serverLevel;
     }
 
@@ -41,7 +48,7 @@ public class AStarRoadGenerator implements IRoadGenerator {
         }
 
         // Ensure road does not cross ocean
-        for (RoadSegment roadSegment : road.getRoadSegments()) {
+        for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
             if (serverLevel.getChunkSource().getGenerator().getNoiseBiome(
                             QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                             QuartPos.fromBlock(0),
@@ -56,6 +63,7 @@ public class AStarRoadGenerator implements IRoadGenerator {
 
     @Override
     public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+        // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road
@@ -63,15 +71,21 @@ public class AStarRoadGenerator implements IRoadGenerator {
             return;
         }
 
+        // Debug markers at road endpoints points
+        if (YungsRoadsCommon.DEBUG_MODE) {
+            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.EMERALD_BLOCK.defaultBlockState());
+        }
+
         // Determine road segments we need to process
-        List<RoadSegment> roadSegments = new ArrayList<>();
-        for (RoadSegment roadSegment : road.getRoadSegments()) {
+        List<DefaultRoadSegment> roadSegments = new ArrayList<>();
+        for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
             if (containsRoadSegment(chunkPos, roadSegment)) {
                 roadSegments.add(roadSegment);
             }
         }
 
-        for (RoadSegment roadSegment : roadSegments) {
+        for (DefaultRoadSegment roadSegment : roadSegments) {
             // A* algorithm
             PriorityQueue<Node> closed = new PriorityQueue<>();
             PriorityQueue<Node> open = new PriorityQueue<>();
@@ -136,12 +150,12 @@ public class AStarRoadGenerator implements IRoadGenerator {
             // Place path
             if (path != null) {
                 // Place last path
-                this.placePath(level, rand, path.pos, nearestVillage, chunkPos.x, chunkPos.z);
+                this.placePath(level, rand, path.pos, chunkPos, config);
 
                 // Place all other node paths until no nodes remain
                 while (path.parent != null) {
                     path = path.parent;
-                    this.placePath(level, rand, path.pos, nearestVillage, chunkPos.x, chunkPos.z);
+                    this.placePath(level, rand, path.pos, chunkPos, config);
                 }
             }
         }

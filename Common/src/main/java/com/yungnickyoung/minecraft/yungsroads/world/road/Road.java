@@ -2,25 +2,26 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.RoadSegmentType;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class Road {
     public static final Codec<Road> CODEC = RecordCodecBuilder.create(builder -> builder
         .group(
             BlockPos.CODEC.fieldOf("villageStart").forGetter(Road::getVillageStart),
             BlockPos.CODEC.fieldOf("villageEnd").forGetter(Road::getVillageEnd),
-            RoadSegment.CODEC.listOf().fieldOf("roadSegments").forGetter(Road::getRoadSegments))
+            RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("roadSegments").forGetter(Road::getRoadSegments))
         .apply(builder, Road::new));
 
     private final BlockPos villageStart;
     private final BlockPos villageEnd;
-    private final List<RoadSegment> roadSegments;
+    private final List<DefaultRoadSegment> roadSegments;
 
-    public Road(BlockPos village1, BlockPos village2, List<RoadSegment> roadSegments) {
+    public Road(BlockPos village1, BlockPos village2, List<DefaultRoadSegment> roadSegments) {
         this.villageStart = village1.getX() <= village2.getX() ? village1 : village2;
         this.villageEnd = this.villageStart == village1 ? village2 : village1;
         this.roadSegments = roadSegments;
@@ -38,17 +39,17 @@ public class Road {
         return villageEnd;
     }
 
-    public List<RoadSegment> getRoadSegments() {
+    public List<DefaultRoadSegment> getRoadSegments() {
         return roadSegments;
     }
 
-    public Road addRoadSegment(RoadSegment roadSegment) {
+    public Road addRoadSegment(DefaultRoadSegment roadSegment) {
         this.roadSegments.add(roadSegment);
         return this;
     }
 
     public Road addRoadSegment(BlockPos startPos, BlockPos endPos) {
-        RoadSegment roadSegment = new RoadSegment(startPos, endPos);
+        DefaultRoadSegment roadSegment = new DefaultRoadSegment(startPos, endPos);
         return this.addRoadSegment(roadSegment);
     }
 

@@ -1,4 +1,4 @@
-package com.yungnickyoung.minecraft.yungsroads.world.road;
+package com.yungnickyoung.minecraft.yungsroads.world.road.segment;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -8,7 +8,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.Arrays;
 import java.util.Random;
 
-public class SplineRoadSegment extends RoadSegment {
+public class SplineRoadSegment extends DefaultRoadSegment {
     public static final Codec<SplineRoadSegment> CODEC = RecordCodecBuilder.create(builder -> builder
         .group(
             BlockPos.CODEC.fieldOf("startPos").forGetter(SplineRoadSegment::getStartPos),
@@ -47,6 +47,11 @@ public class SplineRoadSegment extends RoadSegment {
 
     public BlockPos getP2() {
         return p2;
+    }
+
+    @Override
+    public RoadSegmentType<?> type() {
+        return RoadSegmentType.SPLINE;
     }
 
     @Override

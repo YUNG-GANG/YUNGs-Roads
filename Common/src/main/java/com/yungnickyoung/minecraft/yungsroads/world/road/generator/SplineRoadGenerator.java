@@ -1,15 +1,13 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
-import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.RoadSegment;
-import com.yungnickyoung.minecraft.yungsroads.world.road.SplineRoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.road.segment.SplineRoadSegment;
 import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.ConfiguredRoadDecoration;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
@@ -31,18 +29,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
-public class SplineRoadGenerator implements IRoadGenerator {
+public class SplineRoadGenerator extends AbstractRoadGenerator {
     private final ServerLevel serverLevel;
     private final ThreadLocal<WorldgenRandom> random = ThreadLocal.withInitial(() -> new WorldgenRandom(new LegacyRandomSource(0)));
-    private final FastNoise noise;
 //    private final List<AbstractRoadDecoration> decorations;
 
     public SplineRoadGenerator(ServerLevel serverLevel) {
+        super();
         this.serverLevel = serverLevel;
-        this.noise = new FastNoise();
-        this.noise.SetNoiseType(FastNoise.NoiseType.Simplex);
-        this.noise.SetFrequency(.012f);
-        this.noise.SetFractalOctaves(1);
 //        this.decorations = new ArrayList<>();
 //        this.decorations.add(new BushRoadDecoration(.3f));
 //        this.decorations.add(new StoneLampPostRoadDecoration(.3f));
@@ -74,7 +68,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
         // Biome validation
         int riverCount = 0;
-        for (RoadSegment roadSegment : road.getRoadSegments()) {
+        for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
             Holder<Biome> biomeAtStart = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
                     QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                     QuartPos.fromBlock(serverLevel.getSeaLevel()),
@@ -104,6 +98,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
     @Override
     public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+        // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
         // Short-circuit if this chunk isn't between the start/end points of the road
@@ -113,32 +108,13 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
         // Debug markers at road endpoints points
         if (YungsRoadsCommon.DEBUG_MODE) {
-            // Start pos
-            if (isInValidRangeForChunk(chunkPos, road.getVillageStart())) {
-                BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
-                mutable.setY(getSurfaceHeight(level, mutable));
-
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    level.setBlock(mutable, Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
-                }
-            }
-
-            // End pos
-            if (isInValidRangeForChunk(chunkPos, road.getVillageEnd())) {
-                BlockPos.MutableBlockPos mutable = road.getVillageEnd().mutable();
-                mutable.setY(getSurfaceHeight(level, mutable));
-
-                for (int y = 0; y < 10; y++) {
-                    mutable.move(Direction.UP);
-                    level.setBlock(mutable, Blocks.REDSTONE_BLOCK.defaultBlockState(), 2);
-                }
-            }
+            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.EMERALD_BLOCK.defaultBlockState());
         }
 
         // Determine road segments we need to process for this chunk
-        List<RoadSegment> roadSegments = new ArrayList<>();
-        for (RoadSegment roadSegment : road.getRoadSegments()) {
+        List<DefaultRoadSegment> roadSegments = new ArrayList<>();
+        for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
             if (containsRoadSegment(chunkPos, roadSegment)) {
                 roadSegments.add(roadSegment);
             }
@@ -151,7 +127,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
         CarvingMask blockMask = new CarvingMask(level.getHeight(), level.getMinBuildHeight());
 
         // Place road segments in this chunk
-        for (RoadSegment roadSegment : roadSegments) {
+        for (DefaultRoadSegment roadSegment : roadSegments) {
             if ((!(roadSegment instanceof SplineRoadSegment splineRoadSegment))) {
                 YungsRoadsCommon.LOGGER.error("Road segment {} is not a SplineRoadSegment!", roadSegment);
                 continue;
@@ -160,9 +136,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
             // Debug markers at road segment endpoints
             if (YungsRoadsCommon.DEBUG_MODE) {
-                // Start pos
                 placeDebugMarker(level, chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
-                // End pos
                 placeDebugMarker(level, chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
             }
 
@@ -181,28 +155,7 @@ public class SplineRoadGenerator implements IRoadGenerator {
                 // Attempt to place path at this position
                 if (isInValidRangeForChunk(chunkPos, pathPosCenter)) {
                     if (isInChunk(chunkPos, pathPosCenter)) {
-                        // Determine path buffer space at this position.
-                        // This is used to subtly vary the path's width to make its shape more interesting.
-                        double pathBufferSpace = (noise.GetNoise(pathPosCenter.getX(), pathPosCenter.getZ()) + 1) * 2;
-
-                        // Determine the furthest away a block can be placed from the current position.
-                        // Distances are kept as squared values as an optimization.
-                        double maxRoadDistSq = getRoadSizeRadius() * getRoadSizeRadius() + pathBufferSpace;
-
-                        // At each path position, we place a small circle of blocks at surface height
-                        for (int x = -2; x < 3; x++) {
-                            for (int z = -2; z < 3; z++) {
-                                if (x * x + z * z < maxRoadDistSq) {
-                                    mutable.set(pathPosCenter.getX() + x, 0, pathPosCenter.getZ() + z);
-
-                                    // Adjust y-coordinate based on surface height
-                                    int surfaceHeight = getSurfaceHeight(level, mutable);
-                                    mutable.setY(surfaceHeight);
-
-                                    placePathBlock(level, rand, mutable, config, nearestVillage, blockMask);
-                                }
-                            }
-                        }
+                        placePath(level, rand, pathPosCenter, chunkPos, config, blockMask, nearestVillage);
 
                         if (counter >= 50 && counter % 50 == 0) {
                             // Attempt placing decoration at this point.
@@ -214,7 +167,9 @@ public class SplineRoadGenerator implements IRoadGenerator {
                             for (Vec3 normal : normals) {
                                 // Move the mutable to the edge of the road at this position.
                                 mutable.set(pathPosCenter);
-                                mutable.move((int) Math.round(normal.x() * (getRoadSizeRadius() + 1)), 0, (int) Math.round(normal.z() * (getRoadSizeRadius() + 1)));
+                                RoadTypeConfig roadTypeConfig = this.getRoadTypeAtPos(level, mutable, config);
+
+                                mutable.move((int) Math.round(normal.x() * (roadTypeConfig.roadSizeRadius + 1)), 0, (int) Math.round(normal.z() * (roadTypeConfig.roadSizeRadius + 1)));
                                 mutable.setY(getSurfaceHeight(level, mutable) + 1);
 
                                 BlockState currState = level.getBlockState(mutable);
@@ -228,20 +183,20 @@ public class SplineRoadGenerator implements IRoadGenerator {
                                 // Determine decorations that can be placed at this point.
                                 // The decorations list is fetched from a RoadTypeSettings, based on the existing
                                 // block at this position.
-                                RoadTypeSettings roadTypeSettings = null;
-                                for (RoadTypeSettings settings : config.roadTypes) {
-                                    if (settings.matches(level, mutable.below())) {
-                                        roadTypeSettings = settings;
-                                        break;
-                                    }
-                                }
+//                                RoadTypeConfig roadTypeConfig = null;
+//                                for (RoadTypeConfig settings : config.roadTypes) {
+//                                    if (settings.matches(level, mutable.below())) {
+//                                        roadTypeConfig = settings;
+//                                        break;
+//                                    }
+//                                }
 
-                                if (roadTypeSettings == null) {
-                                    continue;
-                                }
+//                                if (roadTypeConfig == null) {
+//                                    continue;
+//                                }
 
                                 // Attempt to place a decoration
-                                List<ConfiguredRoadDecoration> decorationsCopy = new ArrayList<>(roadTypeSettings.decorations);
+                                List<ConfiguredRoadDecoration> decorationsCopy = new ArrayList<>(roadTypeConfig.decorations);
 
                                 while (decorationsCopy.size() > 0) {
                                     ConfiguredRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
@@ -283,11 +238,6 @@ public class SplineRoadGenerator implements IRoadGenerator {
 
             YungsRoadsCommon.LOGGER.debug("Generated {}", roadSegment);
         }
-    }
-
-    @Override
-    public double getRoadSizeRadius() {
-        return 1.5;
     }
 
     /**

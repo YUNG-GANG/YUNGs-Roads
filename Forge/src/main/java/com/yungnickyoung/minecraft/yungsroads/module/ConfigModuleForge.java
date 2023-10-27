@@ -40,7 +40,7 @@ public class ConfigModuleForge {
             ((IStructureRegionCacheProvider) event.getWorld())
                     .getStructureRegionCache()
                     .getStructureRegionGenerator()
-                    .setConfiguredStructureFeatures(YungsRoadsCommon.CONFIG.general.structures);
+                    .setVillageStructures(YungsRoadsCommon.CONFIG.general.structures);
         }
     }
 

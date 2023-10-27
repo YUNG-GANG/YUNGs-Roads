@@ -10,14 +10,14 @@ import java.util.List;
 public class RoadFeatureConfiguration implements FeatureConfiguration {
     public static final Codec<RoadFeatureConfiguration> CODEC = RecordCodecBuilder.create((instance) -> instance
             .group(
-                    RoadTypeSettings.CODEC.listOf().fieldOf("roadTypes").forGetter((config) -> config.roadTypes),
+                    RoadTypeConfig.CODEC.listOf().fieldOf("roadTypes").forGetter((config) -> config.roadTypes),
                     BlockStateRandomizer.CODEC.fieldOf("bridgeBlockStates").forGetter((config) -> config.bridgeBlockStates))
             .apply(instance, RoadFeatureConfiguration::new));
 
-    public final List<RoadTypeSettings> roadTypes;
+    public final List<RoadTypeConfig> roadTypes;
     public final BlockStateRandomizer bridgeBlockStates;
 
-    public RoadFeatureConfiguration(List<RoadTypeSettings> roadTypes, BlockStateRandomizer bridgeBlockStates) {
+    public RoadFeatureConfiguration(List<RoadTypeConfig> roadTypes, BlockStateRandomizer bridgeBlockStates) {
         this.roadTypes = roadTypes;
         this.bridgeBlockStates = bridgeBlockStates;
     }

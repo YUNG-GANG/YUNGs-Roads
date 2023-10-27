@@ -39,7 +39,7 @@ public class ConfigModuleFabric {
         ((IStructureRegionCacheProvider) serverLevel)
                 .getStructureRegionCache()
                 .getStructureRegionGenerator()
-                .setConfiguredStructureFeatures(YungsRoadsCommon.CONFIG.general.structures);
+                .setVillageStructures(YungsRoadsCommon.CONFIG.general.structures);
     }
 
     private static InteractionResult bakeConfig(ConfigHolder<YRConfigFabric> configHolder, YRConfigFabric configFabric) {
