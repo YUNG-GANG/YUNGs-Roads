@@ -35,7 +35,7 @@ public class ConfiguredFeatureModule {
                             new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
                                     .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f),
                             1.5f,
-                            2.0f,
+                            1.5f,
                             List.of(
                                     RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
                                     RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
@@ -48,7 +48,7 @@ public class ConfiguredFeatureModule {
                                     .addBlock(Blocks.COBBLESTONE.defaultBlockState(), 0.7F)
                                     .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F),
                             1.5f,
-                            2.0f,
+                            1.5f,
                             List.of(
                                     RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
                                     RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
@@ -60,7 +60,7 @@ public class ConfiguredFeatureModule {
                             new BlockStateRandomizer(Blocks.SNOW_BLOCK.defaultBlockState())
                                     .addBlock(Blocks.DIRT_PATH.defaultBlockState(), 0.95F),
                             1.5f,
-                            2.0f,
+                            1.5f,
                             List.of(
                                     RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
                                     RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),
@@ -74,7 +74,7 @@ public class ConfiguredFeatureModule {
                                     .addBlock(Blocks.GRANITE.defaultBlockState(), 0.4F)
                                     .addBlock(Blocks.ANDESITE.defaultBlockState(), 0.2F),
                             1.5f,
-                            2.0f,
+                            1.5f,
                             List.of(
                                     RoadDecorations.BUSH1.configured().withChance(0.3f).withNormalOffset(1),
                                     RoadDecorations.SMALL_WOOD_BENCH.configured().withChance(0.3f).withNormalOffset(1),

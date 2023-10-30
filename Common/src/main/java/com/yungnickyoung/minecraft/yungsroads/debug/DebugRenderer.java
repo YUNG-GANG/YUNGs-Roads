@@ -33,7 +33,7 @@ public class DebugRenderer extends GuiComponent {
         int yCenter = height - height / 2;
 
         // Render background
-        fill(matrixStack, xCenter - 128, yCenter - 128, xCenter + 128, yCenter + 128, 0x90808080);
+//        fill(matrixStack, xCenter - 128, yCenter - 128, xCenter + 128, yCenter + 128, 0x90808080);
 
         BlockPos playerPos = minecraft.player == null ? null : minecraft.player.blockPosition();
         if (playerPos != null) {
