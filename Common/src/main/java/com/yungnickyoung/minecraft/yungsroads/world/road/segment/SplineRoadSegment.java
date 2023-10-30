@@ -18,19 +18,30 @@ public class SplineRoadSegment extends DefaultRoadSegment {
         .apply(builder, SplineRoadSegment::new));
 
     private final BlockPos p1, p2;
+    public SplineRoadSegment(BlockPos startPos, BlockPos endPos, Random random) {
+        super(startPos, endPos);
 
-    public SplineRoadSegment(BlockPos startPos, BlockPos p1, BlockPos p2, BlockPos endPos) {
+        int xDist = endPos.getX() - startPos.getX();
+        int zDist = endPos.getZ() - startPos.getZ();
+        int xDir = xDist > 0 ? 1 : -1;
+        int zDir = zDist > 0 ? 1 : -1;
+        int xDistAbs = Math.abs(xDist);
+        int zDistAbs = Math.abs(zDist);
+
+        int p1x = xDistAbs == 0 ? startPos.getX() : startPos.getX() + random.nextInt(xDistAbs) * xDir;
+        int p1z = zDistAbs == 0 ? startPos.getZ() : startPos.getZ() + random.nextInt(zDistAbs) * zDir;
+        int p2x = xDistAbs == 0 ? endPos.getX() : endPos.getX() + random.nextInt(xDistAbs) * -xDir;
+        int p2z = zDistAbs == 0 ? endPos.getZ() : endPos.getZ() + random.nextInt(zDistAbs) * -zDir;
+//        BlockPos p1 = startPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 4, 0, random.nextInt(maxPointOffset) - maxPointOffset / 4);
+//        BlockPos p2 = endPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 4, 0, random.nextInt(maxPointOffset) - maxPointOffset / 4);
+        this.p1 = new BlockPos(p1x, 0, p1z);
+        this.p2 = new BlockPos(p2x, 0, p2z);
+    }
+
+    private SplineRoadSegment(BlockPos startPos, BlockPos p1, BlockPos p2, BlockPos endPos) {
         super(startPos, endPos);
         this.p1 = p1;
         this.p2 = p2;
-    }
-
-    public static SplineRoadSegment createSplineRoadSegment(BlockPos startPos, BlockPos endPos, Random random) {
-        double length = Math.sqrt(startPos.distSqr(endPos));
-        int maxPointOffset = (int) (length);
-        BlockPos p1 = startPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 2, 0, random.nextInt(maxPointOffset) - maxPointOffset / 2);
-        BlockPos p2 = endPos.offset(random.nextInt(maxPointOffset) - maxPointOffset / 2, 0, random.nextInt(maxPointOffset) - maxPointOffset / 2);
-        return new SplineRoadSegment(startPos, p1, p2, endPos);
     }
 
     public BlockPos[] getPoints() {

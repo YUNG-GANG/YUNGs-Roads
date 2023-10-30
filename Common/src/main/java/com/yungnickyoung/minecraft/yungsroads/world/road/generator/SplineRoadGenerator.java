@@ -62,7 +62,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
         for (int i = 0; i < numSegments; i++) {
             BlockPos.MutableBlockPos startPos = blockPos1.offset(xDist * i / numSegments, 0, zDist * i / numSegments).mutable();
             BlockPos.MutableBlockPos endPos = blockPos1.offset(xDist * (i + 1) / numSegments, 0, zDist * (i + 1) / numSegments).mutable();
-            SplineRoadSegment splineRoadSegment = SplineRoadSegment.createSplineRoadSegment(startPos, endPos, random.get());
+            SplineRoadSegment splineRoadSegment = new SplineRoadSegment(startPos, endPos, random.get());
             road.addRoadSegment(splineRoadSegment);
         }
 
