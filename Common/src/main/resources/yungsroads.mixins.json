@@ -5,6 +5,7 @@
   "refmap": "yungsroads.refmap.json",
   "mixins": [
     "DebugScreenOverlayMixin",
+    "accessor.NoiseBasedChunkGeneratorAccessor",
     "ServerLevelMixin",
     "accessor.ChunkGeneratorAccessor"
   ],

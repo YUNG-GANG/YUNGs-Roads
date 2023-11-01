@@ -14,6 +14,7 @@ public class Road {
         .group(
             BlockPos.CODEC.fieldOf("villageStart").forGetter(Road::getVillageStart),
             BlockPos.CODEC.fieldOf("villageEnd").forGetter(Road::getVillageEnd),
+            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
             RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("roadSegments").forGetter(Road::getRoadSegments))
         .apply(builder, Road::new));
 
@@ -21,14 +22,19 @@ public class Road {
     private final BlockPos villageEnd;
     private final List<DefaultRoadSegment> roadSegments;
 
-    public Road(BlockPos village1, BlockPos village2, List<DefaultRoadSegment> roadSegments) {
+
+    public List<BlockPos> positions;
+
+
+    public Road(BlockPos village1, BlockPos village2, List<BlockPos> positions, List<DefaultRoadSegment> roadSegments) {
         this.villageStart = village1.getX() <= village2.getX() ? village1 : village2;
         this.villageEnd = this.villageStart == village1 ? village2 : village1;
+        this.positions = positions;
         this.roadSegments = roadSegments;
     }
 
     public Road(BlockPos village1, BlockPos village2) {
-        this(village1, village2, new ArrayList<>());
+        this(village1, village2, new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getVillageStart() {

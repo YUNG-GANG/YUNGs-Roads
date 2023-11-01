@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
@@ -93,6 +94,33 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
             }
         }
 
+        // Debug rendering
+        if (YungsRoadsCommon.DEBUG_MODE) {
+            for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
+                if ((!(roadSegment instanceof SplineRoadSegment splineRoadSegment))) {
+                    YungsRoadsCommon.LOGGER.error("Road segment {} is not a SplineRoadSegment!", roadSegment);
+                    continue;
+                }
+                Vec3[] pts = splineRoadSegment.getPointsAsVec();
+
+                // Begin Bezier curve path placement
+                float t = 0;
+                Vec3 posVec;
+                BlockPos.MutableBlockPos pathPosCenter = new BlockPos.MutableBlockPos();
+                BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+                while (t <= 1f) {
+                    posVec = getBezierPoint(pts, t);
+                    pathPosCenter.set(Math.round(posVec.x), Math.round(posVec.y), Math.round(posVec.z));
+                    mutable.set(pathPosCenter);
+                    DebugRenderer.getInstance().addPath(new ChunkPos(pathPosCenter), null);
+                    t += 0.002f;
+                }
+
+                YungsRoadsCommon.LOGGER.debug("Generated {}", roadSegment);
+            }
+        }
+
         return Optional.of(road);
     }
 
@@ -158,70 +186,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
                         placePath(level, rand, pathPosCenter, chunkPos, config, blockMask, nearestVillage);
 
                         if (counter >= 50 && counter % 50 == 0) {
-                            // Attempt placing decoration at this point.
-                            // We use normals to find the approximate edge of the road at this point.
-                            // The tangent is provided for decorations should they choose to use it.
-                            Vec3[] normals = getNormals(pts, t);
-                            Vec3 tangent = getTangent(pts, t);
-
-                            for (Vec3 normal : normals) {
-                                // Move the mutable to the edge of the road at this position.
-                                mutable.set(pathPosCenter);
-                                RoadTypeConfig roadTypeConfig = this.getRoadTypeAtPos(level, mutable, config);
-
-                                mutable.move((int) Math.round(normal.x() * (roadTypeConfig.roadSizeRadius + 1)), 0, (int) Math.round(normal.z() * (roadTypeConfig.roadSizeRadius + 1)));
-                                mutable.setY(getSurfaceHeight(level, mutable) + 1);
-
-                                BlockState currState = level.getBlockState(mutable);
-                                BlockState belowState = level.getBlockState(mutable.below());
-
-                                // Check for water, in which case no decorations are placed.
-                                if (belowState.getMaterial() == Material.WATER) {
-                                    continue;
-                                }
-
-                                // Determine decorations that can be placed at this point.
-                                // The decorations list is fetched from a RoadTypeSettings, based on the existing
-                                // block at this position.
-//                                RoadTypeConfig roadTypeConfig = null;
-//                                for (RoadTypeConfig settings : config.roadTypes) {
-//                                    if (settings.matches(level, mutable.below())) {
-//                                        roadTypeConfig = settings;
-//                                        break;
-//                                    }
-//                                }
-
-//                                if (roadTypeConfig == null) {
-//                                    continue;
-//                                }
-
-                                // Attempt to place a decoration
-                                List<ConfiguredRoadDecoration> decorationsCopy = new ArrayList<>(roadTypeConfig.decorations);
-
-                                while (decorationsCopy.size() > 0) {
-                                    ConfiguredRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
-                                    if (decoration.place(level, rand, mutable, normal, tangent)) {
-//                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
-                                        break;
-                                    }
-                                    decorationsCopy.remove(decoration);
-                                }
-
-//                            BlockState surfaceBlock = level.getBlockState(mutable);
-//                            int seaLevelDistance = mutable.getY() - level.getSeaLevel();
-//                            int yCompression = seaLevelDistance / (10 + (3 * normalOffset));
-                                // Place air to destroy any floating plants and the like
-//                            if (yCompression > 0) {
-//                                mutable.move(Direction.UP);
-//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
-//                                mutable.move(Direction.DOWN);
-//                            }
-//                            for (int y = 0; y < yCompression; y++) {
-//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
-//                                mutable.move(Direction.DOWN);
-//                            }
-//                            level.setBlock(mutable, surfaceBlock, 2);
-                            }
+                            tryPlaceDecoration(level, rand, config, pts, t, pathPosCenter);
                         }
 
                         // Debug markers
@@ -237,6 +202,75 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
             }
 
             YungsRoadsCommon.LOGGER.debug("Generated {}", roadSegment);
+        }
+    }
+
+    private void tryPlaceDecoration(WorldGenLevel level, Random rand, RoadFeatureConfiguration config, Vec3[] pts, float t, BlockPos pathPosCenter) {
+        // Attempt placing decoration at this point.
+        // We use normals to find the approximate edge of the road at this point.
+        // The tangent is provided for decorations should they choose to use it.
+        Vec3[] normals = getNormals(pts, t);
+        Vec3 tangent = getTangent(pts, t);
+
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        for (Vec3 normal : normals) {
+            // Move the mutable to the edge of the road at this position.
+            mutable.set(pathPosCenter);
+            RoadTypeConfig roadTypeConfig = this.getRoadTypeAtPos(level, mutable, config);
+
+            mutable.move((int) Math.round(normal.x() * (roadTypeConfig.roadSizeRadius + 1)), 0, (int) Math.round(normal.z() * (roadTypeConfig.roadSizeRadius + 1)));
+            mutable.setY(getSurfaceHeight(level, mutable) + 1);
+
+            BlockState currState = level.getBlockState(mutable);
+            BlockState belowState = level.getBlockState(mutable.below());
+
+            // Check for water, in which case no decorations are placed.
+            if (belowState.getMaterial() == Material.WATER) {
+                continue;
+            }
+
+            // Determine decorations that can be placed at this point.
+            // The decorations list is fetched from a RoadTypeSettings, based on the existing
+            // block at this position.
+//                                RoadTypeConfig roadTypeConfig = null;
+//                                for (RoadTypeConfig settings : config.roadTypes) {
+//                                    if (settings.matches(level, mutable.below())) {
+//                                        roadTypeConfig = settings;
+//                                        break;
+//                                    }
+//                                }
+
+//                                if (roadTypeConfig == null) {
+//                                    continue;
+//                                }
+
+            // Attempt to place a decoration
+            List<ConfiguredRoadDecoration> decorationsCopy = new ArrayList<>(roadTypeConfig.decorations);
+
+            while (decorationsCopy.size() > 0) {
+                ConfiguredRoadDecoration decoration = decorationsCopy.get(decorationsCopy.size() - 1);
+                if (decoration.place(level, rand, mutable, normal, tangent)) {
+//                                        YungsRoadsCommon.LOGGER.info("PLACED {} (t={} counter={})", decoration, t, counter);
+                    break;
+                }
+                decorationsCopy.remove(decoration);
+            }
+
+//                            BlockState surfaceBlock = level.getBlockState(mutable);
+//                            int seaLevelDistance = mutable.getY() - level.getSeaLevel();
+//                            int yCompression = seaLevelDistance / (10 + (3 * normalOffset));
+            // Place air to destroy any floating plants and the like
+//                            if (yCompression > 0) {
+//                                mutable.move(Direction.UP);
+//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
+//                                mutable.move(Direction.DOWN);
+//                            }
+//                            for (int y = 0; y < yCompression; y++) {
+//                                level.setBlock(mutable, Blocks.AIR.defaultBlockState(), 2);
+//                                mutable.move(Direction.DOWN);
+//                            }
+//                            level.setBlock(mutable, surfaceBlock, 2);
         }
     }
 

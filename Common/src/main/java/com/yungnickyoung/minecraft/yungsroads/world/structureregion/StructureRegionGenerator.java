@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkGeneratorAccessor;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LinearRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.SplineRoadGenerator;
@@ -43,7 +44,8 @@ public class StructureRegionGenerator {
     public StructureRegionGenerator(ServerLevel serverLevel) {
         this.serverLevel = serverLevel;
         this.random = new WorldgenRandom(new LegacyRandomSource(0));
-        this.roadGenerator = new SplineRoadGenerator(serverLevel);
+//        this.roadGenerator = new SplineRoadGenerator(serverLevel);
+        this.roadGenerator = new AStarRoadGenerator(serverLevel);
 //        this.roadGenerator = new LinearRoadGenerator(serverLevel);
         this.villageStructures = YungsRoadsCommon.CONFIG.general.structures;
     }
@@ -140,7 +142,7 @@ public class StructureRegionGenerator {
 
         // TODO put these in config options
         int numRoads = villageList.size();
-        int maxRoadLength = 1600;
+        int maxRoadLength = 800;
         int minRoadLength = 50;
 
         // Generate some roads connecting villages
