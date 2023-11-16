@@ -74,6 +74,14 @@ public class StructureRegion {
         return compoundTag;
     }
 
+    public boolean hasRoadAt(BlockPos pos) {
+        return this.roads.stream().anyMatch((road) -> road.positions.contains(pos));
+    }
+
+    public boolean hasRoadInRange(BlockPos pos, int range) {
+        return this.roads.stream().anyMatch((road) -> road.positions.stream().anyMatch((roadPos) -> roadPos.distSqr(pos) <= range * range));
+    }
+
     public String getFileName() {
         return this.pos.getFileName();
     }
