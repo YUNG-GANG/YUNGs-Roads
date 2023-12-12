@@ -100,7 +100,7 @@ public abstract class AbstractRoadGenerator {
         }
 
         if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
-            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), Blocks.LAPIS_BLOCK.defaultBlockState(), blockMask, nearestVillage);
+            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), Blocks.DIAMOND_BLOCK.defaultBlockState(), blockMask, nearestVillage);
             return;
         }
 

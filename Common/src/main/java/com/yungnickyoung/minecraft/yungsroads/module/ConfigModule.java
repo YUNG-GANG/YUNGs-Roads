@@ -22,7 +22,6 @@ public class ConfigModule {
         public boolean placeRoadSegmentEndpointDebugMarkers = false;
         public boolean placeStraightDebugLine = false;
         public boolean placeDebugPaths = false;
-
     }
 
     public static class Advanced {

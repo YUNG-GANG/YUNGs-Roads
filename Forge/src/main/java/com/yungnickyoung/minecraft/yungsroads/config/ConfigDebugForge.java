@@ -73,7 +73,7 @@ public class ConfigDebugForge {
         placeDebugPaths = BUILDER
                 .comment("""
                             Whether to place debug paths instead of normal paths.
-                            Debug paths are only a single block wide and are made of lapis blocks.
+                            Debug paths are only a single block wide and are made of diamond blocks.
                             Default: false""".indent(1))
                 .define("placeDebugPaths", false);
 

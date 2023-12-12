@@ -67,6 +67,8 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
             }
         }
 
+        BlockPos startPos = roadSegments.get(0).getStartPos();
+
         // generate road
         // A* algorithm
         for (int i = 0; i < roadSegments.size(); i++) {
@@ -76,7 +78,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
             BlockPos targetPos = roadSegment.getEndPos();
 
             // Initialize start node
-            Node start = new Node(serverLevel, roadSegment.getStartPos(), YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance, false);
+            Node start = new Node(serverLevel, startPos, YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance, false);
             start.g = 0;
             start.h = Node.calcH(start, targetPos);
             start.f = start.g + start.h;
@@ -90,13 +92,14 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
             while (!open.isEmpty()) {
                 iterations++;
                 if (iterations > MAX_ITERATIONS) {
-                    YungsRoadsCommon.LOGGER.info("ITERATIONS TOO LONG FOR SEGMENT AT " + roadSegment.getStartPos() + " TO " + roadSegment.getEndPos());
+                    YungsRoadsCommon.LOGGER.info("ITERATIONS TOO LONG FOR SEGMENT AT " + startPos + " TO " + targetPos);
                     break;
                 }
 
                 Node n = open.peek();
                 if (n.pos.distSqr(targetPos) <= YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance * YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance + 1) {
                     finalNode = n;
+                    startPos = finalNode.pos;
                     break;
                 }
 
