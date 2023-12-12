@@ -22,9 +22,7 @@ public class DebugModuleForge {
 
     public static void renderDebugMap(RenderGameOverlayEvent.Pre event) {
         if (event.getType() == RenderGameOverlayEvent.ElementType.DEBUG) {
-            if (DebugRenderer.getInstance().enabled) {
-                DebugRenderer.getInstance().render(Minecraft.getInstance(), event.getMatrixStack());
-            }
+            DebugRenderer.getInstance().render(Minecraft.getInstance(), event.getMatrixStack());
         }
     }
 

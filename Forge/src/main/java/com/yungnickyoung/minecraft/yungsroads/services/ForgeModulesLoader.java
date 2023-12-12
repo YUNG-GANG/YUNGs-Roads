@@ -12,8 +12,6 @@ public class ForgeModulesLoader implements IModulesLoader {
         ConfigModuleForge.init();
         PlacementModuleForge.init();
         FeatureModuleForge.init();
-        if (YungsRoadsCommon.DEBUG_MODE) {
-            DebugModuleForge.init();
-        }
+        DebugModuleForge.init();
     }
 }

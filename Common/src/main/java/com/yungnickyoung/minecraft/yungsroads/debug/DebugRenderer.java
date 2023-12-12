@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.debug;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
@@ -26,6 +27,10 @@ public class DebugRenderer extends GuiComponent {
     private final Random random = new Random();
 
     public void render(Minecraft minecraft, PoseStack matrixStack) {
+        if (!YungsRoadsCommon.CONFIG.debug.enableDebugMap || !enabled) {
+            return;
+        }
+
         int width = minecraft.getWindow().getGuiScaledWidth();
         int height = minecraft.getWindow().getGuiScaledHeight();
 
@@ -38,7 +43,7 @@ public class DebugRenderer extends GuiComponent {
         BlockPos playerPos = minecraft.player == null ? null : minecraft.player.blockPosition();
         if (playerPos != null) {
             ChunkPos playerChunkPos = new ChunkPos(playerPos);
-            // Render strucure regions
+            // Render structure regions
             synchronized (structureRegions) {
                 structureRegions.forEach(((structureRegionPos, color) -> {
                     ChunkPos relativeChunkStartPos = new ChunkPos(structureRegionPos.getX() * 256 - playerChunkPos.x, structureRegionPos.getZ() * 256 - playerChunkPos.z);

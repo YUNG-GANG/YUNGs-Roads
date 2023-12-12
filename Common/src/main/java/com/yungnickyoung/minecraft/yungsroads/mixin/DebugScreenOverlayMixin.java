@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.mixin;
 
+import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
@@ -32,6 +32,10 @@ public abstract class DebugScreenOverlayMixin extends GuiComponent {
 
     @Inject(method = "getGameInformation", at = @At("RETURN"))
     public void yungsroads_attachExtraInfoToDebugOverlay(CallbackInfoReturnable<List<String>> cir) {
+        if (!YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info) {
+            return;
+        }
+
         List<String> list = cir.getReturnValue();
         ServerLevel serverLevel = this.getServerLevel();
         if (serverLevel != null) {
@@ -58,7 +62,7 @@ public abstract class DebugScreenOverlayMixin extends GuiComponent {
                 if (roadOptional.isPresent()) {
                     Road road = roadOptional.get();
                     Optional<Road.DebugNode> debugNodeOptional = road.positions.stream()
-                            .filter(node -> node.pos.getX() == playerPos.getX() && node.pos.getZ() == playerPos.getZ())
+                            .filter(node -> node.jitteredPos.getX() == playerPos.getX() && node.jitteredPos.getZ() == playerPos.getZ())
                             .findFirst();
                     if (debugNodeOptional.isPresent()) {
                         Road.DebugNode debugNode = debugNodeOptional.get();

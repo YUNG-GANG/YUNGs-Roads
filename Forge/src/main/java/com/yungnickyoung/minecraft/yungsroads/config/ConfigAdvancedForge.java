@@ -45,15 +45,17 @@ public class ConfigAdvancedForge {
                     .comment(
                             """
                                     The distance between adjacent nodes in the path, in blocks.
-                                    Default: 2""".indent(1))
+                                    Lower values will result in more nodes, and thus more natural path shapes,
+                                    but will also result in worse performance.
+                                    Default: 8""".indent(1))
                     .worldRestart()
-                    .define("Node Step Distance", 2);
+                    .define("Node Step Distance", 8);
 
             jitterAmount = BUILDER
                     .comment(
                             """
                                     The amount of noise-based jitter to apply to the path's shape.
-                                    Default: 4""".indent(1))
+                                    Default: 4.0""".indent(1))
                     .worldRestart()
                     .define("Jitter Amount", 4.0);
 
@@ -61,7 +63,7 @@ public class ConfigAdvancedForge {
                     .comment(
                             """
                                     The scalar to apply to the H function (distance) of the path's shape.
-                                    Default: 10""".indent(1))
+                                    Default: 10.0""".indent(1))
                     .worldRestart()
                     .define("H Scalar", 10.0);
 
@@ -79,7 +81,7 @@ public class ConfigAdvancedForge {
                             """
                                     The scalar to apply to the slope factor of the path's shape.
                                     Increasing this value will make the paths flatter, I think.
-                                    Default: 10""".indent(1))
+                                    Default: 10.0""".indent(1))
                     .worldRestart()
                     .define("High Slope Factor Scalar", 10.0);
 
@@ -88,7 +90,7 @@ public class ConfigAdvancedForge {
                             """
                                     The scalar to apply to the slope factor of the path's shape.
                                     Increasing this value will make the paths flatter, I think.
-                                    Default: 2""".indent(1))
+                                    Default: 2.0""".indent(1))
                     .worldRestart()
                     .define("Low Slope Factor Scalar", 2.0);
 
@@ -96,17 +98,17 @@ public class ConfigAdvancedForge {
                     .comment(
                             """
                                     The PV threshold between low and high slope factors.
-                                    Default: 0.0""".indent(1))
+                                    Default: -1.0""".indent(1))
                     .worldRestart()
-                    .define("Slope Factor Threshold", 0.0);
+                    .define("Slope Factor Threshold", -1.0);
 
             altitudePunishment = BUILDER
                     .comment(
                             """
                                     The cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-                                    Default: 10""".indent(1))
+                                    Default: 2.0""".indent(1))
                     .worldRestart()
-                    .define("Altitude Punishment", 10.0);
+                    .define("Altitude Punishment", 2.0);
 
             BUILDER.pop();
         }
@@ -134,16 +136,16 @@ public class ConfigAdvancedForge {
                     .comment(
                             """
                                     The proportion of the straight-line path length to use as the segment step distance.
-                                    Default: 0.1""".indent(1))
+                                    Default: 0.05""".indent(1))
                     .worldRestart()
-                    .define("Segment Step Distance Proportion", 0.1);
+                    .define("Segment Step Distance Proportion", 0.05);
 
             hScalar = BUILDER
                     .comment(
                             """
                                     The scalar to apply to the H function (distance) of the path's shape
                                     when determining segment endpoints.
-                                    Default: 10""".indent(1))
+                                    Default: 10.0""".indent(1))
                     .worldRestart()
                     .define("H Scalar", 10.0);
 
@@ -152,16 +154,16 @@ public class ConfigAdvancedForge {
                             """
                                     The scalar to apply to the path's length, in terms of nodes.
                                     Increasing this value will make the paths straighter and more direct.
-                                    Default: 10.0""".indent(1))
+                                    Default: 3.0""".indent(1))
                     .worldRestart()
-                    .define("Path Scalar", 10.0);
+                    .define("Path Scalar", 3.0);
 
             highSlopeFactorScalar = BUILDER
                     .comment(
                             """
                                     The scalar to apply to the slope factor of the path's shape.
                                     Increasing this value will make the paths flatter, I think.
-                                    Default: 10""".indent(1))
+                                    Default: 10.0""".indent(1))
                     .worldRestart()
                     .define("High Slope Factor Scalar", 10.0);
 
@@ -170,7 +172,7 @@ public class ConfigAdvancedForge {
                             """
                                     The scalar to apply to the slope factor of the path's shape.
                                     Increasing this value will make the paths flatter, I think.
-                                    Default: 2""".indent(1))
+                                    Default: 2.0""".indent(1))
                     .worldRestart()
                     .define("Low Slope Factor Scalar", 2.0);
 
@@ -178,17 +180,17 @@ public class ConfigAdvancedForge {
                     .comment(
                             """
                                     The PV threshold between low and high slope factors.
-                                    Default: 0.0""".indent(1))
+                                    Default: -1.0""".indent(1))
                     .worldRestart()
-                    .define("Slope Factor Threshold", 0.0);
+                    .define("Slope Factor Threshold", -1.0);
 
             altitudePunishment = BUILDER
                     .comment(
                             """
                                     The cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-                                    Default: 10""".indent(1))
+                                    Default: 2.0""".indent(1))
                     .worldRestart()
-                    .define("Altitude Punishment", 10.0);
+                    .define("Altitude Punishment", 2.0);
 
             BUILDER.pop();
         }

@@ -3,7 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsapi.world.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
+import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.NoiseBasedChunkGeneratorAccessor;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
@@ -12,11 +12,15 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.biome.TerrainShaper;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.material.Material;
@@ -95,6 +99,11 @@ public abstract class AbstractRoadGenerator {
             return;
         }
 
+        if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
+            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), Blocks.LAPIS_BLOCK.defaultBlockState(), blockMask, nearestVillage);
+            return;
+        }
+
         BlockPos.MutableBlockPos mutable = pos.mutable();
 
         // Determine the road type settings for this position.
@@ -156,10 +165,6 @@ public abstract class AbstractRoadGenerator {
         // Otherwise, set path block
         level.setBlock(pos, roadTypeConfig.pathBlockStates.get(random), 2);
 
-//        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
-//            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
-//        }
-
         if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
 
@@ -174,10 +179,6 @@ public abstract class AbstractRoadGenerator {
         if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) return;
 
         level.setBlock(pos, blockState, 2);
-
-//        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
-//            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
-//        }
 
         if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
@@ -238,5 +239,12 @@ public abstract class AbstractRoadGenerator {
         // all scenarios, but covers most without incurring too much performance cost.
         return (roadSegmentStartX >= chunkStartX - chunkPad || roadSegmentEndX >= chunkStartX - chunkPad)
                 && (roadSegmentStartX <= chunkEndX + chunkPad || roadSegmentEndX <= chunkEndX + chunkPad);
+    }
+
+    static float getPVNoiseAt(ServerLevel serverLevel, BlockPos pos) {
+        ChunkGenerator chunkGenerator = serverLevel.getChunkSource().getGenerator();
+        DensityFunction.SinglePointContext p1 = new DensityFunction.SinglePointContext(pos.getX(), pos.getY(), pos.getZ());
+        double ridgeP1 = ((NoiseBasedChunkGeneratorAccessor) chunkGenerator).getRouter().ridges().compute(p1);
+        return TerrainShaper.peaksAndValleys((float) ridgeP1);
     }
 }

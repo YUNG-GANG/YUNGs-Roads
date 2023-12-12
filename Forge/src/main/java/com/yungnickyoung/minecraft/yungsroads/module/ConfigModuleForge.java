@@ -60,15 +60,24 @@ public class ConfigModuleForge {
         YungsRoadsCommon.CONFIG.advanced.path.highSlopeFactorScalar = YRConfigForge.advanced.path.highSlopeFactorScalar.get();
         YungsRoadsCommon.CONFIG.advanced.path.lowSlopeFactorScalar = YRConfigForge.advanced.path.lowSlopeFactorScalar.get();
         YungsRoadsCommon.CONFIG.advanced.path.slopeFactorThreshold = YRConfigForge.advanced.path.slopeFactorThreshold.get();
-        YungsRoadsCommon.CONFIG.advanced.path.altitudePunishment = YRConfigForge.advanced.path.altitudePunishment.get();
+        YungsRoadsCommon.CONFIG.advanced.path.altitudePunishmentScalar = YRConfigForge.advanced.path.altitudePunishment.get();
 
         YungsRoadsCommon.CONFIG.advanced.segment.nodeStepDistanceProportion = YRConfigForge.advanced.segment.segmentStepDistanceProportion.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.hScalar = YRConfigForge.advanced.path.hScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.pathScalar = YRConfigForge.advanced.path.pathScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.highSlopeFactorScalar = YRConfigForge.advanced.path.highSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.lowSlopeFactorScalar = YRConfigForge.advanced.path.lowSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.slopeFactorThreshold = YRConfigForge.advanced.path.slopeFactorThreshold.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.altitudePunishment = YRConfigForge.advanced.path.altitudePunishment.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.hScalar = YRConfigForge.advanced.segment.hScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.pathScalar = YRConfigForge.advanced.segment.pathScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.highSlopeFactorScalar = YRConfigForge.advanced.segment.highSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.lowSlopeFactorScalar = YRConfigForge.advanced.segment.lowSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.slopeFactorThreshold = YRConfigForge.advanced.segment.slopeFactorThreshold.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.altitudePunishmentScalar = YRConfigForge.advanced.segment.altitudePunishment.get();
+
+        YungsRoadsCommon.CONFIG.debug.enableDebugMap = YRConfigForge.debug.enableDebugMap.get();
+        YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigForge.debug.enableExtraDebugF3Info.get();
+        YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers = YRConfigForge.debug.placeUnjitteredPosDebugMarkers.get();
+        YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers = YRConfigForge.debug.placeJitteredPosDebugMarkers.get();
+        YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers = YRConfigForge.debug.placeRoadEndpointDebugMarkers.get();
+        YungsRoadsCommon.CONFIG.debug.placeRoadSegmentEndpointDebugMarkers = YRConfigForge.debug.placeRoadSegmentEndpointDebugMarkers.get();
+        YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine = YRConfigForge.debug.placeStraightDebugLine.get();
+        YungsRoadsCommon.CONFIG.debug.placeDebugPaths = YRConfigForge.debug.placeDebugPaths.get();
     }
 
     private static HolderSet<ConfiguredStructureFeature<?, ?>> parseStructureStringList(String listString, LevelAccessor levelAccessor) {

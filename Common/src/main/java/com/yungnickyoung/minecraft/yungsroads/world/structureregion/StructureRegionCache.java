@@ -55,9 +55,7 @@ public class StructureRegionCache {
                 nearestVillage = candidateChunkPos.getWorldPosition();
             }
 
-            if (YungsRoadsCommon.DEBUG_MODE) {
-                DebugRenderer.getInstance().addVillage(candidateChunkPos);
-            }
+            DebugRenderer.getInstance().addVillage(candidateChunkPos);
         }
 
         return nearestVillage;
@@ -73,9 +71,7 @@ public class StructureRegionCache {
         return this.cache.computeIfAbsent(regionKey, newKey -> {
             StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
 
-            if (YungsRoadsCommon.DEBUG_MODE) {
-                DebugRenderer.getInstance().addStructureRegion(structureRegionPos);
-            }
+            DebugRenderer.getInstance().addStructureRegion(structureRegionPos);
 
             File file = this.savePath.resolve(structureRegionPos.getFileName()).toFile();
 

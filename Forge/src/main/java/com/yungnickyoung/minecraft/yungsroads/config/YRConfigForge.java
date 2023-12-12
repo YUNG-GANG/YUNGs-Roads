@@ -8,12 +8,14 @@ public class YRConfigForge {
 
     public static final ConfigGeneralForge general;
     public static final ConfigAdvancedForge advanced;
+    public static final ConfigDebugForge debug;
 
     static {
         BUILDER.push("YUNG's Roads");
 
         general = new ConfigGeneralForge(BUILDER);
         advanced = new ConfigAdvancedForge(BUILDER);
+        debug = new ConfigDebugForge(BUILDER);
 
         BUILDER.pop();
         SPEC = BUILDER.build();

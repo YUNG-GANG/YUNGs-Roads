@@ -68,7 +68,8 @@ public class Road {
     public static class DebugNode implements Comparable<DebugNode> {
         public static final Codec<DebugNode> CODEC = RecordCodecBuilder.create(builder -> builder
                 .group(
-                        BlockPos.CODEC.fieldOf("pos").forGetter(node -> node.pos),
+                        BlockPos.CODEC.fieldOf("rawPos").forGetter(node -> node.rawPos),
+                        BlockPos.CODEC.fieldOf("jitteredPos").forGetter(node -> node.jitteredPos),
                         Codec.DOUBLE.fieldOf("f").forGetter(node -> node.f),
                         Codec.DOUBLE.fieldOf("g").forGetter(node -> node.g),
                         Codec.DOUBLE.fieldOf("h").forGetter(node -> node.h),
@@ -77,12 +78,13 @@ public class Road {
                         Codec.DOUBLE.fieldOf("altitudePunishment").forGetter(node -> node.altitudePunishment)
                 ).apply(builder, DebugNode::new));
 
-        public BlockPos pos;
+        public BlockPos rawPos, jitteredPos;
         public double f, g, h;
         public double pathFactor, slopeFactor, altitudePunishment;
 
-        private DebugNode(BlockPos pos, double f, double g, double h, double pathFactor, double slopeFactor, double altitudePunishment) {
-            this.pos = pos;
+        private DebugNode(BlockPos rawPos, BlockPos jitteredPos, double f, double g, double h, double pathFactor, double slopeFactor, double altitudePunishment) {
+            this.rawPos = rawPos;
+            this.jitteredPos = jitteredPos;
             this.f = f;
             this.g = g;
             this.h = h;
@@ -92,7 +94,7 @@ public class Road {
         }
 
         public DebugNode(AStarRoadGenerator.Node node) {
-            this.pos = node.pos;
+            this.rawPos = node.pos;
             this.f = node.f;
             this.g = node.g;
             this.h = node.h;
@@ -103,7 +105,7 @@ public class Road {
 
         @Override
         public int compareTo(DebugNode o) {
-            return this.pos.compareTo(o.pos);
+            return this.jitteredPos.compareTo(o.jitteredPos);
         }
     }
 }
