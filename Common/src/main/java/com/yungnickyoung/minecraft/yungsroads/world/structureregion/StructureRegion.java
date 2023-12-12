@@ -2,12 +2,14 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.mojang.serialization.DataResult;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.LongArrayTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.ChunkPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,6 +50,11 @@ public class StructureRegion {
             }
         }
         this.roads = roads;
+
+        if (YungsRoadsCommon.DEBUG_MODE) {
+            this.villageChunks.forEach(chunkPos -> DebugRenderer.getInstance().addVillage(new ChunkPos(chunkPos)));
+            this.roads.forEach(road -> road.positions.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.pos), null)));
+        }
     }
 
     public CompoundTag toNbt() {

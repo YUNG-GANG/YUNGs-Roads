@@ -91,6 +91,18 @@ public class DebugRenderer extends GuiComponent {
         }
     }
 
+    public void clearAll() {
+        synchronized (villages) {
+            villages.clear();
+        }
+        synchronized (paths) {
+            paths.clear();
+        }
+        synchronized (structureRegions) {
+            structureRegions.clear();
+        }
+    }
+
     private int getRandomColor() {
         return random.nextInt() | 0xFF000000;
     }

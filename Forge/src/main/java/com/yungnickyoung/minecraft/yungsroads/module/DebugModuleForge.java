@@ -7,6 +7,7 @@ import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.world.WorldEvent;
 
 public class DebugModuleForge {
     static int timer = 20;
@@ -16,13 +17,13 @@ public class DebugModuleForge {
         MinecraftForge.EVENT_BUS.addListener(DebugModuleForge::renderDebugMap);
         MinecraftForge.EVENT_BUS.addListener(DebugModuleForge::onKeyPress);
         MinecraftForge.EVENT_BUS.addListener(DebugModuleForge::onTick);
+        MinecraftForge.EVENT_BUS.addListener(DebugModuleForge::onWorldUnload);
     }
 
     public static void renderDebugMap(RenderGameOverlayEvent.Pre event) {
         if (event.getType() == RenderGameOverlayEvent.ElementType.DEBUG) {
             if (DebugRenderer.getInstance().enabled) {
                 DebugRenderer.getInstance().render(Minecraft.getInstance(), event.getMatrixStack());
-                event.setCanceled(true);
             }
         }
     }
@@ -37,6 +38,10 @@ public class DebugModuleForge {
                 timer = 20;
             }
         }
+    }
+
+    public static void onWorldUnload(WorldEvent.Unload event) {
+        DebugRenderer.getInstance().clearAll();
     }
 
     public static void onTick(TickEvent.RenderTickEvent event) {

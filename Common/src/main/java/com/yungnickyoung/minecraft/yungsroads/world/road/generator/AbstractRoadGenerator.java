@@ -156,9 +156,9 @@ public abstract class AbstractRoadGenerator {
         // Otherwise, set path block
         level.setBlock(pos, roadTypeConfig.pathBlockStates.get(random), 2);
 
-        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
-            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
-        }
+//        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
+//            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+//        }
 
         if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
@@ -175,9 +175,9 @@ public abstract class AbstractRoadGenerator {
 
         level.setBlock(pos, blockState, 2);
 
-        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
-            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
-        }
+//        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
+//            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+//        }
 
         if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
