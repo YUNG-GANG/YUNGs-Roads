@@ -57,12 +57,12 @@ public abstract class AbstractRoadGenerator {
     /**
      * Places the {@link Road} for blocks within a given chunk.
      *
-     * @param road     The {@link Road} to place.
-     * @param world    The world, passed in during feature generation.
-     * @param rand     Random passed in during feature generation.
-     * @param blockPos A block pos within the chunk we want to operate on. Should be passed in during feature generation.
-     *                 Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
-     *                 even if they contain Road positions.
+     * @param road           The {@link Road} to place.
+     * @param world          The world, passed in during feature generation.
+     * @param rand           Random passed in during feature generation.
+     * @param blockPos       A block pos within the chunk we want to operate on. Should be passed in during feature generation.
+     *                       Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
+     *                       even if they contain Road positions.
      * @param nearestVillage The location of the nearest village to this point.
      *                       Only used for rendering the debug view.
      */
@@ -163,6 +163,25 @@ public abstract class AbstractRoadGenerator {
         if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
     }
 
+    void DEBUGplacePath(WorldGenLevel level, BlockPos pos, ChunkPos chunkPos, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage, BlockState blockState) {
+        if (!isInValidRangeForChunk(chunkPos, pos)) {
+            return;
+        }
+        DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), blockState, blockMask, nearestVillage);
+    }
+
+    private void DEBUGplaceBlock(WorldGenLevel level, BlockPos pos, BlockState blockState, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage) {
+        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) return;
+
+        level.setBlock(pos, blockState, 2);
+
+        if (YungsRoadsCommon.DEBUG_MODE && nearestVillage != null) {
+            DebugRenderer.getInstance().addPath(new ChunkPos(pos), new ChunkPos(nearestVillage));
+        }
+
+        if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
+    }
+
     void placeDebugMarker(WorldGenLevel level, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
         if (isInChunk(chunkPos, blockPos)) {
             BlockPos.MutableBlockPos mutable = blockPos.mutable();
@@ -170,7 +189,9 @@ public abstract class AbstractRoadGenerator {
 
             for (int y = 0; y < 10; y++) {
                 mutable.move(Direction.UP);
-                level.setBlock(mutable, markerBlock, 2);
+                if (level.getBlockState(mutable).isAir()) {
+                    level.setBlock(mutable, markerBlock, 2);
+                }
             }
         }
     }

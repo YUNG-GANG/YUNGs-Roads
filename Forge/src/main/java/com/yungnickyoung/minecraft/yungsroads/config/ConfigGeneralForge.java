@@ -5,6 +5,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
 public class ConfigGeneralForge {
     public final ForgeConfigSpec.ConfigValue<String> structures;
 
+
     public ConfigGeneralForge(final ForgeConfigSpec.Builder BUILDER) {
         BUILDER
                 .comment(

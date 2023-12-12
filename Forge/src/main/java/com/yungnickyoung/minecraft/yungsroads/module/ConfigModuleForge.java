@@ -52,6 +52,23 @@ public class ConfigModuleForge {
 
     private static void bakeConfig() {
         YungsRoadsCommon.CONFIG.general.structuresString = YRConfigForge.general.structures.get();
+
+        YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance = YRConfigForge.advanced.path.nodeStepDistance.get();
+        YungsRoadsCommon.CONFIG.advanced.path.jitterAmount = YRConfigForge.advanced.path.jitterAmount.get();
+        YungsRoadsCommon.CONFIG.advanced.path.hScalar = YRConfigForge.advanced.path.hScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.path.pathScalar = YRConfigForge.advanced.path.pathScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.path.highSlopeFactorScalar = YRConfigForge.advanced.path.highSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.path.lowSlopeFactorScalar = YRConfigForge.advanced.path.lowSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.path.slopeFactorThreshold = YRConfigForge.advanced.path.slopeFactorThreshold.get();
+        YungsRoadsCommon.CONFIG.advanced.path.altitudePunishment = YRConfigForge.advanced.path.altitudePunishment.get();
+
+        YungsRoadsCommon.CONFIG.advanced.segment.nodeStepDistanceProportion = YRConfigForge.advanced.segment.segmentStepDistanceProportion.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.hScalar = YRConfigForge.advanced.path.hScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.pathScalar = YRConfigForge.advanced.path.pathScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.highSlopeFactorScalar = YRConfigForge.advanced.path.highSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.lowSlopeFactorScalar = YRConfigForge.advanced.path.lowSlopeFactorScalar.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.slopeFactorThreshold = YRConfigForge.advanced.path.slopeFactorThreshold.get();
+        YungsRoadsCommon.CONFIG.advanced.segment.altitudePunishment = YRConfigForge.advanced.path.altitudePunishment.get();
     }
 
     private static HolderSet<ConfiguredStructureFeature<?, ?>> parseStructureStringList(String listString, LevelAccessor levelAccessor) {

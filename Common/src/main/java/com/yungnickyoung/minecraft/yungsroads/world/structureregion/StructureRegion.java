@@ -79,7 +79,13 @@ public class StructureRegion {
     }
 
     public boolean hasRoadInRange(BlockPos pos, int range) {
-        return this.roads.stream().anyMatch((road) -> road.positions.stream().anyMatch((roadPos) -> roadPos.distSqr(pos) <= range * range));
+        return this.roads.stream().anyMatch((road) -> road.positions.stream().anyMatch(node -> node.pos.distSqr(pos) <= range * range));
+    }
+
+    public Optional<Road> getRoadAt(BlockPos pos) {
+        return this.roads.stream().filter(road -> road.positions.stream()
+                .anyMatch(node -> node.pos.getX() == pos.getX() && node.pos.getZ() == pos.getZ()))
+                .findFirst();
     }
 
     public String getFileName() {
