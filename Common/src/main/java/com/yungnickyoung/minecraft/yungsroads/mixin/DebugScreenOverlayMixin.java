@@ -61,7 +61,7 @@ public abstract class DebugScreenOverlayMixin extends GuiComponent {
 
                 if (roadOptional.isPresent()) {
                     Road road = roadOptional.get();
-                    Optional<Road.DebugNode> debugNodeOptional = road.positions.stream()
+                    Optional<Road.DebugNode> debugNodeOptional = road.nodes.stream()
                             .filter(node -> node.jitteredPos.getX() == playerPos.getX() && node.jitteredPos.getZ() == playerPos.getZ())
                             .findFirst();
                     if (debugNodeOptional.isPresent()) {

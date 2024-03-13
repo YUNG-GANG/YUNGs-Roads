@@ -15,7 +15,8 @@ public class Road {
         .group(
             BlockPos.CODEC.fieldOf("villageStart").forGetter(Road::getVillageStart),
             BlockPos.CODEC.fieldOf("villageEnd").forGetter(Road::getVillageEnd),
-            DebugNode.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
+            DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
+            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
             RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("roadSegments").forGetter(Road::getRoadSegments))
         .apply(builder, Road::new));
 
@@ -24,18 +25,20 @@ public class Road {
     private final List<DefaultRoadSegment> roadSegments;
 
 
-    public List<DebugNode> positions;
+    public List<DebugNode> nodes;
+    public List<BlockPos> positions;
 
 
-    public Road(BlockPos village1, BlockPos village2, List<DebugNode> positions, List<DefaultRoadSegment> roadSegments) {
+    public Road(BlockPos village1, BlockPos village2, List<DebugNode> nodes, List<BlockPos> positions, List<DefaultRoadSegment> roadSegments) {
         this.villageStart = village1.getX() <= village2.getX() ? village1 : village2;
         this.villageEnd = this.villageStart == village1 ? village2 : village1;
+        this.nodes = nodes;
         this.positions = positions;
         this.roadSegments = roadSegments;
     }
 
     public Road(BlockPos village1, BlockPos village2) {
-        this(village1, village2, new ArrayList<>(), new ArrayList<>());
+        this(village1, village2, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getVillageStart() {
@@ -101,6 +104,11 @@ public class Road {
             this.pathFactor = node.pathFactor;
             this.slopeFactor = node.slopeFactor;
             this.altitudePunishment = node.altitudePunishment;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof DebugNode && this.jitteredPos.equals(((DebugNode) obj).jitteredPos);
         }
 
         @Override

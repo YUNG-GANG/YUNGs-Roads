@@ -52,7 +52,7 @@ public class StructureRegion {
         this.roads = roads;
 
         this.villageChunks.forEach(chunkPos -> DebugRenderer.getInstance().addVillage(new ChunkPos(chunkPos)));
-        this.roads.forEach(road -> road.positions.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.jitteredPos), null)));
+        this.roads.forEach(road -> road.nodes.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.jitteredPos), null)));
     }
 
     public CompoundTag toNbt() {
@@ -84,12 +84,12 @@ public class StructureRegion {
     }
 
     public boolean hasRoadInRange(BlockPos pos, int range) {
-        return this.roads.stream().anyMatch((road) -> road.positions.stream().anyMatch(node -> node.jitteredPos.distSqr(pos) <= range * range));
+        return this.roads.stream().anyMatch((road) -> road.positions.stream().anyMatch(p -> p.distSqr(pos) <= range * range));
     }
 
     public Optional<Road> getRoadAt(BlockPos pos) {
         return this.roads.stream().filter(road -> road.positions.stream()
-                .anyMatch(node -> node.jitteredPos.getX() == pos.getX() && node.jitteredPos.getZ() == pos.getZ()))
+                .anyMatch(p -> p.getX() == pos.getX() && p.getZ() == pos.getZ()))
                 .findFirst();
     }
 

@@ -20,10 +20,12 @@ import net.minecraft.world.level.block.Blocks;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Random;
+import java.util.Set;
 
 public class AStarRoadGenerator extends AbstractRoadGenerator {
     private static final int MAX_ITERATIONS = 1_000_000; // TODO reduce this?
@@ -67,10 +69,12 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
             }
         }
 
+        Set<BlockPos> nodePositions = new HashSet<>(); // Used to prevent duplicate nodes
+
         BlockPos startPos = roadSegments.get(0).getStartPos();
 
-        // generate road
-        // A* algorithm
+        // Generate road
+        // We use A* to generate each segment's path
         for (int i = 0; i < roadSegments.size(); i++) {
             DefaultRoadSegment roadSegment = roadSegments.get(i);
             PriorityQueue<Node> closed = new PriorityQueue<>();
@@ -88,6 +92,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
             int iterations = 0;
 
+            // A* algorithm
             // Begin generating segment path
             while (!open.isEmpty()) {
                 iterations++;
@@ -122,38 +127,105 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
             // Store segment path
             if (finalNode != null) {
-                List<Road.DebugNode> segmentPositions = new ArrayList<>();
+                List<Road.DebugNode> segmentNodes = new ArrayList<>();
 
                 // Store last node
-                segmentPositions.add(new Road.DebugNode(finalNode));
+                if (!nodePositions.contains(finalNode.pos)) {
+                    segmentNodes.add(new Road.DebugNode(finalNode));
+                    nodePositions.add(finalNode.pos);
+                }
                 DebugRenderer.getInstance().addPath(new ChunkPos(finalNode.pos), null);
 
                 // Store all other nodes until no nodes remain
                 while (finalNode.parent != null) {
                     finalNode = finalNode.parent;
-                    segmentPositions.add(new Road.DebugNode(finalNode));
-                    DebugRenderer.getInstance().addPath(new ChunkPos(finalNode.pos), null);
+                    if (!nodePositions.contains(finalNode.pos)) {
+                        segmentNodes.add(new Road.DebugNode(finalNode));
+                        nodePositions.add(finalNode.pos);
+                        DebugRenderer.getInstance().addPath(new ChunkPos(finalNode.pos), null);
+                    }
                 }
 
                 // Reverse list so that it goes from start to end
-                segmentPositions = Lists.reverse(segmentPositions);
-                road.positions.addAll(segmentPositions);
+                segmentNodes = Lists.reverse(segmentNodes);
+                road.nodes.addAll(segmentNodes);
             }
 //            YungsRoadsCommon.LOGGER.info("SEGMENT " + i + " OPEN: " + open.size() + ", CLOSED: " + closed.size() + ", ITERATIONS: " + iterations);
         }
 
         // Apply random jitter to all nodes to make path less straight and more natural
         this.jitter.SetSeed(road.getVillageStart().getX() * 1000 + road.getVillageStart().getZ());
-        for (int j = 0; j < road.positions.size(); j++) {
-            Road.DebugNode debugNode = road.positions.get(j);
+        for (int j = 0; j < road.nodes.size(); j++) {
+            Road.DebugNode debugNode = road.nodes.get(j);
             debugNode.jitteredPos = jitteredPos(debugNode.rawPos, road, j);
         }
+
+        // Store ALL jittered block positions for iteration later when placing
+        for (int i = 0; i < road.nodes.size(); i++) {
+            Road.DebugNode debugNode = road.nodes.get(i);
+            BlockPos pos = debugNode.jitteredPos;
+//            BlockPos pos = debugNode.rawPos;
+
+            road.positions.add(pos);
+
+            // Linear interpolation between the two nodes' jittered positions
+            if (i < road.nodes.size() - 1) {
+                BlockPos nextPos = road.nodes.get(i + 1).jitteredPos;
+//                BlockPos nextPos = road.nodes.get(i + 1).rawPos;
+
+                int totalXDiff = nextPos.getX() - pos.getX();
+                int totalZDiff = nextPos.getZ() - pos.getZ();
+                double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
+                int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
+                int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
+
+                double slopeCounter = Math.abs(totalSlope);
+                BlockPos.MutableBlockPos mutable = pos.mutable();
+
+                while (!isWithinDistance(mutable, nextPos, 2)) {
+                    // Move in z direction
+                    while (slopeCounter >= 1 && !isWithinDistance(mutable, nextPos, 2)) {
+                        road.positions.add(mutable.immutable());
+                        mutable.move(0, 0, zDir);
+                        slopeCounter--;
+                    }
+
+                    // Move in x direction
+                    while (slopeCounter < 1 && !isWithinDistance(mutable, nextPos, 2)) {
+                        road.positions.add(mutable.immutable());
+                        mutable.move(xDir, 0, 0);
+                        slopeCounter += Math.abs(totalSlope);
+                    }
+
+                    // Place path at final position
+                    if (!mutable.equals(pos) && !mutable.equals(nextPos)) {
+                        road.positions.add(mutable.immutable());
+                    }
+                }
+            }
+        }
+
+//        List<BlockPos> jitteredPositions = new ArrayList<>();
+//        for (int j = 0; j < road.positions.size(); j++) {
+//            BlockPos pos = road.positions.get(j);
+//            BlockPos prevPos = j == 0 ? pos : road.positions.get(j - 1);
+//            BlockPos nextPos = j == road.positions.size() - 1 ? pos : road.positions.get(j + 1);
+//            jitteredPositions.add(jitteredPos(pos, prevPos, nextPos));
+//        }
+//        road.positions = jitteredPositions;
 
         return Optional.of(road);
     }
 
     private BlockPos jitteredPos(BlockPos pos, Road road, int i) {
         Vector3f normal = calculateNormal(road, i, pos);
+        float jitter = (float) (this.jitter.GetNoise(pos.getX(), pos.getZ()) * YungsRoadsCommon.CONFIG.advanced.path.jitterAmount);
+        Vector3f jitterOffset = new Vector3f(normal.x() * jitter, 0, normal.z() * jitter);
+        return pos.offset(jitterOffset.x(), 0, jitterOffset.z());
+    }
+
+    private BlockPos jitteredPos(BlockPos pos, BlockPos prevPos, BlockPos nextPos) {
+        Vector3f normal = calculateNormal(prevPos, nextPos);
         float jitter = (float) (this.jitter.GetNoise(pos.getX(), pos.getZ()) * YungsRoadsCommon.CONFIG.advanced.path.jitterAmount);
         Vector3f jitterOffset = new Vector3f(normal.x() * jitter, 0, normal.z() * jitter);
         return pos.offset(jitterOffset.x(), 0, jitterOffset.z());
@@ -184,60 +256,18 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
                 placeDebugMarker(level, chunkPos, segment.getEndPos(), Blocks.GOLD_BLOCK.defaultBlockState());
             }
         }
-
-        // Place paths
-        this.jitter.SetSeed(road.getVillageStart().getX() * 1000 + road.getVillageStart().getZ());
-        for (int i = 0; i < road.positions.size(); i++) {
-            Road.DebugNode debugNode = road.positions.get(i);
-            BlockPos pos = debugNode.jitteredPos;
-
-            // Debug markers
+        // Debug markers at unjittered & jittered node positions
+        for (Road.DebugNode debugNode : road.nodes) {
             if (YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers) {
                 placeDebugMarker(level, chunkPos, debugNode.rawPos, Blocks.PURPLE_WOOL.defaultBlockState());
             }
             if (YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers) {
-                placeDebugMarker(level, chunkPos, pos, Blocks.REDSTONE_BLOCK.defaultBlockState());
-            }
-
-            // Place path at this node
-            placePath(level, rand, pos, chunkPos, config, null, nearestVillage);
-
-            // Place all blocks between this node and the next node.
-            // This is done via linear interpolation between the two nodes' jittered positions
-            if (i < road.positions.size() - 1) {
-                BlockPos nextPos = road.positions.get(i + 1).jitteredPos;
-
-                int totalXDiff = nextPos.getX() - pos.getX();
-                int totalZDiff = nextPos.getZ() - pos.getZ();
-                double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
-                int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
-                int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
-
-                double slopeCounter = Math.abs(totalSlope);
-                BlockPos.MutableBlockPos mutable = pos.mutable();
-
-                while (!isWithinDistance(mutable, nextPos, 2)) {
-                    // Move in z direction
-                    while (slopeCounter >= 1 && !isWithinDistance(mutable, nextPos, 2)) {
-                        placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
-                        mutable.move(0, 0, zDir);
-                        slopeCounter--;
-                    }
-
-                    // Move in x direction
-                    while (slopeCounter < 1 && !isWithinDistance(mutable, nextPos, 2)) {
-                        placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
-                        mutable.move(xDir, 0, 0);
-                        slopeCounter += Math.abs(totalSlope);
-                    }
-
-                    // Place path at final position
-                    if (!mutable.equals(pos) && !mutable.equals(nextPos)) {
-                        placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
-                    }
-                }
+                placeDebugMarker(level, chunkPos, debugNode.jitteredPos, Blocks.REDSTONE_BLOCK.defaultBlockState());
             }
         }
+
+        // Place paths
+        road.positions.forEach(pos -> placePath(level, rand, pos, chunkPos, config, null, nearestVillage));
     }
 
     /**
@@ -320,7 +350,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
                     continue;
                 }
 
-//                if (getPVNoiseAt(serverLevel, m.pos) < -0.5) {
+//                if (getPVNoiseAt(serverLevel, neighbor.pos) < -0.9) {
 //                    continue;
 //                }
 
@@ -392,7 +422,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
             double altitudePunishmentScalar) {
 
         // Cost due to the length of our path, in terms of nodes.
-        double pathFactor = neighborPathLength * pathScalar;
+        double pathFactor = neighborPathLength * pathScalar + 1;
 
         // Cost due to the slope of the path, in terms of P/V noise.
         float pv1 = getPVNoiseAt(serverLevel, fromPos) * 10f;
@@ -412,7 +442,13 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         altitudePunishment = (Math.abs(pv2) * Math.abs(pv2) * (float) altitudePunishmentScalar) + 1;
 //        }
 
-        double g = (pathFactor + slopeFactor) * altitudePunishment;
+        float riverPunishment = 1f;
+        if (pv2 < -6.5) {
+            riverPunishment = 2f;
+        }
+
+//        double g = (pathFactor + slopeFactor) * altitudePunishment;
+        double g = pathFactor * slopeFactor * altitudePunishment * riverPunishment;
 
         // DEBUG
         n.pathFactor = pathFactor;
@@ -420,7 +456,6 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         n.altitudePunishment = altitudePunishment;
         n.g = g;
 
-//        return pathFactor * slopeFactor * altitudePunishment;
         return g;
     }
 
@@ -433,12 +468,20 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     private static Vector3f calculateNormal(Road road, int i, BlockPos pos) {
         BlockPos offset;
         if (i == 0) {
-            offset = road.positions.get(i + 1).rawPos.subtract(pos);
-        } else if (i == road.positions.size() - 1) {
-            offset = pos.subtract(road.positions.get(i - 1).rawPos);
+            offset = road.nodes.get(i + 1).rawPos.subtract(pos);
+        } else if (i == road.nodes.size() - 1) {
+            offset = pos.subtract(road.nodes.get(i - 1).rawPos);
         } else {
-            offset = road.positions.get(i + 1).rawPos.subtract(road.positions.get(i - 1).rawPos);
+            offset = road.nodes.get(i + 1).rawPos.subtract(road.nodes.get(i - 1).rawPos);
         }
+        Vector3f tangent = new Vector3f(offset.getX(), 0, offset.getZ());
+        tangent.normalize();
+
+        return new Vector3f(tangent.z(), 0, -tangent.x());
+    }
+
+    private static Vector3f calculateNormal(BlockPos p1, BlockPos p2) {
+        BlockPos offset = p2.subtract(p1);
         Vector3f tangent = new Vector3f(offset.getX(), 0, offset.getZ());
         tangent.normalize();
 
