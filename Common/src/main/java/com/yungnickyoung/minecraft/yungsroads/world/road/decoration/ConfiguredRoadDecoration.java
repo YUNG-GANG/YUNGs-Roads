@@ -3,13 +3,14 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Random;
 
 public class ConfiguredRoadDecoration {
-//    public static final Codec<ConfiguredRoadDecoration> CODEC = RecordCodecBuilder.create((instance) -> instance
+//    public static final MapCodec<ConfiguredRoadDecoration> CODEC = RecordCodecBuilder.mapCodec((instance) -> instance
 //            .group(
 //                    RoadDecorations.SINGLE_CODEC.fieldOf("decoration").forGetter(configuredDecoration -> configuredDecoration.decoration),
 //                    Codec.FLOAT.fieldOf("chance").forGetter(configuredDecoration -> configuredDecoration.chance),
@@ -47,7 +48,7 @@ public class ConfiguredRoadDecoration {
         this.normalOffset = normalOffset;
     }
 
-    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
+    public boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         if (random.nextFloat() < this.chance) {
             BlockPos adjustedPos = blockPos.offset((int) (normalOffset * Math.round(normal.x)), 0, (int) (normalOffset * Math.round(normal.z)));
             return this.decoration.place(level, random, adjustedPos, normal, tangent);

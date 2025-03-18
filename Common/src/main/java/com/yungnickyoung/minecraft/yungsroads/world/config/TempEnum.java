@@ -11,7 +11,7 @@ public enum TempEnum implements StringRepresentable {
     WARM("warm"),
     ANY("any");
 
-    public static final Codec<TempEnum> CODEC = StringRepresentable.fromEnum(TempEnum::values, TempEnum::byName);
+    public static final Codec<TempEnum> CODEC = StringRepresentable.fromEnum(TempEnum::values);
 
     private static final Map<String, TempEnum> BY_NAME = Arrays.stream(values())
             .collect(Collectors.toMap(TempEnum::getName, (temp) -> temp));

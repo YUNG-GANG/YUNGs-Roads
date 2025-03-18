@@ -1,0 +1,179 @@
+{
+  "type": "yungsroads:road",
+  "config": {
+    "road_types": [
+      {
+        "target_blocks": [
+          {
+            "Name": "minecraft:dirt"
+          },
+          {
+            "Name": "minecraft:grass_block"
+          },
+          {
+            "Name": "minecraft:podzol"
+          },
+          {
+            "Name": "minecraft:dirt_path"
+          }
+        ],
+        "target_temperature": "any",
+        "path_blockstates": {
+          "entries": [
+            {
+              "blockState": {
+                "Name": "minecraft:grass_block"
+              },
+              "probability": 0.05
+            }
+          ],
+          "defaultBlockState": {
+            "Name": "minecraft:dirt_path"
+          }
+        },
+        "road_size_radius": 1.5,
+        "road_size_variation": 1.5,
+        "decorations": [] // TODO
+      },
+      {
+        "target_blocks": [
+          {
+            "Name": "minecraft:stone"
+          },
+          {
+            "Name": "minecraft:andesite"
+          },
+          {
+            "Name": "minecraft:granite"
+          },
+          {
+            "Name": "minecraft:gravel"
+          }
+        ],
+        "target_temperature": "any",
+        "path_blockstates": {
+          "entries": [
+            {
+              "blockState": {
+                "Name": "minecraft:cobblestone"
+              },
+              "probability": 0.7
+            },
+            {
+              "blockState": {
+                "Name": "minecraft:andesite"
+              },
+              "probability": 0.2
+            }
+          ],
+          "defaultBlockState": {
+            "Name": "minecraft:stone"
+          }
+        },
+        "road_size_radius": 1.5,
+        "road_size_variation": 1.5,
+        "decorations": [] // TODO
+      },
+      {
+        "target_blocks": [
+          {
+            "Name": "minecraft:snow_block"
+          },
+          {
+            "Name": "minecraft:ice"
+          }
+        ],
+        "target_temperature": "any",
+        "path_blockstates": {
+          "entries": [
+            {
+              "blockState": {
+                "Name": "minecraft:dirt_path"
+              },
+              "probability": 0.95
+            }
+          ],
+          "defaultBlockState": {
+            "Name": "minecraft:snow_block"
+          }
+        },
+        "road_size_radius": 1.5,
+        "road_size_variation": 1.5,
+        "decorations": [] // TODO
+      },
+      {
+        "target_blocks": [
+          {
+            "Name": "minecraft:sand"
+          },
+          {
+            "Name": "minecraft:sandstone"
+          },
+          {
+            "Name": "minecraft:red_sand"
+          },
+          {
+            "Name": "minecraft:red_sandstone"
+          },
+          {
+            "Name": "minecraft:terracotta"
+          },
+          {
+            "Name": "minecraft:brown_terracotta"
+          },
+          {
+            "Name": "minecraft:orange_terracotta"
+          },
+          {
+            "Name": "minecraft:red_terracotta"
+          },
+          {
+            "Name": "minecraft:white_terracotta"
+          },
+          {
+            "Name": "minecraft:light_gray_terracotta"
+          },
+          {
+            "Name": "minecraft:yellow_terracotta"
+          }
+        ],
+        "target_temperature": "any",
+        "path_blockstates": {
+          "entries": [
+            {
+              "blockState": {
+                "Name": "minecraft:gravel"
+              },
+              "probability": 0.4
+            },
+            {
+              "blockState": {
+                "Name": "minecraft:granite"
+              },
+              "probability": 0.4
+            },
+            {
+              "blockState": {
+                "Name": "minecraft:andesite"
+              },
+              "probability": 0.2
+            }
+          ],
+          "defaultBlockState": {
+            "Name": "minecraft:sand"
+          }
+        },
+        "road_size_radius": 1.5,
+        "road_size_variation": 1.5,
+        "decorations": [] // TODO
+      }
+    ],
+    "bridge_blockstates": {
+      "entries": [
+      ],
+      "defaultBlockState": {
+        "Name": "minecraft:oak_planks"
+      }
+    }
+  }
+}

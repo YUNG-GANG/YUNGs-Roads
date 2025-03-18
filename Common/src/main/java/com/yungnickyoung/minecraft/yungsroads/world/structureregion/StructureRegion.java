@@ -16,34 +16,37 @@ import java.util.List;
 import java.util.Optional;
 
 public class StructureRegion {
+    private static final String ENDPOINT_CHUNKS_KEY = "endpoint_chunks";
+    private static final String ROADS_KEY = "roads";
+
     private final StructureRegionPos pos;
-    private final List<Long> villageChunks;
+    private final List<Long> roadEndpointChunks;
     private final List<Road> roads;
 
     public StructureRegion(long regionKey) {
         this(regionKey, new ArrayList<>(), new ArrayList<>());
     }
 
-    public StructureRegion(long regionKey, List<Long> villageChunks, List<Road> roads) {
+    public StructureRegion(long regionKey, List<Long> endpointChunks, List<Road> roads) {
         this.pos = new StructureRegionPos(regionKey);
-        this.villageChunks = villageChunks;
+        this.roadEndpointChunks = endpointChunks;
         this.roads = roads;
     }
 
     public StructureRegion(long regionKey, CompoundTag compoundTag) {
         this.pos = new StructureRegionPos(regionKey);
 
-        // Villages
-        long[] villagePositions = compoundTag.getLongArray("villageChunks");
-        this.villageChunks = new ArrayList<>();
-        for (long villagePos : villagePositions) {
-            this.villageChunks.add(villagePos);
+        // Endpoints
+        long[] endpointChunkPositions = compoundTag.getLongArray(ENDPOINT_CHUNKS_KEY);
+        this.roadEndpointChunks = new ArrayList<>();
+        for (long endpointPosLong : endpointChunkPositions) {
+            this.roadEndpointChunks.add(endpointPosLong);
         }
 
         // Roads
         List<Road> roads = new ArrayList<>();
-        if (compoundTag.contains("roads", 10)) {
-            CompoundTag roadsNbt = compoundTag.getCompound("roads");
+        if (compoundTag.contains(ROADS_KEY, Tag.TAG_COMPOUND)) {
+            CompoundTag roadsNbt = compoundTag.getCompound(ROADS_KEY);
             for (String key : roadsNbt.getAllKeys()) {
                 Tag roadNbt = roadsNbt.get(key);
                 roads.add(Road.CODEC.decode(NbtOps.INSTANCE, roadNbt).result().get().getFirst());
@@ -51,16 +54,16 @@ public class StructureRegion {
         }
         this.roads = roads;
 
-        this.villageChunks.forEach(chunkPos -> DebugRenderer.getInstance().addVillage(new ChunkPos(chunkPos)));
+        this.roadEndpointChunks.forEach(chunkPos -> DebugRenderer.getInstance().addEndpointPos(new ChunkPos(chunkPos)));
         this.roads.forEach(road -> road.nodes.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.jitteredPos), null)));
     }
 
     public CompoundTag toNbt() {
         CompoundTag compoundTag = new CompoundTag();
 
-        // Villages
-        LongArrayTag villagePosNbt = new LongArrayTag(villageChunks);
-        compoundTag.put("villageChunks", villagePosNbt);
+        // Endpoints
+        LongArrayTag endpointsNbt = new LongArrayTag(roadEndpointChunks);
+        compoundTag.put(ENDPOINT_CHUNKS_KEY, endpointsNbt);
 
         // Roads
         CompoundTag roadsNbt = new CompoundTag();
@@ -68,13 +71,13 @@ public class StructureRegion {
             DataResult<Tag> dataResult = Road.CODEC.encodeStart(NbtOps.INSTANCE, road);
             Optional<Tag> result = dataResult.result();
             if (result.isPresent()) {
-                BlockPos startPos = road.getVillageStart();
+                BlockPos startPos = road.getStartPos();
                 roadsNbt.put(String.format("%d,%d,%d", startPos.getX(), startPos.getY(), startPos.getZ()), result.get());
             } else {
                 YungsRoadsCommon.LOGGER.error("Missing data result for road {}", road.toString());
             }
         });
-        compoundTag.put("roads", roadsNbt);
+        compoundTag.put(ROADS_KEY, roadsNbt);
 
         return compoundTag;
     }
@@ -97,8 +100,8 @@ public class StructureRegion {
         return this.pos.getFileName();
     }
 
-    public List<Long> getVillageChunks() {
-        return this.villageChunks;
+    public List<Long> getRoadEndpointChunks() {
+        return this.roadEndpointChunks;
     }
 
     public List<Road> getRoads() {

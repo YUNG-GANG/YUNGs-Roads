@@ -1,9 +1,8 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
+import com.yungnickyoung.minecraft.yungsapi.api.world.randomize.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
-import com.yungnickyoung.minecraft.yungsapi.world.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.NoiseBasedChunkGeneratorAccessor;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
@@ -13,26 +12,30 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegm
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
-import net.minecraft.world.level.biome.TerrainShaper;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.NoiseRouterData;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
-import net.minecraft.world.level.material.Material;
+import net.minecraft.world.level.material.Fluids;
 
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 
 public abstract class AbstractRoadGenerator {
     private static final RoadTypeConfig DEFAULT_SETTINGS = new RoadTypeConfig(
-            List.of(Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.PODZOL, Blocks.DIRT_PATH),
+            List.of(Blocks.DIRT.defaultBlockState(),
+                    Blocks.GRASS_BLOCK.defaultBlockState(),
+                    Blocks.PODZOL.defaultBlockState(),
+                    Blocks.DIRT_PATH.defaultBlockState()),
             TempEnum.ANY,
             new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
                     .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f),
@@ -61,17 +64,17 @@ public abstract class AbstractRoadGenerator {
     /**
      * Places the {@link Road} for blocks within a given chunk.
      *
-     * @param road           The {@link Road} to place.
-     * @param world          The world, passed in during feature generation.
-     * @param rand           Random passed in during feature generation.
-     * @param blockPos       A block pos within the chunk we want to operate on. Should be passed in during feature generation.
-     *                       Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
-     *                       even if they contain Road positions.
-     * @param nearestVillage The location of the nearest village to this point.
-     *                       Only used for rendering the debug view.
+     * @param road            The {@link Road} to place.
+     * @param world           The world, passed in during feature generation.
+     * @param rand            Random passed in during feature generation.
+     * @param blockPos        A block pos within the chunk we want to operate on. Should be passed in during feature generation.
+     *                        Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
+     *                        even if they contain Road positions.
+     * @param nearestEndpoint The location of the nearest endpoint chunk pos to this point.
+     *                        Only used for rendering the debug view.
      */
-    public abstract void placeRoad(Road road, WorldGenLevel world, Random rand, BlockPos blockPos,
-                                   RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage);
+    public abstract void placeRoad(Road road, WorldGenLevel world, RandomSource rand, BlockPos blockPos,
+                                   RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint);
 
     /**
      * Determines the road type settings for a given position.
@@ -90,17 +93,19 @@ public abstract class AbstractRoadGenerator {
         return DEFAULT_SETTINGS;
     }
 
-    void placePath(WorldGenLevel level, Random random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config) {
+    void placePath(WorldGenLevel level, RandomSource random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config) {
         placePath(level, random, pos, chunkPos, config, null, null);
     }
 
-    void placePath(WorldGenLevel level, Random random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage) {
+    void placePath(WorldGenLevel level, RandomSource random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config,
+                   @Nullable CarvingMask blockMask, @Nullable BlockPos nearestEndpoint) {
         if (!isInValidRangeForChunk(chunkPos, pos)) {
             return;
         }
 
         if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
-            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), Blocks.DIAMOND_BLOCK.defaultBlockState(), blockMask, nearestVillage);
+            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()),
+                    Blocks.DIAMOND_BLOCK.defaultBlockState(), blockMask, nearestEndpoint);
             return;
         }
 
@@ -141,7 +146,7 @@ public abstract class AbstractRoadGenerator {
                     int surfaceHeight = getSurfaceHeight(level, mutable);
                     mutable.setY(surfaceHeight);
 
-                    placePathBlock(level, random, mutable, config, blockMask, nearestVillage);
+                    placePathBlock(level, random, mutable, config, blockMask, nearestEndpoint);
                 }
             }
         }
@@ -151,36 +156,46 @@ public abstract class AbstractRoadGenerator {
      * Places a single path block at the given position.
      * Uses the RoadFeatureConfiguration to determine which block to place.
      */
-    private void placePathBlock(WorldGenLevel level, Random random, BlockPos pos, RoadFeatureConfiguration config, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage) {
-        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) return;
+    private void placePathBlock(WorldGenLevel level, RandomSource random, BlockPos pos, RoadFeatureConfiguration config,
+                                @Nullable CarvingMask blockMask, @Nullable BlockPos nearestEndpoint) {
+        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) {
+            return;
+        }
 
         BlockState currState = level.getBlockState(pos);
         RoadTypeConfig roadTypeConfig = getRoadTypeAtPos(level, pos, config);
 
         // Check for water to place bridge block.
-        if (currState.getMaterial() == Material.WATER) {
+        if (!currState.getFluidState().is(Fluids.EMPTY)) {
             level.setBlock(pos, config.bridgeBlockStates.get(random), 2);
         }
 
         // Otherwise, set path block
         level.setBlock(pos, roadTypeConfig.pathBlockStates.get(random), 2);
 
-        if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
+        if (blockMask != null) {
+            blockMask.set(pos.getX(), pos.getY(), pos.getZ());
+        }
     }
 
-    void DEBUGplacePath(WorldGenLevel level, BlockPos pos, ChunkPos chunkPos, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage, BlockState blockState) {
+    void DEBUGplacePath(WorldGenLevel level, BlockPos pos, ChunkPos chunkPos, @Nullable CarvingMask blockMask,
+                        @Nullable BlockPos nearestEndpoint, BlockState blockState) {
         if (!isInValidRangeForChunk(chunkPos, pos)) {
             return;
         }
-        DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), blockState, blockMask, nearestVillage);
+        DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), blockState, blockMask, nearestEndpoint);
     }
 
-    private void DEBUGplaceBlock(WorldGenLevel level, BlockPos pos, BlockState blockState, @Nullable CarvingMask blockMask, @Nullable BlockPos nearestVillage) {
-        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) return;
+    private void DEBUGplaceBlock(WorldGenLevel level, BlockPos pos, BlockState blockState,
+                                 @Nullable CarvingMask blockMask, @Nullable BlockPos nearestEndpoint) {
+        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) {
+            return;
+        }
 
         level.setBlock(pos, blockState, 2);
-
-        if (blockMask != null) blockMask.set(pos.getX(), pos.getY(), pos.getZ());
+        if (blockMask != null) {
+            blockMask.set(pos.getX(), pos.getY(), pos.getZ());
+        }
     }
 
     void placeDebugMarker(WorldGenLevel level, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
@@ -218,8 +233,8 @@ public abstract class AbstractRoadGenerator {
     }
 
     boolean containsRoad(ChunkPos chunkPos, Road road) {
-        int roadStartX = road.getVillageStart().getX();
-        int roadEndX = road.getVillageEnd().getX();
+        int roadStartX = road.getStartPos().getX();
+        int roadEndX = road.getEndPos().getX();
         int chunkStartX = chunkPos.getMinBlockX();
         int chunkEndX = chunkPos.getMaxBlockX();
         int chunkPad = 64; // We pad the cutoff by 4 chunks to allow for curved roads that temporarily exceed the min or max x-value
@@ -244,7 +259,7 @@ public abstract class AbstractRoadGenerator {
     static float getPVNoiseAt(ServerLevel serverLevel, BlockPos pos) {
         ChunkGenerator chunkGenerator = serverLevel.getChunkSource().getGenerator();
         DensityFunction.SinglePointContext p1 = new DensityFunction.SinglePointContext(pos.getX(), pos.getY(), pos.getZ());
-        double ridgeP1 = ((NoiseBasedChunkGeneratorAccessor) chunkGenerator).getRouter().ridges().compute(p1);
-        return TerrainShaper.peaksAndValleys((float) ridgeP1);
+        double ridgeP1 = ((NoiseBasedChunkGenerator) chunkGenerator).generatorSettings().value().noiseRouter().ridges().compute(p1);
+        return NoiseRouterData.peaksAndValleys((float) ridgeP1);
     }
 }

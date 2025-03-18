@@ -1,11 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
-import com.mojang.serialization.Codec;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import net.minecraft.core.Registry;
-import net.minecraft.data.BuiltinRegistries;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -34,9 +29,9 @@ public class RoadDecorations {
         return MANUAL_BY_NAME.get(name);
     }
 
-    public static FeatureRoadDecoration feature(String location) {
-        return new FeatureRoadDecoration(BuiltinRegistries.PLACED_FEATURE.getHolderOrThrow(ResourceKey.create(
-                Registry.PLACED_FEATURE_REGISTRY, new ResourceLocation(location)
-        )));
-    }
+//    public static FeatureRoadDecoration feature(String location) {
+//        return new FeatureRoadDecoration(BuiltinRegistries.PLACED_FEATURE.getHolderOrThrow(ResourceKey.create(
+//                Registry.PLACED_FEATURE_REGISTRY, new ResourceLocation(location)
+//        )));
+//    }
 }

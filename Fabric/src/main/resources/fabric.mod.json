@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "yungsroads",
+  "id": "${mod_id}",
   "version": "${version}",
-  "name": "YUNG's Roads",
-  "description": "Adds naturally generated roads connecting structures throughout the world!",
+  "name": "${mod_full_name}",
+  "description": "${mod_description}",
   "authors": [
     "YUNGNICKYOUNG"
   ],
@@ -13,7 +13,7 @@
     "issues": "https://github.com/yungnickyoung/YUNGs-Roads/issues",
     "discord": "discord.gg/rns3beq"
   },
-  "license": "LGPLv3",
+  "license": "${license}",
   "icon": "icon.png",
   "environment": "*",
   "entrypoints": {
@@ -25,15 +25,23 @@
     ]
   },
   "mixins": [
-    "yungsroads.mixins.json",
-    "yungsroads_fabric.mixins.json"
+    "yungsroads.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.13.3",
-    "fabric": ">=0.47.8",
-    "minecraft": ">=1.18.2",
-    "cloth-config2": ">=6.2.57",
-    "java": ">=17",
-    "yungsapi": ">=1.18.2-Fabric-2.0.7"
+    "fabricloader": ">=${fabric_loader_version}",
+    "fabric": ">=${fabric_version}",
+    "minecraft": "${mc_version_range_fabric}",
+    "cloth-config2": ">=${clothconfig_version_fabric}",
+    "java": ">=${java_version}",
+    "yungsapi": ">=${mc_version}-Fabric-${yungsapi_version}"
+  },
+  "custom": {
+    "catalogue": {
+      "icon": {
+        "image": "catalogue_icon.png"
+      },
+      "banner": "logo.png",
+      "background": "catalogue_background.png"
+    }
   }
 }

@@ -1,15 +1,15 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Random;
-
 public class ManualRoadDecoration extends RoadDecoration {
-    public static final Codec<ManualRoadDecoration> CODEC = RecordCodecBuilder.create((instance) -> instance
+    public static final MapCodec<ManualRoadDecoration> CODEC = RecordCodecBuilder.mapCodec((instance) -> instance
             .group(
                     Codec.STRING.fieldOf("name").forGetter(decoration -> decoration.name))
             .apply(instance, ManualRoadDecoration::new));
@@ -21,7 +21,7 @@ public class ManualRoadDecoration extends RoadDecoration {
     }
 
     @Override
-    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
+    public boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         return false;
     }
 

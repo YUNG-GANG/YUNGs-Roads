@@ -13,15 +13,15 @@ import java.util.List;
 public class Road {
     public static final Codec<Road> CODEC = RecordCodecBuilder.create(builder -> builder
         .group(
-            BlockPos.CODEC.fieldOf("villageStart").forGetter(Road::getVillageStart),
-            BlockPos.CODEC.fieldOf("villageEnd").forGetter(Road::getVillageEnd),
+            BlockPos.CODEC.fieldOf("start_pos").forGetter(Road::getStartPos),
+            BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
             DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
             BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
-            RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("roadSegments").forGetter(Road::getRoadSegments))
+            RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("road_segments").forGetter(Road::getRoadSegments))
         .apply(builder, Road::new));
 
-    private final BlockPos villageStart;
-    private final BlockPos villageEnd;
+    private final BlockPos startPos;
+    private final BlockPos endPos;
     private final List<DefaultRoadSegment> roadSegments;
 
 
@@ -29,24 +29,24 @@ public class Road {
     public List<BlockPos> positions;
 
 
-    public Road(BlockPos village1, BlockPos village2, List<DebugNode> nodes, List<BlockPos> positions, List<DefaultRoadSegment> roadSegments) {
-        this.villageStart = village1.getX() <= village2.getX() ? village1 : village2;
-        this.villageEnd = this.villageStart == village1 ? village2 : village1;
+    public Road(BlockPos endPoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<DefaultRoadSegment> roadSegments) {
+        this.startPos = endPoint1.getX() <= endpoint2.getX() ? endPoint1 : endpoint2;
+        this.endPos = this.startPos == endPoint1 ? endpoint2 : endPoint1;
         this.nodes = nodes;
         this.positions = positions;
         this.roadSegments = roadSegments;
     }
 
-    public Road(BlockPos village1, BlockPos village2) {
-        this(village1, village2, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    public Road(BlockPos startPos, BlockPos endPos) {
+        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
-    public BlockPos getVillageStart() {
-        return villageStart;
+    public BlockPos getStartPos() {
+        return startPos;
     }
 
-    public BlockPos getVillageEnd() {
-        return villageEnd;
+    public BlockPos getEndPos() {
+        return endPos;
     }
 
     public List<DefaultRoadSegment> getRoadSegments() {
@@ -65,7 +65,7 @@ public class Road {
 
     @Override
     public String toString() {
-        return String.format("Road %s - %s (%d segments)", villageStart, villageEnd, roadSegments.size());
+        return String.format("Road %s - %s (%d segments)", startPos, endPos, roadSegments.size());
     }
 
     public static class DebugNode implements Comparable<DebugNode> {

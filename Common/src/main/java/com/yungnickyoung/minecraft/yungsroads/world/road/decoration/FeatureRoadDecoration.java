@@ -1,20 +1,18 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
-import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.data.BuiltinRegistries;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Random;
-
 public class FeatureRoadDecoration extends RoadDecoration {
-    public static final Codec<FeatureRoadDecoration> CODEC = RecordCodecBuilder.create((instance) -> instance
+    public static final MapCodec<FeatureRoadDecoration> CODEC = RecordCodecBuilder.mapCodec((instance) -> instance
             .group(
-                    BuiltinRegistries.PLACED_FEATURE.holderByNameCodec().fieldOf("placedFeatureHolder").forGetter(FeatureRoadDecoration::getPlacedFeatureHolder))
+                    PlacedFeature.CODEC.fieldOf("placedFeatureHolder").forGetter(FeatureRoadDecoration::getPlacedFeatureHolder))
             .apply(instance, FeatureRoadDecoration::new));
 
     private final Holder<PlacedFeature> placedFeatureHolder;
@@ -25,7 +23,7 @@ public class FeatureRoadDecoration extends RoadDecoration {
     }
 
     @Override
-    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
+    public boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         return this.placedFeatureHolder.value().place(level, level.getLevel().getChunkSource().getGenerator(), random, blockPos);
     }
 

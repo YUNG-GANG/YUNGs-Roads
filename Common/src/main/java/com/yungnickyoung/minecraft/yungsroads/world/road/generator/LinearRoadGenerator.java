@@ -8,13 +8,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 
 import javax.annotation.Nullable;
 import java.util.Optional;
-import java.util.Random;
 
 public class LinearRoadGenerator extends AbstractRoadGenerator {
     private final ServerLevel serverLevel;
@@ -49,7 +49,7 @@ public class LinearRoadGenerator extends AbstractRoadGenerator {
 
         // Ensure road does not cross ocean
         for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
-            if (serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+            if (serverLevel.getNoiseBiome(
                             QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                             QuartPos.fromBlock(0),
                             QuartPos.fromBlock(roadSegment.getStartPos().getZ()))
@@ -62,7 +62,9 @@ public class LinearRoadGenerator extends AbstractRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+    public void placeRoad(Road road, WorldGenLevel level, RandomSource rand, BlockPos blockPos,
+                          RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint) {
+
         // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
@@ -73,37 +75,37 @@ public class LinearRoadGenerator extends AbstractRoadGenerator {
 
         // Debug markers at road endpoints points
         if (YungsRoadsCommon.DEBUG_MODE) {
-            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
-            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.REDSTONE_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getEndPos(), Blocks.REDSTONE_BLOCK.defaultBlockState());
         }
 
         // Determine total slope of line from starting point to ending point
-        int totalXDiff = road.getVillageEnd().getX() - road.getVillageStart().getX();
-        int totalZDiff = road.getVillageEnd().getZ() - road.getVillageStart().getZ();
+        int totalXDiff = road.getEndPos().getX() - road.getStartPos().getX();
+        int totalZDiff = road.getEndPos().getZ() - road.getStartPos().getZ();
         double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
         int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
         int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
 
         double slopeCounter = Math.abs(totalSlope);
-        BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
+        BlockPos.MutableBlockPos mutable = road.getStartPos().mutable();
 
-        while (!isWithin10Blocks(mutable, road.getVillageEnd())) {
+        while (!isWithin10Blocks(mutable, road.getEndPos())) {
             // Move in z direction
-            while (slopeCounter >= 1 && !isWithin10Blocks(mutable, road.getVillageEnd())) {
-                placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
+            while (slopeCounter >= 1 && !isWithin10Blocks(mutable, road.getEndPos())) {
+                placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
                 mutable.move(0, 0, zDir);
                 slopeCounter--;
             }
 
             // Move in x direction
-            while (slopeCounter < 1 && !isWithin10Blocks(mutable, road.getVillageEnd())) {
-                placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
+            while (slopeCounter < 1 && !isWithin10Blocks(mutable, road.getEndPos())) {
+                placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
                 mutable.move(xDir, 0, 0);
                 slopeCounter += Math.abs(totalSlope);
             }
 
             // Place path at final position
-            placePath(level, rand, mutable, chunkPos, config, null, nearestVillage);
+            placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
         }
     }
 

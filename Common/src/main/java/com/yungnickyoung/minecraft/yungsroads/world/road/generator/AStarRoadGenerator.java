@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.google.common.collect.Lists;
-import com.mojang.math.Vector3f;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
@@ -13,10 +12,12 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -24,7 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.PriorityQueue;
-import java.util.Random;
 import java.util.Set;
 
 public class AStarRoadGenerator extends AbstractRoadGenerator {
@@ -60,7 +60,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
         // Ensure road does not cross ocean
         for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
-            if (serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+            if (serverLevel.getNoiseBiome(
                             QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                             QuartPos.fromBlock(0),
                             QuartPos.fromBlock(roadSegment.getStartPos().getZ()))
@@ -154,7 +154,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         }
 
         // Apply random jitter to all nodes to make path less straight and more natural
-        this.jitter.SetSeed(road.getVillageStart().getX() * 1000 + road.getVillageStart().getZ());
+        this.jitter.SetSeed(road.getStartPos().getX() * 1000 + road.getStartPos().getZ());
         for (int j = 0; j < road.nodes.size(); j++) {
             Road.DebugNode debugNode = road.nodes.get(j);
             debugNode.jitteredPos = jitteredPos(debugNode.rawPos, road, j);
@@ -238,11 +238,11 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         Vector3f normal = calculateNormalBetween(prevPos, nextPos);
         float jitter = (float) (this.jitter.GetNoise(pos.getX(), pos.getZ()) * YungsRoadsCommon.CONFIG.advanced.path.jitterAmount);
         Vector3f jitterOffset = new Vector3f(normal.x() * jitter, 0, normal.z() * jitter);
-        return pos.offset(jitterOffset.x(), 0, jitterOffset.z());
+        return pos.offset((int) jitterOffset.x(), 0, (int) jitterOffset.z());
     }
 
     @Override
-    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+    public void placeRoad(Road road, WorldGenLevel level, RandomSource rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint) {
         // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
@@ -253,12 +253,12 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
         // DEBUG line
         if (YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine) {
-            placeDebugLine(road, level, chunkPos, nearestVillage);
+            placeDebugLine(road, level, chunkPos, nearestEndpoint);
         }
         // Debug markers at road & road segment endpoints
         if (YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers) {
-            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
-            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getEndPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
         }
         if (YungsRoadsCommon.CONFIG.debug.placeRoadSegmentEndpointDebugMarkers) {
             for (DefaultRoadSegment segment : road.getRoadSegments()) {
@@ -277,7 +277,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         }
 
         // Place paths
-        road.positions.forEach(pos -> placePath(level, rand, pos, chunkPos, config, null, nearestVillage));
+        road.positions.forEach(pos -> placePath(level, rand, pos, chunkPos, config, null, nearestEndpoint));
     }
 
     /**
@@ -285,25 +285,25 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
      */
     private void placeDebugLine(Road road, WorldGenLevel level, ChunkPos chunkPos, @Nullable BlockPos nearestVillage) {
         // Determine total slope of line from starting point to ending point
-        int totalXDiff = road.getVillageEnd().getX() - road.getVillageStart().getX();
-        int totalZDiff = road.getVillageEnd().getZ() - road.getVillageStart().getZ();
+        int totalXDiff = road.getEndPos().getX() - road.getStartPos().getX();
+        int totalZDiff = road.getEndPos().getZ() - road.getStartPos().getZ();
         double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
         int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
         int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
 
         double slopeCounter = Math.abs(totalSlope);
-        BlockPos.MutableBlockPos mutable = road.getVillageStart().mutable();
+        BlockPos.MutableBlockPos mutable = road.getStartPos().mutable();
 
-        while (!isWithinDistance(mutable, road.getVillageEnd(), 10)) {
+        while (!isWithinDistance(mutable, road.getEndPos(), 10)) {
             // Move in z direction
-            while (slopeCounter >= 1 && !isWithinDistance(mutable, road.getVillageEnd(), 10)) {
+            while (slopeCounter >= 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
                 DEBUGplacePath(level, mutable, chunkPos, null, nearestVillage, Blocks.GOLD_BLOCK.defaultBlockState());
                 mutable.move(0, 0, zDir);
                 slopeCounter--;
             }
 
             // Move in x direction
-            while (slopeCounter < 1 && !isWithinDistance(mutable, road.getVillageEnd(), 10)) {
+            while (slopeCounter < 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
                 DEBUGplacePath(level, mutable, chunkPos, null, nearestVillage, Blocks.GOLD_BLOCK.defaultBlockState());
                 mutable.move(xDir, 0, 0);
                 slopeCounter += Math.abs(totalSlope);
@@ -355,7 +355,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
                 if (!isInRange(startPos, endPos, neighbor.pos)) {
                     continue;
                 }
-                Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(neighbor.pos.getX(), 0, neighbor.pos.getZ());
+                Holder<Biome> biome = serverLevel.getNoiseBiome(neighbor.pos.getX(), 0, neighbor.pos.getZ());
                 if (biome.is(BiomeTags.IS_OCEAN) || biome.is(BiomeTags.IS_RIVER)) {
                     continue;
                 }

@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.StairBlock;
@@ -9,19 +10,18 @@ import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Random;
-
 public class SmallWoodBenchRoadDecoration extends ManualRoadDecoration {
     public SmallWoodBenchRoadDecoration(String name) {
         super(name);
     }
 
     @Override
-    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
+    public boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         BlockPos.MutableBlockPos mutable = blockPos.mutable();
 
-        Direction towardPath = Direction.fromNormal((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
-        if (towardPath == null) return false;
+//        Direction towardPath = Direction.fromNormal((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
+        Direction towardPath = Direction.getNearest((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
+//        if (towardPath == null) return false;
 
         Direction awayFromPath = towardPath.getOpposite();
         Direction right = towardPath.getCounterClockWise();

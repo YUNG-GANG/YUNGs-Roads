@@ -21,12 +21,12 @@ public class StructureRegionPos {
     }
 
     public StructureRegionPos(long l) {
-        this.x = (int)l;
-        this.z = (int)(l >> 32);
+        this.x = (int) l;
+        this.z = (int) (l >> 32);
     }
 
     public static long asLong(int x, int z) {
-        return (long)x & 0xFFFF_FFFFL | ((long) z & 0xFFFF_FFFFL) << 32;
+        return (long) x & 0xFFFF_FFFFL | ((long) z & 0xFFFF_FFFFL) << 32;
     }
 
     public long asLong() {

@@ -1,29 +1,28 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
-import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Random;
-
 public class BushRoadDecoration extends ManualRoadDecoration {
     private static final BushRoadDecoration INSTANCE = new BushRoadDecoration("bush");
 
-    public static final Codec<BushRoadDecoration> CODEC = Codec.unit(() -> INSTANCE);
+    public static final MapCodec<BushRoadDecoration> CODEC = MapCodec.unit(() -> INSTANCE);
 
     public BushRoadDecoration(String name) {
         super(name);
     }
 
     @Override
-    public boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
+    public boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent) {
         BlockPos.MutableBlockPos mutable = blockPos.mutable();
 
-        Direction towardPath = Direction.fromNormal((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
-        if (towardPath == null) return false;
+//        Direction towardPath = Direction.fromNormal((int) Math.round(normal.reverse().x), 0, (int) Math.round(normal.reverse().z));
+//        if (towardPath == null) return false;
 
         level.setBlock(mutable, Blocks.OAK_LEAVES.defaultBlockState(), 2);
 

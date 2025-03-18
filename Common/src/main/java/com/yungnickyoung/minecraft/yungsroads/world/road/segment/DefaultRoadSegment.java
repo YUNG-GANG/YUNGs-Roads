@@ -1,14 +1,14 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.segment;
 
-import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 
 public class DefaultRoadSegment {
-    public static final Codec<DefaultRoadSegment> CODEC = RecordCodecBuilder.create(builder -> builder
+    public static final MapCodec<DefaultRoadSegment> CODEC = RecordCodecBuilder.mapCodec(builder -> builder
         .group(
-            BlockPos.CODEC.fieldOf("startPos").forGetter(DefaultRoadSegment::getStartPos),
-            BlockPos.CODEC.fieldOf("endPos").forGetter(DefaultRoadSegment::getEndPos))
+            BlockPos.CODEC.fieldOf("start_pos").forGetter(DefaultRoadSegment::getStartPos),
+            BlockPos.CODEC.fieldOf("end_pos").forGetter(DefaultRoadSegment::getEndPos))
         .apply(builder, DefaultRoadSegment::new));
 
     private final BlockPos startPos, endPos;

@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
@@ -54,5 +55,5 @@ public abstract class RoadDecoration {
 
 //    RoadDecorationType<?> getType();
 
-    abstract boolean place(WorldGenLevel level, Random random, BlockPos blockPos, Vec3 normal, Vec3 tangent);
+    abstract boolean place(WorldGenLevel level, RandomSource random, BlockPos blockPos, Vec3 normal, Vec3 tangent);
 }

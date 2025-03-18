@@ -5,14 +5,15 @@ import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.ConfiguredRoadDecoration;
 import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
 import com.yungnickyoung.minecraft.yungsroads.world.road.segment.SplineRoadSegment;
-import com.yungnickyoung.minecraft.yungsroads.world.road.decoration.ConfiguredRoadDecoration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
@@ -21,18 +22,17 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.world.level.material.Material;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 
 public class SplineRoadGenerator extends AbstractRoadGenerator {
     private final ServerLevel serverLevel;
-    private final ThreadLocal<WorldgenRandom> random = ThreadLocal.withInitial(() -> new WorldgenRandom(new LegacyRandomSource(0)));
+    private final ThreadLocal<WorldgenRandom> random = ThreadLocal.withInitial(() ->
+            new WorldgenRandom(new LegacyRandomSource(0)));
 //    private final List<AbstractRoadDecoration> decorations;
 
     public SplineRoadGenerator(ServerLevel serverLevel) {
@@ -70,14 +70,14 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
         // Biome validation
         int riverCount = 0;
         for (DefaultRoadSegment roadSegment : road.getRoadSegments()) {
-            Holder<Biome> biomeAtStart = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+            Holder<Biome> biomeAtStart = serverLevel.getNoiseBiome(
                     QuartPos.fromBlock(roadSegment.getStartPos().getX()),
                     QuartPos.fromBlock(serverLevel.getSeaLevel()),
                     QuartPos.fromBlock(roadSegment.getStartPos().getZ()));
             if (biomeAtStart.is(BiomeTags.IS_RIVER)) riverCount++;
 
             if (roadSegment instanceof SplineRoadSegment splineRoadSegment) {
-                Holder<Biome> biomeAtP2 = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
+                Holder<Biome> biomeAtP2 = serverLevel.getNoiseBiome(
                         QuartPos.fromBlock(splineRoadSegment.getP2().getX()),
                         QuartPos.fromBlock(serverLevel.getSeaLevel()),
                         QuartPos.fromBlock(splineRoadSegment.getP2().getZ()));
@@ -125,7 +125,9 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
     }
 
     @Override
-    public void placeRoad(Road road, WorldGenLevel level, Random rand, BlockPos blockPos, RoadFeatureConfiguration config, @Nullable BlockPos nearestVillage) {
+    public void placeRoad(Road road, WorldGenLevel level, RandomSource rand, BlockPos blockPos,
+                          RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint) {
+
         // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
@@ -136,8 +138,8 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
 
         // Debug markers at road endpoints points
         if (YungsRoadsCommon.DEBUG_MODE) {
-            placeDebugMarker(level, chunkPos, road.getVillageStart(), Blocks.EMERALD_BLOCK.defaultBlockState());
-            placeDebugMarker(level, chunkPos, road.getVillageEnd(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(level, chunkPos, road.getEndPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
         }
 
         // Determine road segments we need to process for this chunk
@@ -164,8 +166,8 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
 
             // Debug markers at road segment endpoints
             if (YungsRoadsCommon.DEBUG_MODE) {
-                placeDebugMarker(level, chunkPos, new BlockPos(pts[0].x, pts[0].y, pts[0].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
-                placeDebugMarker(level, chunkPos, new BlockPos(pts[3].x, pts[3].y, pts[3].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
+                placeDebugMarker(level, chunkPos, new BlockPos((int) pts[0].x, (int) pts[0].y, (int) pts[0].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
+                placeDebugMarker(level, chunkPos, new BlockPos((int) pts[3].x, (int) pts[3].y, (int) pts[3].z), Blocks.DIAMOND_BLOCK.defaultBlockState());
             }
 
             // Begin Bezier curve path placement
@@ -183,7 +185,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
                 // Attempt to place path at this position
                 if (isInValidRangeForChunk(chunkPos, pathPosCenter)) {
                     if (isInChunk(chunkPos, pathPosCenter)) {
-                        placePath(level, rand, pathPosCenter, chunkPos, config, blockMask, nearestVillage);
+                        placePath(level, rand, pathPosCenter, chunkPos, config, blockMask, nearestEndpoint);
 
                         if (counter >= 50 && counter % 50 == 0) {
                             tryPlaceDecoration(level, rand, config, pts, t, pathPosCenter);
@@ -205,7 +207,8 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
         }
     }
 
-    private void tryPlaceDecoration(WorldGenLevel level, Random rand, RoadFeatureConfiguration config, Vec3[] pts, float t, BlockPos pathPosCenter) {
+    private void tryPlaceDecoration(WorldGenLevel level, RandomSource rand, RoadFeatureConfiguration config, Vec3[] pts,
+                                    float t, BlockPos pathPosCenter) {
         // Attempt placing decoration at this point.
         // We use normals to find the approximate edge of the road at this point.
         // The tangent is provided for decorations should they choose to use it.
@@ -226,7 +229,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
             BlockState belowState = level.getBlockState(mutable.below());
 
             // Check for water, in which case no decorations are placed.
-            if (belowState.getMaterial() == Material.WATER) {
+            if (!belowState.getFluidState().isEmpty()) {
                 continue;
             }
 

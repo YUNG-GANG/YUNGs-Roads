@@ -35,30 +35,30 @@ public class StructureRegionCache {
     }
 
     /**
-     * Finds the nearest village to the given position <i>within the StructureRegion the provided position is in.</i>
-     * This means the position returned may not actually be the closest village.
+     * Finds the nearest valid endpoint to the given position <i>within the StructureRegion the provided position is in.</i>
+     * This means the position returned may not actually be the closest endpoint position.
      */
-    public BlockPos getNearestVillage(BlockPos pos) {
+    public BlockPos getNearestEndpoint(BlockPos pos) {
         StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
         ChunkPos chunkPos = new ChunkPos(pos);
         StructureRegion structureRegion = getRegion(structureRegionPos);
 
-        BlockPos nearestVillage = new BlockPos(pos);
+        BlockPos nearestEndpoint = new BlockPos(pos);
         int distance = Integer.MAX_VALUE;
 
-        for (long chunkLong : structureRegion.getVillageChunks()) {
+        for (long chunkLong : structureRegion.getRoadEndpointChunks()) {
             ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
             int sqDist = (candidateChunkPos.x - chunkPos.x) * (candidateChunkPos.x - chunkPos.x)
                     + (candidateChunkPos.z - chunkPos.z) * (candidateChunkPos.z - chunkPos.z);
             if (sqDist < distance) {
                 distance = sqDist;
-                nearestVillage = candidateChunkPos.getWorldPosition();
+                nearestEndpoint = candidateChunkPos.getWorldPosition();
             }
 
-            DebugRenderer.getInstance().addVillage(candidateChunkPos);
+            DebugRenderer.getInstance().addEndpointPos(candidateChunkPos);
         }
 
-        return nearestVillage;
+        return nearestEndpoint;
     }
 
     /**
@@ -84,7 +84,7 @@ public class StructureRegionCache {
 
             // Attempt to read existing file.
             try {
-                CompoundTag structureRegionNbt = NbtIo.read(file);
+                CompoundTag structureRegionNbt = NbtIo.read(file.toPath());
                 return new StructureRegion(regionKey, structureRegionNbt);
             } catch (IOException e) {
                 // Unable to read file. Log error & generate file anew.
@@ -120,7 +120,7 @@ public class StructureRegionCache {
         }
 
         try {
-            NbtIo.write(structureRegion.toNbt(), file);
+            NbtIo.write(structureRegion.toNbt(), file.toPath());
         } catch (IOException e) {
             YungsRoadsCommon.LOGGER.error("Unable to write structure region file {}", structureRegion.getFileName());
             YungsRoadsCommon.LOGGER.error(e);

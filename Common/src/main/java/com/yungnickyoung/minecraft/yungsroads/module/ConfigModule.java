@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
 import net.minecraft.core.HolderSet;
-import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
+import net.minecraft.world.level.levelgen.structure.Structure;
 
 public class ConfigModule {
     public General general = new General();
@@ -10,7 +10,7 @@ public class ConfigModule {
 
     public static class General {
         public String structuresString = "[#minecraft:village]";
-        public HolderSet<ConfiguredStructureFeature<?, ?>> structures; // Evaluated at runtime, after registries are loaded
+        public HolderSet<Structure> structures; // Evaluated at runtime, after registries are loaded
     }
 
     public static class Debug {

@@ -1,12 +1,9 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.mixin.accessor.ChunkGeneratorAccessor;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LinearRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.generator.SplineRoadGenerator;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import net.minecraft.core.Holder;
@@ -17,7 +14,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
+import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
 import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
@@ -39,15 +36,15 @@ public class StructureRegionGenerator {
     private final ServerLevel serverLevel;
     private final WorldgenRandom random;
     private final AbstractRoadGenerator roadGenerator;
-    HolderSet<ConfiguredStructureFeature<?, ?>> villageStructures;
+    HolderSet<Structure> endpointStructures;
 
     public StructureRegionGenerator(ServerLevel serverLevel) {
         this.serverLevel = serverLevel;
         this.random = new WorldgenRandom(new LegacyRandomSource(0));
-//        this.roadGenerator = new SplineRoadGenerator(serverLevel);
         this.roadGenerator = new AStarRoadGenerator(serverLevel);
+//        this.roadGenerator = new SplineRoadGenerator(serverLevel);
 //        this.roadGenerator = new LinearRoadGenerator(serverLevel);
-        this.villageStructures = YungsRoadsCommon.CONFIG.general.structures;
+        this.endpointStructures = YungsRoadsCommon.CONFIG.general.structures;
     }
 
     /**
@@ -58,7 +55,9 @@ public class StructureRegionGenerator {
      * are randomly selected as endpoints for roads, and the roads are constructed.
      */
     public StructureRegion generateRegion(long regionKey) {
-        Set<Holder<Biome>> targetBiomes = this.villageStructures.stream().flatMap((holder) -> holder.value().biomes().stream()).collect(Collectors.toSet());
+        Set<Holder<Biome>> targetBiomes = this.endpointStructures.stream()
+                .flatMap(holder -> holder.value().biomes().stream())
+                .collect(Collectors.toSet());
 
         // Quit if there are no target biomes
         if (targetBiomes.isEmpty()) {
@@ -72,27 +71,26 @@ public class StructureRegionGenerator {
         }
 
         StructureRegionPos regionPos = new StructureRegionPos(regionKey);
-        List<Long> villageList = new ArrayList<>();
+        List<Long> structureChunkPosList = new ArrayList<>();
         ChunkPos minChunkPos = regionPos.getMinChunkPosInRegion();
         ChunkPos maxChunkPos = regionPos.getMaxChunkPosInRegion();
 
-        // Create map of placements to matching configured features
-        Map<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> placementToFeaturesMap = new Object2ObjectArrayMap<>();
-
-        for (Holder<ConfiguredStructureFeature<?, ?>> holder : this.villageStructures) {
+        // Create map of placements to matching structures
+        Map<StructurePlacement, Set<Holder<Structure>>> placementToStructuresMap = new Object2ObjectArrayMap<>();
+        for (Holder<Structure> holder : this.endpointStructures) {
             if (allBiomesInDimension.stream().anyMatch(holder.value().biomes()::contains)) {
-                List<StructurePlacement> placementsForStructure = ((ChunkGeneratorAccessor) this.serverLevel.getChunkSource().getGenerator()).callGetPlacementsForFeature(holder);
+                List<StructurePlacement> placementsForStructure = this.serverLevel.getChunkSource().getGeneratorState().getPlacementsForStructure(holder);
                 for (StructurePlacement placement : placementsForStructure) {
-                    placementToFeaturesMap.computeIfAbsent(placement, k -> new ObjectArraySet<>()).add(holder);
+                    placementToStructuresMap.computeIfAbsent(placement, k -> new ObjectArraySet<>()).add(holder);
                 }
             }
         }
 
         // Filter out any placements that aren't random spread.
         // TODO: support concentric rings + modded spreads?
-        List<Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>>> structurePlacementEntries = new ArrayList<>(placementToFeaturesMap.size());
+        List<Map.Entry<StructurePlacement, Set<Holder<Structure>>>> structurePlacementEntries = new ArrayList<>(placementToStructuresMap.size());
 
-        for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry : placementToFeaturesMap.entrySet()) {
+        for (Map.Entry<StructurePlacement, Set<Holder<Structure>>> entry : placementToStructuresMap.entrySet()) {
             StructurePlacement structureplacement = entry.getKey();
             if (structureplacement instanceof ConcentricRingsStructurePlacement) {
                 // TODO
@@ -104,30 +102,43 @@ public class StructureRegionGenerator {
         // Locate target structures in this region
         for (int chunkX = minChunkPos.x; chunkX <= maxChunkPos.x; chunkX++) {
             for (int chunkZ = minChunkPos.z; chunkZ <= maxChunkPos.z; chunkZ++) {
-                for (Map.Entry<StructurePlacement, Set<Holder<ConfiguredStructureFeature<?, ?>>>> entry : structurePlacementEntries) {
-                    RandomSpreadStructurePlacement randomPlacement = (RandomSpreadStructurePlacement) entry.getKey();
-                    Set<Holder<ConfiguredStructureFeature<?, ?>>> holderSet = entry.getValue();
+                for (Map.Entry<StructurePlacement, Set<Holder<Structure>>> entry : structurePlacementEntries) {
+                    RandomSpreadStructurePlacement structurePlacement = (RandomSpreadStructurePlacement) entry.getKey();
+                    Set<Holder<Structure>> holderSet = entry.getValue();
 
-                    if (!randomPlacement.isFeatureChunk(serverLevel.getChunkSource().getGenerator(), serverLevel.getSeed(), chunkX, chunkZ)) {
+                    if (!structurePlacement.isStructureChunk(serverLevel.getChunkSource().getGeneratorState(), chunkX, chunkZ)) {
                         continue;
                     }
 
-                    ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
+                    ChunkPos structureChunkPos = new ChunkPos(chunkX, chunkZ);
 
-                    if (regionPos.isChunkInRegion(chunkPos)) {
-                        Holder<Biome> biome = serverLevel.getChunkSource().getGenerator().getNoiseBiome(
-                                QuartPos.fromSection(chunkPos.x),
+                    if (regionPos.isChunkInRegion(structureChunkPos)) {
+                        Holder<Biome> biome = serverLevel.getNoiseBiome(
+                                QuartPos.fromSection(structureChunkPos.x),
                                 QuartPos.fromBlock(serverLevel.getSeaLevel()),
-                                QuartPos.fromSection(chunkPos.z));
+                                QuartPos.fromSection(structureChunkPos.z));
 
-                        // See if any of the configured features for this placement could generate in this chunk
+                        // See if any of the structures for this placement could generate in this chunk
                         if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value())) {
+                            for (Holder<Structure> holder : holderSet) {
+                                Structure structure = holder.value();
 
-                            for (Holder<ConfiguredStructureFeature<?, ?>> holder : holderSet) {
-                                ConfiguredStructureFeature<?, ?> configuredStructureFeature = holder.value();
-                                StructureStart structureStart = configuredStructureFeature.generate(serverLevel.registryAccess(), serverLevel.getChunkSource().getGenerator(), serverLevel.getChunkSource().getGenerator().getBiomeSource(), serverLevel.getStructureManager(), serverLevel.getSeed(), chunkPos, 0, serverLevel, (b) -> configuredStructureFeature.biomes().contains(b));
-                                if (structureStart != StructureStart.INVALID_START && !villageList.contains(chunkPos.toLong())) {
-                                    villageList.add(chunkPos.toLong());
+                                // "Generate" the structure to get its StructureStart.
+                                // Note that this doesn't actually generate the structure in the world, it just creates the StructureStart object.
+                                StructureStart structureStart = structure.generate(
+                                        serverLevel.registryAccess(),
+                                        serverLevel.getChunkSource().getGenerator(),
+                                        serverLevel.getChunkSource().getGenerator().getBiomeSource(),
+                                        serverLevel.getChunkSource().randomState(),
+                                        serverLevel.getStructureManager(),
+                                        serverLevel.getSeed(),
+                                        structureChunkPos,
+                                        0, //number of references
+                                        serverLevel,
+                                        structure.biomes()::contains);
+
+                                if (structureStart != StructureStart.INVALID_START && !structureChunkPosList.contains(structureChunkPos.toLong())) {
+                                    structureChunkPosList.add(structureChunkPos.toLong());
                                 }
                             }
                         }
@@ -137,46 +148,46 @@ public class StructureRegionGenerator {
         }
 
         List<Road> roads = new ArrayList<>();
-        List<Long> villageListCopy = new ArrayList<>(villageList);
+        List<Long> structureChunkPosListCopy = new ArrayList<>(structureChunkPosList);
         random.setSeed(regionKey ^ serverLevel.getSeed());
 
         // TODO put these in config options
-        int numRoads = villageList.size();
+        int maxNumRoads = structureChunkPosList.size();
         int maxRoadLength = 800;
         int minRoadLength = 50;
 
-        // Generate some roads connecting villages
-        int i = 0;
-        while (i < numRoads && villageListCopy.size() > 1) {
-            // Choose first village
-            int startIndex = random.nextInt(villageListCopy.size());
-            ChunkPos startVillage = new ChunkPos(villageListCopy.get(startIndex));
+        // Generate some roads connecting structures
+        int numRoadsGenerated = 0;
+        while (numRoadsGenerated < maxNumRoads && structureChunkPosListCopy.size() > 1) {
+            // Choose first structure endpoint
+            int startIndex = random.nextInt(structureChunkPosListCopy.size());
+            ChunkPos startStructurePos = new ChunkPos(structureChunkPosListCopy.get(startIndex));
 
             // Remove start pos from the list now that it's chosen.
             // We remove the start pos to prevent completely duplicate roads, but keep the end pos
-            // to allow for villages with multiple roads
-            villageListCopy.remove(startIndex);
+            // to allow for structures with multiple roads
+            structureChunkPosListCopy.remove(startIndex);
 
-            // Choose second village
-            ChunkPos endVillage = null;
-            for (Long endCandidate : villageListCopy) {
+            // Choose second structure endpoint
+            ChunkPos endStructurePos = null;
+            for (Long endCandidate : structureChunkPosListCopy) {
                 ChunkPos endCandidateChunkPos = new ChunkPos(endCandidate);
 
                 // End pos must be within 800 blocks of start pos (arbitrary max road length)
-                if (startVillage.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), maxRoadLength)
-                        && !startVillage.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), minRoadLength)
+                if (startStructurePos.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), maxRoadLength)
+                        && !startStructurePos.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), minRoadLength)
                 ) {
-                    endVillage = endCandidateChunkPos;
+                    endStructurePos = endCandidateChunkPos;
                     break;
                 }
             }
 
-            // If we found a second village, attempt to construct a Road connecting the two villages
-            if (endVillage != null && !endVillage.equals(startVillage)) {
-                Optional<Road> roadOptional = this.roadGenerator.generateRoad(startVillage, endVillage);
+            // If we found a second structure, attempt to construct a Road connecting the two structures
+            if (endStructurePos != null && !endStructurePos.equals(startStructurePos)) {
+                Optional<Road> roadOptional = this.roadGenerator.generateRoad(startStructurePos, endStructurePos);
                 if (roadOptional.isPresent()) {
                     roads.add(roadOptional.get());
-                    i++;
+                    numRoadsGenerated++;
                 }
             }
         }
@@ -187,14 +198,14 @@ public class StructureRegionGenerator {
 //            return roads.stream().noneMatch(road -> road.getVillageStart().equals(blockPos) || road.getVillageEnd().equals(blockPos));
 //        });
 
-        return new StructureRegion(regionKey, villageList, roads);
+        return new StructureRegion(regionKey, structureChunkPosList, roads);
     }
 
     public AbstractRoadGenerator getRoadGenerator() {
         return this.roadGenerator;
     }
 
-    public void setVillageStructures(HolderSet<ConfiguredStructureFeature<?, ?>> villageStructures) {
-        this.villageStructures = villageStructures;
+    public void setEndpointStructures(HolderSet<Structure> endpointStructures) {
+        this.endpointStructures = endpointStructures;
     }
 }

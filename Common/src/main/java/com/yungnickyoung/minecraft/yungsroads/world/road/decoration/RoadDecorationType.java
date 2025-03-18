@@ -2,16 +2,12 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.decoration;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.DataResult;
-import com.mojang.serialization.Lifecycle;
+import com.mojang.serialization.MapCodec;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.ExtraCodecs;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 public interface RoadDecorationType<T extends RoadDecoration> {
     Map<ResourceLocation, RoadDecorationType<? extends RoadDecoration>> NAME_TO_TYPE = new HashMap<>();
@@ -21,10 +17,10 @@ public interface RoadDecorationType<T extends RoadDecoration> {
     RoadDecorationType<FeatureRoadDecoration> FEATURE_DECORATION = register("feature", 0, FeatureRoadDecoration.CODEC);
     RoadDecorationType<ManualRoadDecoration> MANUAL_DECORATION = register("manual", 1, ManualRoadDecoration.CODEC);
 
-    Codec<T> codec();
+    MapCodec<T> codec();
 
-    static <U extends RoadDecoration> RoadDecorationType<U> register(String name, int id, Codec<U> codec) {
-        ResourceLocation location = new ResourceLocation(YungsRoadsCommon.MOD_ID, name);
+    static <U extends RoadDecoration> RoadDecorationType<U> register(String name, int id, MapCodec<U> codec) {
+        ResourceLocation location = YungsRoadsCommon.id(name);
         RoadDecorationType<U> roadDecorationType = create(codec);
         NAME_TO_TYPE.put(location, roadDecorationType);
         TYPE_TO_NAME.put(roadDecorationType, location);
@@ -32,7 +28,7 @@ public interface RoadDecorationType<T extends RoadDecoration> {
         return () -> codec;
     }
 
-    static <U extends RoadDecoration> RoadDecorationType<U> create(Codec<U> codec) {
+    static <U extends RoadDecoration> RoadDecorationType<U> create(MapCodec<U> codec) {
         return () -> codec;
     }
 }

@@ -36,12 +36,12 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
 
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
         StructureRegionPos structureRegionPos = new StructureRegionPos(context.origin());
-        BlockPos nearestVillage = YungsRoadsCommon.DEBUG_MODE ? structureRegionCache.getNearestVillage(context.origin()) : null;
+        BlockPos nearestEndpoint = YungsRoadsCommon.DEBUG_MODE ? structureRegionCache.getNearestEndpoint(context.origin()) : null;
 
         // Place roads
         AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
         List<Road> roads = structureRegionCache.getRegion(structureRegionPos).getRoads();
-        roads.forEach(road -> roadGenerator.placeRoad(road, context.level(), context.random(), context.origin(), context.config(), nearestVillage));
+        roads.forEach(road -> roadGenerator.placeRoad(road, context.level(), context.random(), context.origin(), context.config(), nearestEndpoint));
 
         return true;
     }

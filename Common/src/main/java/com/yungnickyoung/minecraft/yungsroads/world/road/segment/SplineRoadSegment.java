@@ -1,24 +1,24 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.segment;
 
-import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
-import java.util.Random;
 
 public class SplineRoadSegment extends DefaultRoadSegment {
-    public static final Codec<SplineRoadSegment> CODEC = RecordCodecBuilder.create(builder -> builder
+    public static final MapCodec<SplineRoadSegment> CODEC = RecordCodecBuilder.mapCodec(builder -> builder
         .group(
-            BlockPos.CODEC.fieldOf("startPos").forGetter(SplineRoadSegment::getStartPos),
+            BlockPos.CODEC.fieldOf("start_pos").forGetter(SplineRoadSegment::getStartPos),
             BlockPos.CODEC.fieldOf("p1").forGetter(SplineRoadSegment::getP1),
             BlockPos.CODEC.fieldOf("p2").forGetter(SplineRoadSegment::getP2),
-            BlockPos.CODEC.fieldOf("endPos").forGetter(SplineRoadSegment::getEndPos))
+            BlockPos.CODEC.fieldOf("end_pos").forGetter(SplineRoadSegment::getEndPos))
         .apply(builder, SplineRoadSegment::new));
 
     private final BlockPos p1, p2;
-    public SplineRoadSegment(BlockPos startPos, BlockPos endPos, Random random) {
+    public SplineRoadSegment(BlockPos startPos, BlockPos endPos, RandomSource random) {
         super(startPos, endPos);
 
         int xDist = endPos.getX() - startPos.getX();

@@ -11,13 +11,14 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.levelgen.feature.ConfiguredStructureFeature;
+import net.minecraft.world.level.levelgen.structure.Structure;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +40,7 @@ public class ConfigModuleFabric {
         ((IStructureRegionCacheProvider) serverLevel)
                 .getStructureRegionCache()
                 .getStructureRegionGenerator()
-                .setVillageStructures(YungsRoadsCommon.CONFIG.general.structures);
+                .setEndpointStructures(YungsRoadsCommon.CONFIG.general.structures);
     }
 
     private static InteractionResult bakeConfig(ConfigHolder<YRConfigFabric> configHolder, YRConfigFabric configFabric) {
@@ -51,7 +52,7 @@ public class ConfigModuleFabric {
         YungsRoadsCommon.CONFIG.general.structuresString = configFabric.general.structures;
     }
 
-    private static HolderSet<ConfiguredStructureFeature<?, ?>> parseStructureStringList(String listString, LevelAccessor levelAccessor) {
+    private static HolderSet<Structure> parseStructureStringList(String listString, LevelAccessor levelAccessor) {
         int strLen = listString.length();
 
         List<String> listOfStructuresAsStrings = new ArrayList<>();
@@ -66,31 +67,36 @@ public class ConfigModuleFabric {
         }
 
         // Create list of holders from strings
-        List<Holder<ConfiguredStructureFeature<?, ?>>> holders = new ArrayList<>();
-        Registry<ConfiguredStructureFeature<?, ?>> registry = levelAccessor.registryAccess().registryOrThrow(Registry.CONFIGURED_STRUCTURE_FEATURE_REGISTRY);
+        List<Holder<Structure>> holders = new ArrayList<>();
+        Registry<Structure> registry = levelAccessor.registryAccess().registryOrThrow(Registries.STRUCTURE);
 
         listOfStructuresAsStrings.forEach(structureString -> {
             // Fetch the structure from the registry.
             // The method used depends on whether the string passed in is a tag or resource location.
             if (structureString.startsWith("#")) {
-                Optional<HolderSet.Named<ConfiguredStructureFeature<?, ?>>> optional = registry
-                        .getTag(TagKey.create(
-                                Registry.CONFIGURED_STRUCTURE_FEATURE_REGISTRY,
-                                new ResourceLocation(structureString.substring(1))));
-
-                if (optional.isPresent())
-                    holders.addAll(optional.get().stream().toList());
-                else
+                ResourceLocation resourceLocation = ResourceLocation.tryParse(structureString.substring(1));
+                if (resourceLocation == null) {
                     YungsRoadsCommon.LOGGER.error("Found invalid structure tag {}", structureString);
-
+                } else {
+                    Optional<HolderSet.Named<Structure>> optional = registry.getTag(TagKey.create(Registries.STRUCTURE, resourceLocation));
+                    if (optional.isPresent()) {
+                        holders.addAll(optional.get().stream().toList());
+                    } else {
+                        YungsRoadsCommon.LOGGER.error("Found invalid structure tag {}", structureString);
+                    }
+                }
             } else {
-                Optional<ConfiguredStructureFeature<?, ?>> optional = registry
-                        .getOptional(new ResourceLocation(structureString));
-
-                if (optional.isPresent())
-                    holders.add(Holder.direct(optional.get()));
-                else
-                    YungsRoadsCommon.LOGGER.error("Found invalid structure tag {}", structureString);
+                ResourceLocation resourceLocation = ResourceLocation.tryParse(structureString);
+                if (resourceLocation == null) {
+                    YungsRoadsCommon.LOGGER.error("Found invalid structure id {}", structureString);
+                } else {
+                    Optional<Structure> optional = registry.getOptional(resourceLocation);
+                    if (optional.isPresent()) {
+                        holders.add(Holder.direct(optional.get()));
+                    } else {
+                        YungsRoadsCommon.LOGGER.error("Found invalid structure id {}", structureString);
+                    }
+                }
 
             }
 
