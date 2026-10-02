@@ -4,9 +4,11 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "yungsroads.refmap.json",
   "mixins": [
-    "client.DebugScreenOverlayMixin",
     "ServerLevelMixin",
     "TreeFeatureMixin"
+  ],
+  "client": [
+    "client.DebugScreenOverlayMixin"
   ],
   "injectors": {
     "defaultRequire": 1

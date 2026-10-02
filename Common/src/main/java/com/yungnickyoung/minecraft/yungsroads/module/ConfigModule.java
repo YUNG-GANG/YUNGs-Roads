@@ -19,36 +19,16 @@ public class ConfigModule {
         public boolean placeUnjitteredPosDebugMarkers = false;
         public boolean placeJitteredPosDebugMarkers = false;
         public boolean placeRoadEndpointDebugMarkers = false;
-        public boolean placeRoadSegmentEndpointDebugMarkers = false;
         public boolean placeStraightDebugLine = false;
         public boolean placeDebugPaths = false;
     }
 
     public static class Advanced {
-
-        public final Path path = new Path();
-        public final Segment segment = new Segment();
-
-        public static class Path {
-            public int nodeStepDistance = 8;
-            public double jitterAmount = 4;
-            public double hScalar = 10;
-            public double pathScalar = 3; // Increasing this value will make the paths straighter and more direct.
-            public double slopeFactorThreshold = -1.0; // The PV threshold between low and high slope factors
-            public double highSlopeFactorScalar = 10; // Increasing this value will make the paths flatter
-            public double lowSlopeFactorScalar = 2; // Increasing this value will make the paths flatter
-            public double altitudePunishmentScalar = 2; // Cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-        }
-
-        public static class Segment {
-            public double nodeStepDistanceProportion = 0.05;
-            public double hScalar = 10;
-            public double pathScalar = 3; // Increasing this value will make the paths straighter and more direct.
-            public double slopeFactorThreshold = -1.0; // The PV threshold between low and high slope factors
-            public double highSlopeFactorScalar = 10; // Increasing this value will make the paths flatter
-            public double lowSlopeFactorScalar = 2; // Increasing this value will make the paths flatter
-            public double altitudePunishmentScalar = 2; // Cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-
-        }
+        public int nodeStepDistance = 8; // Distance between pathfinding nodes, in blocks
+        public double jitterAmount = 4; // Max noise-based sideways offset applied to the road's shape, in blocks
+        public double heuristicWeight = 1.2; // Values above 1 speed up pathfinding at the cost of slightly less optimal roads
+        public double slopeWeight = 25; // Extra cost per unit of grade squared. Higher values make roads avoid hills more.
+        public double maxGrade = 1.0; // Steepest allowed rise over run between two nodes. 1.0 is 45 degrees.
+        public double waterWeight = 8; // Extra cost multiplier for crossing water. Higher values make roads avoid rivers and lakes more.
     }
 }

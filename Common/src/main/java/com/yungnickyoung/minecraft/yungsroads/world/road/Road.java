@@ -2,9 +2,6 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
-import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
-import com.yungnickyoung.minecraft.yungsroads.world.road.segment.RoadSegmentType;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -16,29 +13,27 @@ public class Road {
             BlockPos.CODEC.fieldOf("start_pos").forGetter(Road::getStartPos),
             BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
             DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
-            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
-            RoadSegmentType.ROAD_SEGMENT_CODEC.listOf().fieldOf("road_segments").forGetter(Road::getRoadSegments))
+            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions))
         .apply(builder, Road::new));
 
     private final BlockPos startPos;
     private final BlockPos endPos;
-    private final List<DefaultRoadSegment> roadSegments;
 
-
+    /** The pathfinding nodes making up this road, in order from start to end. */
     public List<DebugNode> nodes;
+
+    /** The road's center line, rasterized to block positions. Y values are not meaningful. */
     public List<BlockPos> positions;
 
-
-    public Road(BlockPos endPoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<DefaultRoadSegment> roadSegments) {
-        this.startPos = endPoint1.getX() <= endpoint2.getX() ? endPoint1 : endpoint2;
-        this.endPos = this.startPos == endPoint1 ? endpoint2 : endPoint1;
+    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions) {
+        this.startPos = endpoint1.getX() <= endpoint2.getX() ? endpoint1 : endpoint2;
+        this.endPos = this.startPos == endpoint1 ? endpoint2 : endpoint1;
         this.nodes = nodes;
         this.positions = positions;
-        this.roadSegments = roadSegments;
     }
 
     public Road(BlockPos startPos, BlockPos endPos) {
-        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        this(startPos, endPos, new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getStartPos() {
@@ -49,71 +44,41 @@ public class Road {
         return endPos;
     }
 
-    public List<DefaultRoadSegment> getRoadSegments() {
-        return roadSegments;
-    }
-
-    public Road addRoadSegment(DefaultRoadSegment roadSegment) {
-        this.roadSegments.add(roadSegment);
-        return this;
-    }
-
-    public Road addRoadSegment(BlockPos startPos, BlockPos endPos) {
-        DefaultRoadSegment roadSegment = new DefaultRoadSegment(startPos, endPos);
-        return this.addRoadSegment(roadSegment);
-    }
-
     @Override
     public String toString() {
-        return String.format("Road %s - %s (%d segments)", startPos, endPos, roadSegments.size());
+        return String.format("Road %s - %s (%d nodes)", startPos, endPos, nodes.size());
     }
 
-    public static class DebugNode implements Comparable<DebugNode> {
+    /**
+     * A pathfinding node along a road, with the A* values it was found with.
+     * The values are kept for the F3 debug overlay.
+     */
+    public static class DebugNode {
         public static final Codec<DebugNode> CODEC = RecordCodecBuilder.create(builder -> builder
                 .group(
                         BlockPos.CODEC.fieldOf("rawPos").forGetter(node -> node.rawPos),
                         BlockPos.CODEC.fieldOf("jitteredPos").forGetter(node -> node.jitteredPos),
-                        Codec.DOUBLE.fieldOf("f").forGetter(node -> node.f),
                         Codec.DOUBLE.fieldOf("g").forGetter(node -> node.g),
-                        Codec.DOUBLE.fieldOf("h").forGetter(node -> node.h),
-                        Codec.DOUBLE.fieldOf("pathFactor").forGetter(node -> node.pathFactor),
-                        Codec.DOUBLE.fieldOf("slopeFactor").forGetter(node -> node.slopeFactor),
-                        Codec.DOUBLE.fieldOf("altitudePunishment").forGetter(node -> node.altitudePunishment)
+                        Codec.DOUBLE.fieldOf("h").forGetter(node -> node.h)
                 ).apply(builder, DebugNode::new));
 
         public BlockPos rawPos, jitteredPos;
-        public double f, g, h;
-        public double pathFactor, slopeFactor, altitudePunishment;
 
-        private DebugNode(BlockPos rawPos, BlockPos jitteredPos, double f, double g, double h, double pathFactor, double slopeFactor, double altitudePunishment) {
+        /** Accumulated path cost from the road's start to this node. */
+        public double g;
+
+        /** Heuristic estimate of the remaining cost from this node to the road's end. */
+        public double h;
+
+        private DebugNode(BlockPos rawPos, BlockPos jitteredPos, double g, double h) {
             this.rawPos = rawPos;
             this.jitteredPos = jitteredPos;
-            this.f = f;
             this.g = g;
             this.h = h;
-            this.pathFactor = pathFactor;
-            this.slopeFactor = slopeFactor;
-            this.altitudePunishment = altitudePunishment;
         }
 
-        public DebugNode(AStarRoadGenerator.Node node) {
-            this.rawPos = node.pos;
-            this.f = node.f;
-            this.g = node.g;
-            this.h = node.h;
-            this.pathFactor = node.pathFactor;
-            this.slopeFactor = node.slopeFactor;
-            this.altitudePunishment = node.altitudePunishment;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj instanceof DebugNode && this.jitteredPos.equals(((DebugNode) obj).jitteredPos);
-        }
-
-        @Override
-        public int compareTo(DebugNode o) {
-            return this.jitteredPos.compareTo(o.jitteredPos);
+        public DebugNode(BlockPos rawPos, double g, double h) {
+            this(rawPos, rawPos, g, h);
         }
     }
 }

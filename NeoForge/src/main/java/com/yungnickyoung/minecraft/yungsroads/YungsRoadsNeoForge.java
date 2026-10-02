@@ -5,6 +5,7 @@ import com.yungnickyoung.minecraft.yungsroads.module.DebugModuleNeoForge;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
 
 @Mod(YungsRoadsCommon.MOD_ID)
 public class YungsRoadsNeoForge {
@@ -12,6 +13,10 @@ public class YungsRoadsNeoForge {
         YungsRoadsCommon.init();
 
         ConfigModuleNeoForge.init(eventBus, container);
-        DebugModuleNeoForge.init(eventBus);
+
+        // The debug module uses client-only classes, so it must not be loaded on dedicated servers
+        if (FMLEnvironment.dist.isClient()) {
+            DebugModuleNeoForge.init(eventBus);
+        }
     }
 }

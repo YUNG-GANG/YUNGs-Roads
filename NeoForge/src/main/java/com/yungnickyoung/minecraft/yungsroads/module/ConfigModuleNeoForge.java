@@ -53,29 +53,18 @@ public class ConfigModuleNeoForge {
     private static void bakeConfig() {
         YungsRoadsCommon.CONFIG.general.structuresString = YRConfigNeoForge.general.structures.get();
 
-        YungsRoadsCommon.CONFIG.advanced.path.nodeStepDistance = YRConfigNeoForge.advanced.path.nodeStepDistance.get();
-        YungsRoadsCommon.CONFIG.advanced.path.jitterAmount = YRConfigNeoForge.advanced.path.jitterAmount.get();
-        YungsRoadsCommon.CONFIG.advanced.path.hScalar = YRConfigNeoForge.advanced.path.hScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.path.pathScalar = YRConfigNeoForge.advanced.path.pathScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.path.highSlopeFactorScalar = YRConfigNeoForge.advanced.path.highSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.path.lowSlopeFactorScalar = YRConfigNeoForge.advanced.path.lowSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.path.slopeFactorThreshold = YRConfigNeoForge.advanced.path.slopeFactorThreshold.get();
-        YungsRoadsCommon.CONFIG.advanced.path.altitudePunishmentScalar = YRConfigNeoForge.advanced.path.altitudePunishment.get();
-
-        YungsRoadsCommon.CONFIG.advanced.segment.nodeStepDistanceProportion = YRConfigNeoForge.advanced.segment.segmentStepDistanceProportion.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.hScalar = YRConfigNeoForge.advanced.segment.hScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.pathScalar = YRConfigNeoForge.advanced.segment.pathScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.highSlopeFactorScalar = YRConfigNeoForge.advanced.segment.highSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.lowSlopeFactorScalar = YRConfigNeoForge.advanced.segment.lowSlopeFactorScalar.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.slopeFactorThreshold = YRConfigNeoForge.advanced.segment.slopeFactorThreshold.get();
-        YungsRoadsCommon.CONFIG.advanced.segment.altitudePunishmentScalar = YRConfigNeoForge.advanced.segment.altitudePunishment.get();
+        YungsRoadsCommon.CONFIG.advanced.nodeStepDistance = YRConfigNeoForge.advanced.nodeStepDistance.get();
+        YungsRoadsCommon.CONFIG.advanced.jitterAmount = YRConfigNeoForge.advanced.jitterAmount.get();
+        YungsRoadsCommon.CONFIG.advanced.heuristicWeight = YRConfigNeoForge.advanced.heuristicWeight.get();
+        YungsRoadsCommon.CONFIG.advanced.slopeWeight = YRConfigNeoForge.advanced.slopeWeight.get();
+        YungsRoadsCommon.CONFIG.advanced.maxGrade = YRConfigNeoForge.advanced.maxGrade.get();
+        YungsRoadsCommon.CONFIG.advanced.waterWeight = YRConfigNeoForge.advanced.waterWeight.get();
 
         YungsRoadsCommon.CONFIG.debug.enableDebugMap = YRConfigNeoForge.debug.enableDebugMap.get();
         YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
         YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers = YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers = YRConfigNeoForge.debug.placeJitteredPosDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers = YRConfigNeoForge.debug.placeRoadEndpointDebugMarkers.get();
-        YungsRoadsCommon.CONFIG.debug.placeRoadSegmentEndpointDebugMarkers = YRConfigNeoForge.debug.placeRoadSegmentEndpointDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine = YRConfigNeoForge.debug.placeStraightDebugLine.get();
         YungsRoadsCommon.CONFIG.debug.placeDebugPaths = YRConfigNeoForge.debug.placeDebugPaths.get();
     }

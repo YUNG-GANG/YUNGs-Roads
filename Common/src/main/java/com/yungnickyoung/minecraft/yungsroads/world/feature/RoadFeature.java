@@ -1,19 +1,20 @@
 package com.yungnickyoung.minecraft.yungsroads.world.feature;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
+import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-import java.util.List;
 
 @ParametersAreNonnullByDefault
 public class RoadFeature extends Feature<RoadFeatureConfiguration> {
@@ -34,13 +35,29 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
         }
 
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
-        StructureRegionPos structureRegionPos = new StructureRegionPos(context.origin());
+        AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
+        ChunkPos chunkPos = new ChunkPos(context.origin());
 
         // Place roads
-        AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
-        List<Road> roads = structureRegionCache.getRegion(structureRegionPos).getRoads();
-        roads.forEach(road -> roadGenerator.placeRoad(road, context.level(), context.random(), context.origin(), context.config()));
+        roadGenerator.placeRoadInChunk(context.level(), context.random(), chunkPos,
+                structureRegionCache.getRoadPositionsNearChunk(chunkPos), context.config());
+
+        // Debug markers aren't indexed by chunk, so check every road that could reach this chunk
+        if (anyDebugMarkersEnabled(YungsRoadsCommon.CONFIG.debug)) {
+            for (StructureRegion region : structureRegionCache.getRegionsNearChunk(chunkPos)) {
+                for (Road road : region.getRoads()) {
+                    roadGenerator.placeDebugMarkers(road, context.level(), chunkPos);
+                }
+            }
+        }
 
         return true;
+    }
+
+    private static boolean anyDebugMarkersEnabled(ConfigModule.Debug debug) {
+        return debug.placeStraightDebugLine
+                || debug.placeRoadEndpointDebugMarkers
+                || debug.placeUnjitteredPosDebugMarkers
+                || debug.placeJitteredPosDebugMarkers;
     }
 }

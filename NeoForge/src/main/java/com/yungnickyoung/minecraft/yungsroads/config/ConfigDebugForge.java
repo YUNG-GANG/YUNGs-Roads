@@ -8,7 +8,6 @@ public class ConfigDebugForge {
     public final ModConfigSpec.ConfigValue<Boolean> placeUnjitteredPosDebugMarkers;
     public final ModConfigSpec.ConfigValue<Boolean> placeJitteredPosDebugMarkers;
     public final ModConfigSpec.ConfigValue<Boolean> placeRoadEndpointDebugMarkers;
-    public final ModConfigSpec.ConfigValue<Boolean> placeRoadSegmentEndpointDebugMarkers;
     public final ModConfigSpec.ConfigValue<Boolean> placeStraightDebugLine;
     public final ModConfigSpec.ConfigValue<Boolean> placeDebugPaths;
 
@@ -56,13 +55,6 @@ public class ConfigDebugForge {
                             Markers will be towers of emerald blocks.
                             Default: false""".indent(1))
                 .define("placeRoadEndpointDebugMarkers", false);
-
-        placeRoadSegmentEndpointDebugMarkers = BUILDER
-                .comment("""
-                            Whether to place debug markers at the endpoints of Road segments.
-                            Markers will be towers of gold blocks.
-                            Default: false""".indent(1))
-                .define("placeRoadSegmentEndpointDebugMarkers", false);
 
         placeStraightDebugLine = BUILDER
                 .comment("""

@@ -3,8 +3,12 @@ package com.yungnickyoung.minecraft.yungsroads.config;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class ConfigAdvancedForge {
-    public final Path path;
-    public final Segment segment;
+    public final ModConfigSpec.ConfigValue<Integer> nodeStepDistance;
+    public final ModConfigSpec.ConfigValue<Double> jitterAmount;
+    public final ModConfigSpec.ConfigValue<Double> heuristicWeight;
+    public final ModConfigSpec.ConfigValue<Double> slopeWeight;
+    public final ModConfigSpec.ConfigValue<Double> maxGrade;
+    public final ModConfigSpec.ConfigValue<Double> waterWeight;
 
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -15,183 +19,59 @@ public class ConfigAdvancedForge {
                                 ##########################################################################################################""")
                 .push("Advanced");
 
-        path = new Path(BUILDER);
-        segment = new Segment(BUILDER);
+        nodeStepDistance = BUILDER
+                .comment(
+                        """
+                                The distance between adjacent pathfinding nodes, in blocks.
+                                Lower values follow the terrain more closely, but are slower to generate.
+                                Default: 8""".indent(1))
+                .worldRestart()
+                .defineInRange("Node Step Distance", 8, 2, 32);
+
+        jitterAmount = BUILDER
+                .comment(
+                        """
+                                The maximum noise-based sideways offset applied to the road's shape, in blocks.
+                                Default: 4.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Jitter Amount", 4.0, 0.0, 16.0);
+
+        heuristicWeight = BUILDER
+                .comment(
+                        """
+                                How strongly pathfinding is pulled toward the destination.
+                                1.0 always finds the cheapest road. Higher values generate faster but give slightly less optimal roads.
+                                Default: 1.2""".indent(1))
+                .worldRestart()
+                .defineInRange("Heuristic Weight", 1.2, 1.0, 10.0);
+
+        slopeWeight = BUILDER
+                .comment(
+                        """
+                                The extra cost of steep terrain. Each step's cost is multiplied by (1 + Slope Weight * grade^2),
+                                where grade is rise over run. Higher values make roads avoid hills and mountains more.
+                                Default: 25.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Slope Weight", 25.0, 0.0, 1000.0);
+
+        maxGrade = BUILDER
+                .comment(
+                        """
+                                The steepest rise over run allowed between two nodes. Steeper terrain is never crossed.
+                                1.0 is a 45 degree slope.
+                                Default: 1.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Max Grade", 1.0, 0.05, 10.0);
+
+        waterWeight = BUILDER
+                .comment(
+                        """
+                                The extra cost of crossing water. Each water step's cost multiplier is increased by this amount.
+                                Higher values make roads avoid rivers and lakes more. Oceans are never crossed.
+                                Default: 8.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Water Weight", 8.0, 0.0, 1000.0);
 
         BUILDER.pop();
-    }
-
-    public static class Path {
-        public final ModConfigSpec.ConfigValue<Integer> nodeStepDistance;
-        public final ModConfigSpec.ConfigValue<Double> jitterAmount;
-        public final ModConfigSpec.ConfigValue<Double> hScalar;
-        public final ModConfigSpec.ConfigValue<Double> pathScalar;
-        public final ModConfigSpec.ConfigValue<Double> highSlopeFactorScalar;
-        public final ModConfigSpec.ConfigValue<Double> lowSlopeFactorScalar;
-        public final ModConfigSpec.ConfigValue<Double> slopeFactorThreshold;
-        public final ModConfigSpec.ConfigValue<Double> altitudePunishment;
-
-        public Path(ModConfigSpec.Builder BUILDER) {
-            BUILDER
-                    .comment(
-                            """
-                                    ##########################################################################################################
-                                    # Advanced Path settings.
-                                    ##########################################################################################################""")
-                    .push("Path");
-
-            nodeStepDistance = BUILDER
-                    .comment(
-                            """
-                                    The distance between adjacent nodes in the path, in blocks.
-                                    Lower values will result in more nodes, and thus more natural path shapes,
-                                    but will also result in worse performance.
-                                    Default: 8""".indent(1))
-                    .worldRestart()
-                    .define("Node Step Distance", 8);
-
-            jitterAmount = BUILDER
-                    .comment(
-                            """
-                                    The amount of noise-based jitter to apply to the path's shape.
-                                    Default: 4.0""".indent(1))
-                    .worldRestart()
-                    .define("Jitter Amount", 4.0);
-
-            hScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the H function (distance) of the path's shape.
-                                    Default: 10.0""".indent(1))
-                    .worldRestart()
-                    .define("H Scalar", 10.0);
-
-            pathScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the path's length, in terms of nodes.
-                                    Increasing this value will make the paths straighter and more direct.
-                                    Default: 3.0""".indent(1))
-                    .worldRestart()
-                    .define("Path Scalar", 3.0);
-
-            highSlopeFactorScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the slope factor of the path's shape.
-                                    Increasing this value will make the paths flatter, I think.
-                                    Default: 10.0""".indent(1))
-                    .worldRestart()
-                    .define("High Slope Factor Scalar", 10.0);
-
-            lowSlopeFactorScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the slope factor of the path's shape.
-                                    Increasing this value will make the paths flatter, I think.
-                                    Default: 2.0""".indent(1))
-                    .worldRestart()
-                    .define("Low Slope Factor Scalar", 2.0);
-
-            slopeFactorThreshold = BUILDER
-                    .comment(
-                            """
-                                    The PV threshold between low and high slope factors.
-                                    Default: -1.0""".indent(1))
-                    .worldRestart()
-                    .define("Slope Factor Threshold", -1.0);
-
-            altitudePunishment = BUILDER
-                    .comment(
-                            """
-                                    The cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-                                    Default: 2.0""".indent(1))
-                    .worldRestart()
-                    .define("Altitude Punishment", 2.0);
-
-            BUILDER.pop();
-        }
-    }
-
-    public static class Segment {
-        public final ModConfigSpec.ConfigValue<Double> segmentStepDistanceProportion;
-        public final ModConfigSpec.ConfigValue<Double> hScalar;
-        public final ModConfigSpec.ConfigValue<Double> pathScalar;
-        public final ModConfigSpec.ConfigValue<Double> highSlopeFactorScalar;
-        public final ModConfigSpec.ConfigValue<Double> lowSlopeFactorScalar;
-        public final ModConfigSpec.ConfigValue<Double> slopeFactorThreshold;
-        public final ModConfigSpec.ConfigValue<Double> altitudePunishment;
-
-        public Segment(ModConfigSpec.Builder BUILDER) {
-            BUILDER
-                    .comment(
-                            """
-                                    ##########################################################################################################
-                                    # Advanced Segment settings.
-                                    ##########################################################################################################""")
-                    .push("Segment");
-
-            segmentStepDistanceProportion = BUILDER
-                    .comment(
-                            """
-                                    The proportion of the straight-line path length to use as the segment step distance.
-                                    Default: 0.05""".indent(1))
-                    .worldRestart()
-                    .define("Segment Step Distance Proportion", 0.05);
-
-            hScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the H function (distance) of the path's shape
-                                    when determining segment endpoints.
-                                    Default: 10.0""".indent(1))
-                    .worldRestart()
-                    .define("H Scalar", 10.0);
-
-            pathScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the path's length, in terms of nodes.
-                                    Increasing this value will make the paths straighter and more direct.
-                                    Default: 3.0""".indent(1))
-                    .worldRestart()
-                    .define("Path Scalar", 3.0);
-
-            highSlopeFactorScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the slope factor of the path's shape.
-                                    Increasing this value will make the paths flatter, I think.
-                                    Default: 10.0""".indent(1))
-                    .worldRestart()
-                    .define("High Slope Factor Scalar", 10.0);
-
-            lowSlopeFactorScalar = BUILDER
-                    .comment(
-                            """
-                                    The scalar to apply to the slope factor of the path's shape.
-                                    Increasing this value will make the paths flatter, I think.
-                                    Default: 2.0""".indent(1))
-                    .worldRestart()
-                    .define("Low Slope Factor Scalar", 2.0);
-
-            slopeFactorThreshold = BUILDER
-                    .comment(
-                            """
-                                    The PV threshold between low and high slope factors.
-                                    Default: -1.0""".indent(1))
-                    .worldRestart()
-                    .define("Slope Factor Threshold", -1.0);
-
-            altitudePunishment = BUILDER
-                    .comment(
-                            """
-                                    The cost due to the altitude of the path. Helps prevent roads from going up mountains unnecessarily.
-                                    Default: 2.0""".indent(1))
-                    .worldRestart()
-                    .define("Altitude Punishment", 2.0);
-
-            BUILDER.pop();
-        }
     }
 }

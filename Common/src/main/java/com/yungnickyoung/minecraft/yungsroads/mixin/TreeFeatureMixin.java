@@ -2,9 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.mixin;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
@@ -36,14 +34,10 @@ public class TreeFeatureMixin {
             return;
         }
 
-        BlockPos pos = new BlockPos(blockPos.getX(), 0, blockPos.getZ());
-
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
-        StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
-        StructureRegion structureRegion = structureRegionCache.getRegion(structureRegionPos);
 
         // TODO - make this toggleable, and make the range either configurable or derived from road width
-        if (structureRegion.hasRoadInRange(pos, 3)) {
+        if (structureRegionCache.hasRoadNear(blockPos, 3)) {
             cir.setReturnValue(false);
         }
     }

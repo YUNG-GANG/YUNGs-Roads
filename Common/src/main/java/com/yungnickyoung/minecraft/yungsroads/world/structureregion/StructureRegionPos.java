@@ -8,6 +8,9 @@ import net.minecraft.world.level.ChunkPos;
  * A single structure region is 256 x 256 chunks.
  */
 public class StructureRegionPos {
+    /** Converts block coordinates to region coordinates. 1 structure region coordinate = 4096 blocks (256 chunks). */
+    public static final int REGION_SIZE_SHIFT = 12;
+
     private final int x, z;
 
     public StructureRegionPos(int x, int z) {
@@ -16,8 +19,8 @@ public class StructureRegionPos {
     }
 
     public StructureRegionPos(BlockPos blockPos) {
-        this.x = blockPos.getX() >> 12; // 1 structure region coordinate = 4096 blocks (256 chunks)
-        this.z = blockPos.getZ() >> 12;
+        this.x = blockPos.getX() >> REGION_SIZE_SHIFT;
+        this.z = blockPos.getZ() >> REGION_SIZE_SHIFT;
     }
 
     public StructureRegionPos(long l) {

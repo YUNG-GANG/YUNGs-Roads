@@ -8,27 +8,27 @@ import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.segment.DefaultRoadSegment;
+import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.CarvingMask;
-import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.levelgen.NoiseRouterData;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.material.Fluids;
 
-import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Optional;
 
 public abstract class AbstractRoadGenerator {
+    /**
+     * The furthest horizontal distance (along either axis) from a road center position that placement may modify.
+     */
+    public static final int PLACEMENT_REACH = 2;
+
     private static final RoadTypeConfig DEFAULT_SETTINGS = new RoadTypeConfig(
             List.of(Blocks.DIRT.defaultBlockState(),
                     Blocks.GRASS_BLOCK.defaultBlockState(),
@@ -51,211 +51,131 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
-     * Attempts to generate a {@link Road} connecting two chunk positions.<br />
+     * Attempts to generate a {@link Road} connecting two positions.<br />
      * Note that this simply constructs the {@link Road} object. Blocks are not actually placed until
      * {@link RoadFeature#place(FeaturePlaceContext)}.
      *
+     * @param terrain Terrain samples shared by all roads generated for the same region.
      * @return Road connecting the two positions, if one was successfully generated.
      */
-    public abstract Optional<Road> generateRoad(ChunkPos pos1, ChunkPos pos2);
+    public abstract Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, TerrainCache terrain);
 
     /**
-     * Places the {@link Road} for blocks within a given chunk.
-     *
-     * @param road            The {@link Road} to place.
-     * @param world           The world, passed in during feature generation.
-     * @param rand            Random passed in during feature generation.
-     * @param blockPos        A block pos within the chunk we want to operate on. Should be passed in during feature generation.
-     *                        Note that ONLY this chunk will be modified during this function call. No other chunks will be touched,
-     *                        even if they contain Road positions.
+     * Places debug markers for the given {@link Road}, as enabled in the debug config.
+     * Only blocks within the given chunk are modified.
      */
-    public abstract void placeRoad(Road road, WorldGenLevel world, RandomSource rand, BlockPos blockPos,
-                                   RoadFeatureConfiguration config);
+    public abstract void placeDebugMarkers(Road road, WorldGenLevel level, ChunkPos chunkPos);
 
     /**
-     * Determines the road type settings for a given position.
-     * This is based on the biome and temperature at this position.
+     * Places road blocks around each of the given road center positions.
+     * Only blocks inside the given chunk are modified, so the result doesn't depend on chunk generation order.
+     * Each column is placed at most once, so overlapping road circles don't re-roll an already placed block.
      */
-    RoadTypeConfig getRoadTypeAtPos(WorldGenLevel level, BlockPos pos, RoadFeatureConfiguration config) {
-        int surfaceHeight = getSurfaceHeight(level, pos);
-        BlockPos surfacePos = new BlockPos(pos.getX(), surfaceHeight, pos.getZ());
+    public void placeRoadInChunk(WorldGenLevel level, RandomSource random, ChunkPos chunkPos, List<BlockPos> centers,
+                                 RoadFeatureConfiguration config) {
+        boolean[] placedColumns = new boolean[16 * 16];
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
+        for (BlockPos center : centers) {
+            if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
+                placeDebugBlock(level, chunkPos, center, Blocks.DIAMOND_BLOCK.defaultBlockState());
+                continue;
+            }
+
+            // Subtly vary the road's width along its length to make its shape more interesting
+            double widthNoise = this.noise.GetNoise(center.getX(), center.getZ()) + 1;
+
+            for (int dx = -PLACEMENT_REACH; dx <= PLACEMENT_REACH; dx++) {
+                for (int dz = -PLACEMENT_REACH; dz <= PLACEMENT_REACH; dz++) {
+                    int x = center.getX() + dx;
+                    int z = center.getZ() + dz;
+                    if (!isInChunk(chunkPos, x, z)) {
+                        continue;
+                    }
+
+                    int columnIndex = (x & 15) << 4 | (z & 15);
+                    if (placedColumns[columnIndex]) {
+                        continue;
+                    }
+
+                    mutable.set(x, getSurfaceHeight(level, x, z), z);
+                    RoadTypeConfig roadType = getRoadTypeAt(level, mutable, config);
+
+                    // Distances are kept as squared values as an optimization
+                    double maxRoadDistSq = roadType.roadSizeRadius * roadType.roadSizeRadius + widthNoise * roadType.roadSizeVariation;
+                    if (dx * dx + dz * dz >= maxRoadDistSq) {
+                        continue;
+                    }
+
+                    placePathBlock(level, random, mutable, roadType, config);
+                    placedColumns[columnIndex] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * Determines the road type for the given surface block, based on the block and its biome's temperature.
+     */
+    private RoadTypeConfig getRoadTypeAt(WorldGenLevel level, BlockPos surfacePos, RoadFeatureConfiguration config) {
         for (RoadTypeConfig roadType : config.roadTypes) {
             if (roadType.matches(level, surfacePos)) {
                 return roadType;
             }
         }
-
         return DEFAULT_SETTINGS;
     }
 
-    void placePath(WorldGenLevel level, RandomSource random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config) {
-        placePath(level, random, pos, chunkPos, config, null);
-    }
-
-    void placePath(WorldGenLevel level, RandomSource random, BlockPos pos, ChunkPos chunkPos, RoadFeatureConfiguration config,
-                   @Nullable CarvingMask blockMask) {
-        if (!isInValidRangeForChunk(chunkPos, pos)) {
-            return;
-        }
-
-        if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
-            DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()),
-                    Blocks.DIAMOND_BLOCK.defaultBlockState(), blockMask);
-            return;
-        }
-
-        BlockPos.MutableBlockPos mutable = pos.mutable();
-
-        // Determine the road type settings for this position.
-        // This is based on the biome and temperature at this position.
-//        int surfaceHeight = getSurfaceHeight(level, mutable);
-//        mutable.setY(surfaceHeight);
-
-        RoadTypeConfig roadTypeConfig = getRoadTypeAtPos(level, pos, config);
-//        for (RoadTypeConfig roadType : config.roadTypes) {
-//            if (roadType.matches(level, mutable)) {
-//                roadTypeConfig = roadType;
-//                break;
-//            }
-//        }
-
-        // Determine path buffer space at this position.
-        // This is used to subtly vary the path's width to make its shape more interesting.
-        double pathBufferSpace = (noise.GetNoise(pos.getX(), pos.getZ()) + 1) * roadTypeConfig.roadSizeVariation;
-
-        // Determine the furthest away a block can be placed from the current position.
-        // Distances are kept as squared values as an optimization.
-        double maxRoadDistSq = roadTypeConfig.roadSizeRadius * roadTypeConfig.roadSizeRadius + pathBufferSpace;
-
-        // At each path position, we place a small circle of blocks at surface height
-        for (int x = -2; x < 3; x++) {
-            for (int z = -2; z < 3; z++) {
-                if (x * x + z * z < maxRoadDistSq) {
-                    mutable.set(pos.getX() + x, 0, pos.getZ() + z);
-
-                    if (!isInValidRangeForChunk(chunkPos, mutable)) {
-                        continue;
-                    }
-
-                    // Adjust y-coordinate based on surface height
-                    int surfaceHeight = getSurfaceHeight(level, mutable);
-                    mutable.setY(surfaceHeight);
-
-                    placePathBlock(level, random, mutable, config, blockMask);
-                }
-            }
-        }
-    }
-
     /**
-     * Places a single path block at the given position.
-     * Uses the RoadFeatureConfiguration to determine which block to place.
+     * Places a single road block, using a bridge block if the position holds fluid.
      */
-    private void placePathBlock(WorldGenLevel level, RandomSource random, BlockPos pos, RoadFeatureConfiguration config,
-                                @Nullable CarvingMask blockMask) {
-        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) {
-            return;
-        }
-
+    private void placePathBlock(WorldGenLevel level, RandomSource random, BlockPos pos, RoadTypeConfig roadType,
+                                RoadFeatureConfiguration config) {
         BlockState currState = level.getBlockState(pos);
-        RoadTypeConfig roadTypeConfig = getRoadTypeAtPos(level, pos, config);
-
-        // Check for water to place bridge block.
-        if (!currState.getFluidState().is(Fluids.EMPTY)) {
-            level.setBlock(pos, config.bridgeBlockStates.get(random), 2);
-        }
-
-        // Otherwise, set path block
-        level.setBlock(pos, roadTypeConfig.pathBlockStates.get(random), 2);
-
-        if (blockMask != null) {
-            blockMask.set(pos.getX(), pos.getY(), pos.getZ());
-        }
+        BlockState newState = currState.getFluidState().is(Fluids.EMPTY)
+                ? roadType.pathBlockStates.get(random)
+                : config.bridgeBlockStates.get(random);
+        level.setBlock(pos, newState, 2);
     }
 
-    void DEBUGplacePath(WorldGenLevel level, BlockPos pos, ChunkPos chunkPos, @Nullable CarvingMask blockMask,
-                        BlockState blockState) {
-        if (!isInValidRangeForChunk(chunkPos, pos)) {
+    /**
+     * Places a single debug block at the surface, if the position is inside the given chunk.
+     */
+    void placeDebugBlock(WorldGenLevel level, ChunkPos chunkPos, BlockPos pos, BlockState blockState) {
+        if (!isInChunk(chunkPos, pos)) {
             return;
         }
-        DEBUGplaceBlock(level, new BlockPos(pos.getX(), getSurfaceHeight(level, pos), pos.getZ()), blockState, blockMask);
+        level.setBlock(new BlockPos(pos.getX(), getSurfaceHeight(level, pos.getX(), pos.getZ()), pos.getZ()), blockState, 2);
     }
 
-    private void DEBUGplaceBlock(WorldGenLevel level, BlockPos pos, BlockState blockState,
-                                 @Nullable CarvingMask blockMask) {
-        if (blockMask != null && blockMask.get(pos.getX(), pos.getY(), pos.getZ())) {
-            return;
-        }
-
-        level.setBlock(pos, blockState, 2);
-        if (blockMask != null) {
-            blockMask.set(pos.getX(), pos.getY(), pos.getZ());
-        }
-    }
-
+    /**
+     * Places a 10-block tall debug marker tower above the surface, if the position is inside the given chunk.
+     */
     void placeDebugMarker(WorldGenLevel level, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
-        if (isInChunk(chunkPos, blockPos)) {
-            BlockPos.MutableBlockPos mutable = blockPos.mutable();
-            mutable.setY(getSurfaceHeight(level, mutable));
+        if (!isInChunk(chunkPos, blockPos)) {
+            return;
+        }
 
-            for (int y = 0; y < 10; y++) {
-                mutable.move(Direction.UP);
-                if (level.getBlockState(mutable).isAir()) {
-                    level.setBlock(mutable, markerBlock, 2);
-                }
+        BlockPos.MutableBlockPos mutable = blockPos.mutable();
+        mutable.setY(getSurfaceHeight(level, mutable.getX(), mutable.getZ()));
+
+        for (int y = 0; y < 10; y++) {
+            mutable.move(Direction.UP);
+            if (level.getBlockState(mutable).isAir()) {
+                level.setBlock(mutable, markerBlock, 2);
             }
         }
     }
 
-    boolean isInChunk(ChunkPos chunkPos, BlockPos blockPos) {
-        return chunkPos.equals(new ChunkPos(blockPos));
+    static boolean isInChunk(ChunkPos chunkPos, BlockPos blockPos) {
+        return isInChunk(chunkPos, blockPos.getX(), blockPos.getZ());
     }
 
-    /**
-     * Checks if the BlockPos is within a 1-chunk radius of the given ChunkPos.
-     */
-    boolean isInValidRangeForChunk(ChunkPos chunkPos, BlockPos blockPos) {
-        ChunkPos targetChunkPos = new ChunkPos(blockPos);
-        return targetChunkPos.x >= chunkPos.x - 1 &&
-                targetChunkPos.x <= chunkPos.x + 1 &&
-                targetChunkPos.z >= chunkPos.z - 1 &&
-                targetChunkPos.z <= chunkPos.z + 1;
-
+    static boolean isInChunk(ChunkPos chunkPos, int x, int z) {
+        return (x >> 4) == chunkPos.x && (z >> 4) == chunkPos.z;
     }
 
-    int getSurfaceHeight(WorldGenLevel world, BlockPos pos) {
-        return world.getHeight(Heightmap.Types.WORLD_SURFACE_WG, pos.getX(), pos.getZ()) - 1;
-    }
-
-    boolean containsRoad(ChunkPos chunkPos, Road road) {
-        int roadStartX = road.getStartPos().getX();
-        int roadEndX = road.getEndPos().getX();
-        int chunkStartX = chunkPos.getMinBlockX();
-        int chunkEndX = chunkPos.getMaxBlockX();
-        int chunkPad = 64; // We pad the cutoff by 4 chunks to allow for curved roads that temporarily exceed the min or max x-value
-        // defined by the road segment's start/end positions. The 4 here is arbitrary and may not cover
-        // all scenarios, but covers most without incurring too much performance cost.
-        return (roadStartX >= chunkStartX - chunkPad || roadEndX >= chunkStartX - chunkPad)
-                && (roadStartX <= chunkEndX + chunkPad || roadEndX <= chunkEndX + chunkPad);
-    }
-
-    boolean containsRoadSegment(ChunkPos chunkPos, DefaultRoadSegment roadSegment) {
-        int roadSegmentStartX = roadSegment.getStartPos().getX();
-        int roadSegmentEndX = roadSegment.getEndPos().getX();
-        int chunkStartX = chunkPos.getMinBlockX();
-        int chunkEndX = chunkPos.getMaxBlockX();
-        int chunkPad = 64; // We pad the cutoff by 4 chunks to allow for curved roads that temporarily exceed the min or max x-value
-        // defined by the road segment's start/end positions. The 4 here is arbitrary and may not cover
-        // all scenarios, but covers most without incurring too much performance cost.
-        return (roadSegmentStartX >= chunkStartX - chunkPad || roadSegmentEndX >= chunkStartX - chunkPad)
-                && (roadSegmentStartX <= chunkEndX + chunkPad || roadSegmentEndX <= chunkEndX + chunkPad);
-    }
-
-    static float getPVNoiseAt(ServerLevel serverLevel, BlockPos pos) {
-        DensityFunction.SinglePointContext p1 = new DensityFunction.SinglePointContext(pos.getX(), pos.getY(), pos.getZ());
-        // Must use the RandomState's router. The router in NoiseGeneratorSettings is unseeded and always evaluates to 0.
-        double ridgeP1 = serverLevel.getChunkSource().randomState().router().ridges().compute(p1);
-        return NoiseRouterData.peaksAndValleys((float) ridgeP1);
+    static int getSurfaceHeight(WorldGenLevel level, int x, int z) {
+        return level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
     }
 }

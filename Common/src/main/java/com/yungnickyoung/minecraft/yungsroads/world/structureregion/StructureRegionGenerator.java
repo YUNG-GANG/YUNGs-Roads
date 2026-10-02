@@ -5,204 +5,124 @@ import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
-import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
-import it.unimi.dsi.fastutil.objects.ObjectArraySet;
-import net.minecraft.core.Holder;
+import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
+import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
 import net.minecraft.core.HolderSet;
-import net.minecraft.core.QuartPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.levelgen.LegacyRandomSource;
-import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
-import net.minecraft.world.level.levelgen.structure.placement.ConcentricRingsStructurePlacement;
-import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
-import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Class for generating new StructureRegions.
  * Does not store any generated regions - that is handled by {@link StructureRegionCache}
  */
 public class StructureRegionGenerator {
-    private final ServerLevel serverLevel;
-    private final WorldgenRandom random;
+    /** The maximum straight-line distance between two structures connected by a road, in blocks. */
+    public static final int MAX_ROAD_LENGTH = 800;
+
+    /** The minimum straight-line distance between two structures connected by a road, in blocks. */
+    public static final int MIN_ROAD_LENGTH = 50;
+
+    private final StructureLocator structureLocator;
+    private final TerrainSampler terrainSampler;
     private final AbstractRoadGenerator roadGenerator;
-    HolderSet<Structure> endpointStructures;
 
     public StructureRegionGenerator(ServerLevel serverLevel) {
-        this.serverLevel = serverLevel;
-        this.random = new WorldgenRandom(new LegacyRandomSource(0));
-        this.roadGenerator = new AStarRoadGenerator(serverLevel);
-//        this.roadGenerator = new SplineRoadGenerator(serverLevel);
-//        this.roadGenerator = new LinearRoadGenerator(serverLevel);
-        this.endpointStructures = YungsRoadsCommon.CONFIG.general.structures;
+        this.terrainSampler = new TerrainSampler(serverLevel);
+        this.structureLocator = new StructureLocator(serverLevel, this.terrainSampler, YungsRoadsCommon.CONFIG.general.structures);
+        this.roadGenerator = new AStarRoadGenerator();
     }
 
     /**
      * Generates a new {@link StructureRegion} for the given region key.
      * <p>
-     * Uses the structure's spacing & separation settings to reconstruct its structure location grid,
-     * then validates each position with a biome check. From there, some of the structure locations
-     * are randomly selected as endpoints for roads, and the roads are constructed.
+     * Structures are connected using a relative neighborhood graph: two structures get a road if no other structure
+     * is closer to both of them than they are to each other. This links each structure to its natural neighbors
+     * without redundant parallel roads.
+     * <p>
+     * A road can cross region borders. Each road is generated only by the region containing its owning endpoint
+     * (see {@link #isOwner}). Since every structure that could affect whether an edge exists lies within
+     * {@link #MAX_ROAD_LENGTH} of the owning endpoint, looking that far outside the region is enough for all regions
+     * to agree on the graph.
      */
     public StructureRegion generateRegion(long regionKey) {
-        Set<Holder<Biome>> targetBiomes = this.endpointStructures.stream()
-                .flatMap(holder -> holder.value().biomes().stream())
-                .collect(Collectors.toSet());
-
-        // Quit if there are no target biomes
-        if (targetBiomes.isEmpty()) {
-            return new StructureRegion(regionKey);
-        }
-
-        // Quit if no biomes in this dimension match the target biomes
-        Set<Holder<Biome>> allBiomesInDimension = this.serverLevel.getChunkSource().getGenerator().getBiomeSource().possibleBiomes();
-        if (Collections.disjoint(allBiomesInDimension, targetBiomes)) {
-            return new StructureRegion(regionKey);
-        }
-
         StructureRegionPos regionPos = new StructureRegionPos(regionKey);
-        List<Long> structureChunkPosList = new ArrayList<>();
-        ChunkPos minChunkPos = regionPos.getMinChunkPosInRegion();
-        ChunkPos maxChunkPos = regionPos.getMaxChunkPosInRegion();
+        ChunkPos regionMin = regionPos.getMinChunkPosInRegion();
+        ChunkPos regionMax = regionPos.getMaxChunkPosInRegion();
+        int marginChunks = (MAX_ROAD_LENGTH >> 4) + 1;
 
-        // Create map of placements to matching structures
-        Map<StructurePlacement, Set<Holder<Structure>>> placementToStructuresMap = new Object2ObjectArrayMap<>();
-        for (Holder<Structure> holder : this.endpointStructures) {
-            if (allBiomesInDimension.stream().anyMatch(holder.value().biomes()::contains)) {
-                List<StructurePlacement> placementsForStructure = this.serverLevel.getChunkSource().getGeneratorState().getPlacementsForStructure(holder);
-                for (StructurePlacement placement : placementsForStructure) {
-                    placementToStructuresMap.computeIfAbsent(placement, k -> new ObjectArraySet<>()).add(holder);
-                }
-            }
-        }
+        long locateStartTime = System.nanoTime();
+        List<ChunkPos> structures = this.structureLocator.locate(
+                new ChunkPos(regionMin.x - marginChunks, regionMin.z - marginChunks),
+                new ChunkPos(regionMax.x + marginChunks, regionMax.z + marginChunks));
+        List<ChunkPos> ownStructures = structures.stream().filter(regionPos::isChunkInRegion).toList();
+        long locateTimeMs = (System.nanoTime() - locateStartTime) / 1_000_000;
 
-        // Filter out any placements that aren't random spread.
-        // TODO: support concentric rings + modded spreads?
-        List<Map.Entry<StructurePlacement, Set<Holder<Structure>>>> structurePlacementEntries = new ArrayList<>(placementToStructuresMap.size());
-
-        for (Map.Entry<StructurePlacement, Set<Holder<Structure>>> entry : placementToStructuresMap.entrySet()) {
-            StructurePlacement structureplacement = entry.getKey();
-            if (structureplacement instanceof ConcentricRingsStructurePlacement) {
-                // TODO
-            } else if (structureplacement instanceof RandomSpreadStructurePlacement) {
-                structurePlacementEntries.add(entry);
-            }
-        }
-
-        // Locate target structures in this region
-        for (int chunkX = minChunkPos.x; chunkX <= maxChunkPos.x; chunkX++) {
-            for (int chunkZ = minChunkPos.z; chunkZ <= maxChunkPos.z; chunkZ++) {
-                for (Map.Entry<StructurePlacement, Set<Holder<Structure>>> entry : structurePlacementEntries) {
-                    RandomSpreadStructurePlacement structurePlacement = (RandomSpreadStructurePlacement) entry.getKey();
-                    Set<Holder<Structure>> holderSet = entry.getValue();
-
-                    if (!structurePlacement.isStructureChunk(serverLevel.getChunkSource().getGeneratorState(), chunkX, chunkZ)) {
-                        continue;
-                    }
-
-                    ChunkPos structureChunkPos = new ChunkPos(chunkX, chunkZ);
-
-                    if (regionPos.isChunkInRegion(structureChunkPos)) {
-                        Holder<Biome> biome = serverLevel.getNoiseBiome(
-                                QuartPos.fromSection(structureChunkPos.x),
-                                QuartPos.fromBlock(serverLevel.getSeaLevel()),
-                                QuartPos.fromSection(structureChunkPos.z));
-
-                        // See if any of the structures for this placement could generate in this chunk
-                        if (targetBiomes.stream().anyMatch(biomeHolder -> biomeHolder.value() == biome.value())) {
-                            for (Holder<Structure> holder : holderSet) {
-                                Structure structure = holder.value();
-
-                                // "Generate" the structure to get its StructureStart.
-                                // Note that this doesn't actually generate the structure in the world, it just creates the StructureStart object.
-                                StructureStart structureStart = structure.generate(
-                                        serverLevel.registryAccess(),
-                                        serverLevel.getChunkSource().getGenerator(),
-                                        serverLevel.getChunkSource().getGenerator().getBiomeSource(),
-                                        serverLevel.getChunkSource().randomState(),
-                                        serverLevel.getStructureManager(),
-                                        serverLevel.getSeed(),
-                                        structureChunkPos,
-                                        0, //number of references
-                                        serverLevel,
-                                        structure.biomes()::contains);
-
-                                if (structureStart != StructureStart.INVALID_START && !structureChunkPosList.contains(structureChunkPos.toLong())) {
-                                    structureChunkPosList.add(structureChunkPos.toLong());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        long routeStartTime = System.nanoTime();
+        TerrainCache terrain = new TerrainCache(this.terrainSampler, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
         List<Road> roads = new ArrayList<>();
-        List<Long> structureChunkPosListCopy = new ArrayList<>(structureChunkPosList);
-        random.setSeed(regionKey ^ serverLevel.getSeed());
-
-        // TODO put these in config options
-        int maxNumRoads = structureChunkPosList.size();
-        int maxRoadLength = 800;
-        int minRoadLength = 50;
-
-        // Generate some roads connecting structures
-        int numRoadsGenerated = 0;
-        while (numRoadsGenerated < maxNumRoads && structureChunkPosListCopy.size() > 1) {
-            // Choose first structure endpoint
-            int startIndex = random.nextInt(structureChunkPosListCopy.size());
-            ChunkPos startStructurePos = new ChunkPos(structureChunkPosListCopy.get(startIndex));
-
-            // Remove start pos from the list now that it's chosen.
-            // We remove the start pos to prevent completely duplicate roads, but keep the end pos
-            // to allow for structures with multiple roads
-            structureChunkPosListCopy.remove(startIndex);
-
-            // Choose second structure endpoint
-            ChunkPos endStructurePos = null;
-            for (Long endCandidate : structureChunkPosListCopy) {
-                ChunkPos endCandidateChunkPos = new ChunkPos(endCandidate);
-
-                // End pos must be within 800 blocks of start pos (arbitrary max road length)
-                if (startStructurePos.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), maxRoadLength)
-                        && !startStructurePos.getWorldPosition().closerThan(endCandidateChunkPos.getWorldPosition(), minRoadLength)
-                ) {
-                    endStructurePos = endCandidateChunkPos;
-                    break;
-                }
-            }
-
-            // If we found a second structure, attempt to construct a Road connecting the two structures
-            if (endStructurePos != null && !endStructurePos.equals(startStructurePos)) {
-                Optional<Road> roadOptional = this.roadGenerator.generateRoad(startStructurePos, endStructurePos);
-                if (roadOptional.isPresent()) {
-                    roads.add(roadOptional.get());
-                    numRoadsGenerated++;
+        int edgeCount = 0;
+        for (ChunkPos start : ownStructures) {
+            for (ChunkPos end : structures) {
+                if (isOwner(start, end) && isGraphEdge(start, end, structures)) {
+                    edgeCount++;
+                    this.roadGenerator.generateRoad(start.getWorldPosition(), end.getWorldPosition(), terrain).ifPresent(roads::add);
                 }
             }
         }
-
-        // Remove any leftover village chunks that didn't get used
-//        villageSet.removeIf(chunkLong -> {
-//            BlockPos blockPos = new ChunkPos(chunkLong).getWorldPosition();
-//            return roads.stream().noneMatch(road -> road.getVillageStart().equals(blockPos) || road.getVillageEnd().equals(blockPos));
-//        });
+        YungsRoadsCommon.LOGGER.debug("Region {}: located {} structures ({} own) in {} ms, routed {}/{} roads in {} ms with {} terrain samples",
+                regionPos, structures.size(), ownStructures.size(), locateTimeMs, roads.size(), edgeCount,
+                (System.nanoTime() - routeStartTime) / 1_000_000, terrain.sampleCount());
 
         // Mirrors the debug registration done when loading a region from disk in StructureRegion
-        structureChunkPosList.forEach(chunkLong -> DebugRenderer.getInstance().addEndpointPos(new ChunkPos(chunkLong)));
+        ownStructures.forEach(DebugRenderer.getInstance()::addEndpointPos);
 
-        return new StructureRegion(regionKey, structureChunkPosList, roads);
+        List<Long> ownStructureLongs = ownStructures.stream().map(ChunkPos::toLong).toList();
+        return new StructureRegion(regionKey, new ArrayList<>(ownStructureLongs), roads);
+    }
+
+    /**
+     * Whether a road between the two structures is owned by {@code a}. Exactly one of the two endpoints owns each
+     * road, so exactly one region generates it.
+     */
+    private static boolean isOwner(ChunkPos a, ChunkPos b) {
+        return a.x < b.x || (a.x == b.x && a.z < b.z);
+    }
+
+    /**
+     * Whether the two structures should be connected by a road: their distance must be within the allowed road length,
+     * and no other structure may be closer to both of them than they are to each other.
+     */
+    private static boolean isGraphEdge(ChunkPos a, ChunkPos b, List<ChunkPos> structures) {
+        long abDistSq = distSq(a, b);
+        if (abDistSq > blocksToChunksSq(MAX_ROAD_LENGTH) || abDistSq < blocksToChunksSq(MIN_ROAD_LENGTH)) {
+            return false;
+        }
+
+        for (ChunkPos c : structures) {
+            if (c.equals(a) || c.equals(b)) {
+                continue;
+            }
+            if (distSq(a, c) < abDistSq && distSq(b, c) < abDistSq) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Squared distance between two chunk positions, in chunks. */
+    private static long distSq(ChunkPos a, ChunkPos b) {
+        long dx = a.x - b.x;
+        long dz = a.z - b.z;
+        return dx * dx + dz * dz;
+    }
+
+    private static long blocksToChunksSq(int blocks) {
+        double chunks = blocks / 16.0;
+        return (long) (chunks * chunks);
     }
 
     public AbstractRoadGenerator getRoadGenerator() {
@@ -210,6 +130,6 @@ public class StructureRegionGenerator {
     }
 
     public void setEndpointStructures(HolderSet<Structure> endpointStructures) {
-        this.endpointStructures = endpointStructures;
+        this.structureLocator.setEndpointStructures(endpointStructures);
     }
 }
