@@ -24,7 +24,6 @@ import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.phys.Vec3;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -126,7 +125,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
 
     @Override
     public void placeRoad(Road road, WorldGenLevel level, RandomSource rand, BlockPos blockPos,
-                          RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint) {
+                          RoadFeatureConfiguration config) {
 
         // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
@@ -185,7 +184,7 @@ public class SplineRoadGenerator extends AbstractRoadGenerator {
                 // Attempt to place path at this position
                 if (isInValidRangeForChunk(chunkPos, pathPosCenter)) {
                     if (isInChunk(chunkPos, pathPosCenter)) {
-                        placePath(level, rand, pathPosCenter, chunkPos, config, blockMask, nearestEndpoint);
+                        placePath(level, rand, pathPosCenter, chunkPos, config, blockMask);
 
                         if (counter >= 50 && counter % 50 == 0) {
                             tryPlaceDecoration(level, rand, config, pts, t, pathPosCenter);

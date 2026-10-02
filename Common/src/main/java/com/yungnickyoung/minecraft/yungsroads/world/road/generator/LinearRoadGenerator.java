@@ -13,7 +13,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 
-import javax.annotation.Nullable;
 import java.util.Optional;
 
 public class LinearRoadGenerator extends AbstractRoadGenerator {
@@ -63,7 +62,7 @@ public class LinearRoadGenerator extends AbstractRoadGenerator {
 
     @Override
     public void placeRoad(Road road, WorldGenLevel level, RandomSource rand, BlockPos blockPos,
-                          RoadFeatureConfiguration config, @Nullable BlockPos nearestEndpoint) {
+                          RoadFeatureConfiguration config) {
 
         // The position of the chunk we're currently confined to
         ChunkPos chunkPos = new ChunkPos(blockPos);
@@ -92,20 +91,20 @@ public class LinearRoadGenerator extends AbstractRoadGenerator {
         while (!isWithin10Blocks(mutable, road.getEndPos())) {
             // Move in z direction
             while (slopeCounter >= 1 && !isWithin10Blocks(mutable, road.getEndPos())) {
-                placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
+                placePath(level, rand, mutable, chunkPos, config);
                 mutable.move(0, 0, zDir);
                 slopeCounter--;
             }
 
             // Move in x direction
             while (slopeCounter < 1 && !isWithin10Blocks(mutable, road.getEndPos())) {
-                placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
+                placePath(level, rand, mutable, chunkPos, config);
                 mutable.move(xDir, 0, 0);
                 slopeCounter += Math.abs(totalSlope);
             }
 
             // Place path at final position
-            placePath(level, rand, mutable, chunkPos, config, null, nearestEndpoint);
+            placePath(level, rand, mutable, chunkPos, config);
         }
     }
 

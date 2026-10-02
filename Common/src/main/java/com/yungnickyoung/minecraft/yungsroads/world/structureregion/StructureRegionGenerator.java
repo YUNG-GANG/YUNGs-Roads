@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
@@ -197,6 +198,9 @@ public class StructureRegionGenerator {
 //            BlockPos blockPos = new ChunkPos(chunkLong).getWorldPosition();
 //            return roads.stream().noneMatch(road -> road.getVillageStart().equals(blockPos) || road.getVillageEnd().equals(blockPos));
 //        });
+
+        // Mirrors the debug registration done when loading a region from disk in StructureRegion
+        structureChunkPosList.forEach(chunkLong -> DebugRenderer.getInstance().addEndpointPos(new ChunkPos(chunkLong)));
 
         return new StructureRegion(regionKey, structureChunkPosList, roads);
     }

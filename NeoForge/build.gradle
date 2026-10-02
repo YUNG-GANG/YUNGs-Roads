@@ -46,9 +46,23 @@ runs {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+repositories {
+    exclusiveContent {
+        forRepository {
+            maven {
+                url "https://cursemaven.com"
+            }
+        }
+        filter {
+            includeGroup "curse.maven"
+        }
+    }
+}
+
 dependencies {
     implementation "net.neoforged:neoforge:${neoforge_version}"
     implementation "com.yungnickyoung.minecraft.yungsapi:YungsApi:${mc_version}-NeoForge-${yungsapi_version}"
+    implementation "curse.maven:configured-457570:5873783"
 }
 
 String[] compatibleVersions = project.compatible_versions.split(',')

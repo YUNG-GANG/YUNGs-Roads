@@ -6,7 +6,6 @@ public class ConfigAdvancedForge {
     public final Path path;
     public final Segment segment;
 
-
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
                 .comment(

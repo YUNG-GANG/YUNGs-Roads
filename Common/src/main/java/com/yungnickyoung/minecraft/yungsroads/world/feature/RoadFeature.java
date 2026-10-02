@@ -7,7 +7,6 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadG
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.levelgen.feature.Feature;
@@ -36,12 +35,11 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
 
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
         StructureRegionPos structureRegionPos = new StructureRegionPos(context.origin());
-        BlockPos nearestEndpoint = YungsRoadsCommon.DEBUG_MODE ? structureRegionCache.getNearestEndpoint(context.origin()) : null;
 
         // Place roads
         AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
         List<Road> roads = structureRegionCache.getRegion(structureRegionPos).getRoads();
-        roads.forEach(road -> roadGenerator.placeRoad(road, context.level(), context.random(), context.origin(), context.config(), nearestEndpoint));
+        roads.forEach(road -> roadGenerator.placeRoad(road, context.level(), context.random(), context.origin(), context.config()));
 
         return true;
     }

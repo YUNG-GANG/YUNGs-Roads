@@ -2,11 +2,9 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 
 import java.io.File;
 import java.io.IOException;
@@ -32,33 +30,6 @@ public class StructureRegionCache {
         this.structureRegionGenerator = new StructureRegionGenerator(level);
         this.savePath = dimensionPath.resolve("roads").toAbsolutePath();
         createDirectoryIfDoesNotExist();
-    }
-
-    /**
-     * Finds the nearest valid endpoint to the given position <i>within the StructureRegion the provided position is in.</i>
-     * This means the position returned may not actually be the closest endpoint position.
-     */
-    public BlockPos getNearestEndpoint(BlockPos pos) {
-        StructureRegionPos structureRegionPos = new StructureRegionPos(pos);
-        ChunkPos chunkPos = new ChunkPos(pos);
-        StructureRegion structureRegion = getRegion(structureRegionPos);
-
-        BlockPos nearestEndpoint = new BlockPos(pos);
-        int distance = Integer.MAX_VALUE;
-
-        for (long chunkLong : structureRegion.getRoadEndpointChunks()) {
-            ChunkPos candidateChunkPos = new ChunkPos(chunkLong);
-            int sqDist = (candidateChunkPos.x - chunkPos.x) * (candidateChunkPos.x - chunkPos.x)
-                    + (candidateChunkPos.z - chunkPos.z) * (candidateChunkPos.z - chunkPos.z);
-            if (sqDist < distance) {
-                distance = sqDist;
-                nearestEndpoint = candidateChunkPos.getWorldPosition();
-            }
-
-            DebugRenderer.getInstance().addEndpointPos(candidateChunkPos);
-        }
-
-        return nearestEndpoint;
     }
 
     /**

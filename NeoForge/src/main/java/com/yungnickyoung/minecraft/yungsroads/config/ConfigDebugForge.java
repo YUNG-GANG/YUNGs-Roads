@@ -25,7 +25,7 @@ public class ConfigDebugForge {
                 .comment("""
                             Whether to enable the debug map overlay.
                             This will render a map of all villages and paths in the world on the F3 overlay.
-                            If enabled, hold left control and press F3 to toggle map visibility.
+                            If enabled, you can press F8 to toggle map visibility.
                             Default: false""".indent(1))
                 .define("enableDebugMap", false);
 
