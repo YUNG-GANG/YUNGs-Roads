@@ -1,13 +1,11 @@
 package com.yungnickyoung.minecraft.yungsroads.mixin.client;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.DebugScreenOverlay;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -16,7 +14,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.List;
@@ -58,10 +55,5 @@ public abstract class DebugScreenOverlayMixin {
                 list.add(nodeInfo);
             }
         }
-    }
-
-    @Inject(method = "render", at = @At("RETURN"))
-    public void yungsroads_renderDebugMap(GuiGraphics guiGraphics, CallbackInfo ci) {
-        DebugRenderer.getInstance().renderMap(guiGraphics);
     }
 }

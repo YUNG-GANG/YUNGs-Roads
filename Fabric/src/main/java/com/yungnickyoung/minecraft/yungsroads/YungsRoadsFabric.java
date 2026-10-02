@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads;
 
 import com.yungnickyoung.minecraft.yungsroads.module.BiomeModificationModuleFabric;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModuleFabric;
+import com.yungnickyoung.minecraft.yungsroads.module.LiveRoadModuleFabric;
 import net.fabricmc.api.ModInitializer;
 
 public class YungsRoadsFabric implements ModInitializer {
@@ -11,5 +12,6 @@ public class YungsRoadsFabric implements ModInitializer {
 
         ConfigModuleFabric.init();
         BiomeModificationModuleFabric.init();
+        LiveRoadModuleFabric.init();
     }
 }

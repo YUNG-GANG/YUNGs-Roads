@@ -20,6 +20,9 @@
     "main": [
       "com.yungnickyoung.minecraft.yungsroads.YungsRoadsFabric"
     ],
+    "client": [
+      "com.yungnickyoung.minecraft.yungsroads.YungsRoadsFabricClient"
+    ],
     "modmenu": [
       "com.yungnickyoung.minecraft.yungsroads.config.gui.YRModMenu"
     ]

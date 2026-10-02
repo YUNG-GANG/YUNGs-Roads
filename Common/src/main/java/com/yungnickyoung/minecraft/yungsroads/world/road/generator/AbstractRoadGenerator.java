@@ -8,15 +8,14 @@ import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import net.minecraft.world.level.material.Fluids;
 
@@ -64,21 +63,21 @@ public abstract class AbstractRoadGenerator {
      * Places debug markers for the given {@link Road}, as enabled in the debug config.
      * Only blocks within the given chunk are modified.
      */
-    public abstract void placeDebugMarkers(Road road, WorldGenLevel level, ChunkPos chunkPos);
+    public abstract void placeDebugMarkers(Road road, RoadBlockWriter writer, ChunkPos chunkPos);
 
     /**
      * Places road blocks around each of the given road center positions.
      * Only blocks inside the given chunk are modified, so the result doesn't depend on chunk generation order.
      * Each column is placed at most once, so overlapping road circles don't re-roll an already placed block.
      */
-    public void placeRoadInChunk(WorldGenLevel level, RandomSource random, ChunkPos chunkPos, List<BlockPos> centers,
+    public void placeRoadInChunk(RoadBlockWriter writer, RandomSource random, ChunkPos chunkPos, List<BlockPos> centers,
                                  RoadFeatureConfiguration config) {
         boolean[] placedColumns = new boolean[16 * 16];
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (BlockPos center : centers) {
             if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
-                placeDebugBlock(level, chunkPos, center, Blocks.DIAMOND_BLOCK.defaultBlockState());
+                placeDebugBlock(writer, chunkPos, center, Blocks.DIAMOND_BLOCK.defaultBlockState());
                 continue;
             }
 
@@ -98,8 +97,8 @@ public abstract class AbstractRoadGenerator {
                         continue;
                     }
 
-                    mutable.set(x, getSurfaceHeight(level, x, z), z);
-                    RoadTypeConfig roadType = getRoadTypeAt(level, mutable, config);
+                    mutable.set(x, writer.surfaceHeight(x, z), z);
+                    RoadTypeConfig roadType = getRoadTypeAt(writer, mutable, config);
 
                     // Distances are kept as squared values as an optimization
                     double maxRoadDistSq = roadType.roadSizeRadius * roadType.roadSizeRadius + widthNoise * roadType.roadSizeVariation;
@@ -107,7 +106,7 @@ public abstract class AbstractRoadGenerator {
                         continue;
                     }
 
-                    placePathBlock(level, random, mutable, roadType, config);
+                    placePathBlock(writer, random, mutable, roadType, config);
                     placedColumns[columnIndex] = true;
                 }
             }
@@ -117,9 +116,9 @@ public abstract class AbstractRoadGenerator {
     /**
      * Determines the road type for the given surface block, based on the block and its biome's temperature.
      */
-    private RoadTypeConfig getRoadTypeAt(WorldGenLevel level, BlockPos surfacePos, RoadFeatureConfiguration config) {
+    private RoadTypeConfig getRoadTypeAt(RoadBlockWriter writer, BlockPos surfacePos, RoadFeatureConfiguration config) {
         for (RoadTypeConfig roadType : config.roadTypes) {
-            if (roadType.matches(level, surfacePos)) {
+            if (roadType.matches(writer.level(), surfacePos)) {
                 return roadType;
             }
         }
@@ -129,40 +128,41 @@ public abstract class AbstractRoadGenerator {
     /**
      * Places a single road block, using a bridge block if the position holds fluid.
      */
-    private void placePathBlock(WorldGenLevel level, RandomSource random, BlockPos pos, RoadTypeConfig roadType,
+    private void placePathBlock(RoadBlockWriter writer, RandomSource random, BlockPos pos, RoadTypeConfig roadType,
                                 RoadFeatureConfiguration config) {
-        BlockState currState = level.getBlockState(pos);
+        BlockState currState = writer.getBlockState(pos);
         BlockState newState = currState.getFluidState().is(Fluids.EMPTY)
                 ? roadType.pathBlockStates.get(random)
                 : config.bridgeBlockStates.get(random);
-        level.setBlock(pos, newState, 2);
+        writer.setBlock(pos, newState);
+        writer.clearVegetationAbove(pos);
     }
 
     /**
      * Places a single debug block at the surface, if the position is inside the given chunk.
      */
-    void placeDebugBlock(WorldGenLevel level, ChunkPos chunkPos, BlockPos pos, BlockState blockState) {
+    void placeDebugBlock(RoadBlockWriter writer, ChunkPos chunkPos, BlockPos pos, BlockState blockState) {
         if (!isInChunk(chunkPos, pos)) {
             return;
         }
-        level.setBlock(new BlockPos(pos.getX(), getSurfaceHeight(level, pos.getX(), pos.getZ()), pos.getZ()), blockState, 2);
+        writer.setBlock(new BlockPos(pos.getX(), writer.surfaceHeight(pos.getX(), pos.getZ()), pos.getZ()), blockState);
     }
 
     /**
      * Places a 10-block tall debug marker tower above the surface, if the position is inside the given chunk.
      */
-    void placeDebugMarker(WorldGenLevel level, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
+    void placeDebugMarker(RoadBlockWriter writer, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
         if (!isInChunk(chunkPos, blockPos)) {
             return;
         }
 
         BlockPos.MutableBlockPos mutable = blockPos.mutable();
-        mutable.setY(getSurfaceHeight(level, mutable.getX(), mutable.getZ()));
+        mutable.setY(writer.surfaceHeight(mutable.getX(), mutable.getZ()));
 
         for (int y = 0; y < 10; y++) {
             mutable.move(Direction.UP);
-            if (level.getBlockState(mutable).isAir()) {
-                level.setBlock(mutable, markerBlock, 2);
+            if (writer.getBlockState(mutable).isAir()) {
+                writer.setBlock(mutable, markerBlock);
             }
         }
     }
@@ -173,9 +173,5 @@ public abstract class AbstractRoadGenerator {
 
     static boolean isInChunk(ChunkPos chunkPos, int x, int z) {
         return (x >> 4) == chunkPos.x && (z >> 4) == chunkPos.z;
-    }
-
-    static int getSurfaceHeight(WorldGenLevel level, int x, int z) {
-        return level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
     }
 }

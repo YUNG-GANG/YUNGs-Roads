@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -73,9 +72,6 @@ public class StructureRegion {
         for (String key : roadsNbt.getAllKeys()) {
             roads.add(Road.CODEC.parse(NbtOps.INSTANCE, roadsNbt.get(key)).getOrThrow(IllegalStateException::new));
         }
-
-        endpointChunks.forEach(chunkPos -> DebugRenderer.getInstance().addEndpointPos(new ChunkPos(chunkPos)));
-        roads.forEach(road -> road.nodes.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.jitteredPos), null)));
 
         return new StructureRegion(regionKey, endpointChunks, roads);
     }

@@ -60,13 +60,37 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.advanced.maxGrade = YRConfigNeoForge.advanced.maxGrade.get();
         YungsRoadsCommon.CONFIG.advanced.waterWeight = YRConfigNeoForge.advanced.waterWeight.get();
 
-        YungsRoadsCommon.CONFIG.debug.enableDebugMap = YRConfigNeoForge.debug.enableDebugMap.get();
         YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
+        YungsRoadsCommon.CONFIG.debug.placeRoads = YRConfigNeoForge.debug.placeRoads.get();
         YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers = YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers = YRConfigNeoForge.debug.placeJitteredPosDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers = YRConfigNeoForge.debug.placeRoadEndpointDebugMarkers.get();
         YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine = YRConfigNeoForge.debug.placeStraightDebugLine.get();
         YungsRoadsCommon.CONFIG.debug.placeDebugPaths = YRConfigNeoForge.debug.placeDebugPaths.get();
+    }
+
+    /**
+     * Writes the current advanced and debug settings to the config file.
+     */
+    public static void saveRoadSettings() {
+        ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
+        YRConfigNeoForge.advanced.nodeStepDistance.set(advanced.nodeStepDistance);
+        YRConfigNeoForge.advanced.jitterAmount.set(advanced.jitterAmount);
+        YRConfigNeoForge.advanced.heuristicWeight.set(advanced.heuristicWeight);
+        YRConfigNeoForge.advanced.slopeWeight.set(advanced.slopeWeight);
+        YRConfigNeoForge.advanced.maxGrade.set(advanced.maxGrade);
+        YRConfigNeoForge.advanced.waterWeight.set(advanced.waterWeight);
+
+        ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
+        YRConfigNeoForge.debug.enableExtraDebugF3Info.set(debug.enableExtraDebugF3Info);
+        YRConfigNeoForge.debug.placeRoads.set(debug.placeRoads);
+        YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.set(debug.placeUnjitteredPosDebugMarkers);
+        YRConfigNeoForge.debug.placeJitteredPosDebugMarkers.set(debug.placeJitteredPosDebugMarkers);
+        YRConfigNeoForge.debug.placeRoadEndpointDebugMarkers.set(debug.placeRoadEndpointDebugMarkers);
+        YRConfigNeoForge.debug.placeStraightDebugLine.set(debug.placeStraightDebugLine);
+        YRConfigNeoForge.debug.placeDebugPaths.set(debug.placeDebugPaths);
+
+        YRConfigNeoForge.SPEC.save();
     }
 
     private static HolderSet<Structure> parseStructureStringList(String listString, LevelAccessor levelAccessor) {

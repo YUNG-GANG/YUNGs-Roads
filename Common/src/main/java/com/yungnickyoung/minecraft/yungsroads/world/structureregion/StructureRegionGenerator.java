@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
@@ -77,9 +76,6 @@ public class StructureRegionGenerator {
                 regionPos, structures.size(), ownStructures.size(), locateTimeMs, roads.size(), edgeCount,
                 (System.nanoTime() - routeStartTime) / 1_000_000, terrain.sampleCount());
 
-        // Mirrors the debug registration done when loading a region from disk in StructureRegion
-        ownStructures.forEach(DebugRenderer.getInstance()::addEndpointPos);
-
         List<Long> ownStructureLongs = ownStructures.stream().map(ChunkPos::toLong).toList();
         return new StructureRegion(regionKey, new ArrayList<>(ownStructureLongs), roads);
     }
@@ -123,6 +119,10 @@ public class StructureRegionGenerator {
     private static long blocksToChunksSq(int blocks) {
         double chunks = blocks / 16.0;
         return (long) (chunks * chunks);
+    }
+
+    public TerrainSampler getTerrainSampler() {
+        return this.terrainSampler;
     }
 
     public AbstractRoadGenerator getRoadGenerator() {

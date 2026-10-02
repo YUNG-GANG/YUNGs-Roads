@@ -3,8 +3,8 @@ package com.yungnickyoung.minecraft.yungsroads.config;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class ConfigDebugForge {
-    public final ModConfigSpec.ConfigValue<Boolean> enableDebugMap;
     public final ModConfigSpec.ConfigValue<Boolean> enableExtraDebugF3Info;
+    public final ModConfigSpec.ConfigValue<Boolean> placeRoads;
     public final ModConfigSpec.ConfigValue<Boolean> placeUnjitteredPosDebugMarkers;
     public final ModConfigSpec.ConfigValue<Boolean> placeJitteredPosDebugMarkers;
     public final ModConfigSpec.ConfigValue<Boolean> placeRoadEndpointDebugMarkers;
@@ -20,20 +20,19 @@ public class ConfigDebugForge {
                                 ##########################################################################################################""")
                 .push("Debug");
 
-        enableDebugMap = BUILDER
-                .comment("""
-                            Whether to enable the debug map overlay.
-                            This will render a map of all villages and paths in the world on the F3 overlay.
-                            If enabled, you can press F8 to toggle map visibility.
-                            Default: false""".indent(1))
-                .define("enableDebugMap", false);
-
         enableExtraDebugF3Info = BUILDER
                 .comment("""
                             Whether to enable extra debug info on the F3 overlay.
                             This will render extra info on the F3 overlay, such as info for the Road node at the current player pos.
                             Default: false""".indent(1))
                 .define("enableExtraDebugF3Info", false);
+
+        placeRoads = BUILDER
+                .comment("""
+                            Whether to place road blocks. Disabling this is useful for viewing routes with the
+                            in-game road debug screen's overlay, without changing the terrain.
+                            Default: true""".indent(1))
+                .define("placeRoads", true);
 
         placeUnjitteredPosDebugMarkers = BUILDER
                 .comment("""

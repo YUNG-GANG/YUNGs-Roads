@@ -2,16 +2,15 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import org.joml.Vector3f;
 
@@ -72,7 +71,6 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         }
 
         road.nodes.addAll(path);
-        road.nodes.forEach(node -> DebugRenderer.getInstance().addPath(new ChunkPos(node.rawPos), null));
 
         // Apply random jitter to all nodes to make path less straight and more natural.
         // The noise is created per road since its seed is mutable state and roads may be generated concurrently.
@@ -297,20 +295,20 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     }
 
     @Override
-    public void placeDebugMarkers(Road road, WorldGenLevel level, ChunkPos chunkPos) {
+    public void placeDebugMarkers(Road road, RoadBlockWriter writer, ChunkPos chunkPos) {
         if (YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine) {
-            placeDebugLine(road, level, chunkPos);
+            placeDebugLine(road, writer, chunkPos);
         }
         if (YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers) {
-            placeDebugMarker(level, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
-            placeDebugMarker(level, chunkPos, road.getEndPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(writer, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
+            placeDebugMarker(writer, chunkPos, road.getEndPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
         }
         for (Road.DebugNode debugNode : road.nodes) {
             if (YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers) {
-                placeDebugMarker(level, chunkPos, debugNode.rawPos, Blocks.PURPLE_WOOL.defaultBlockState());
+                placeDebugMarker(writer, chunkPos, debugNode.rawPos, Blocks.PURPLE_WOOL.defaultBlockState());
             }
             if (YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers) {
-                placeDebugMarker(level, chunkPos, debugNode.jitteredPos, Blocks.REDSTONE_BLOCK.defaultBlockState());
+                placeDebugMarker(writer, chunkPos, debugNode.jitteredPos, Blocks.REDSTONE_BLOCK.defaultBlockState());
             }
         }
     }
@@ -318,7 +316,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     /**
      * Places a straight line of gold blocks between the start and end points of the road.
      */
-    private void placeDebugLine(Road road, WorldGenLevel level, ChunkPos chunkPos) {
+    private void placeDebugLine(Road road, RoadBlockWriter writer, ChunkPos chunkPos) {
         // Determine total slope of line from starting point to ending point
         int totalXDiff = road.getEndPos().getX() - road.getStartPos().getX();
         int totalZDiff = road.getEndPos().getZ() - road.getStartPos().getZ();
@@ -332,20 +330,20 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         while (!isWithinDistance(mutable, road.getEndPos(), 10)) {
             // Move in z direction
             while (slopeCounter >= 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
-                placeDebugBlock(level, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
+                placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
                 mutable.move(0, 0, zDir);
                 slopeCounter--;
             }
 
             // Move in x direction
             while (slopeCounter < 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
-                placeDebugBlock(level, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
+                placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
                 mutable.move(xDir, 0, 0);
                 slopeCounter += Math.abs(totalSlope);
             }
 
             // Place path at final position
-            placeDebugBlock(level, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
+            placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
         }
     }
 

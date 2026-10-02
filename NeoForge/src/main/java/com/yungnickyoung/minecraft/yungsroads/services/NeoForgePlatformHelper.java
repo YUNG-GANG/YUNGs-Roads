@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.services;
 
+import com.yungnickyoung.minecraft.yungsroads.module.ConfigModuleNeoForge;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
 
@@ -17,5 +18,10 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
+    }
+
+    @Override
+    public void saveRoadSettings() {
+        ConfigModuleNeoForge.saveRoadSettings();
     }
 }

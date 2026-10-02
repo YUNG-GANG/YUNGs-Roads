@@ -5,11 +5,14 @@ import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
+import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
@@ -34,24 +37,42 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
             return false;
         }
 
-        StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
-        AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
+        IStructureRegionCacheProvider provider = (IStructureRegionCacheProvider) serverLevel;
+        LiveRoadPlacer liveRoadPlacer = provider.getLiveRoadPlacer();
         ChunkPos chunkPos = new ChunkPos(context.origin());
 
-        // Place roads
-        roadGenerator.placeRoadInChunk(context.level(), context.random(), chunkPos,
-                structureRegionCache.getRoadPositionsNearChunk(chunkPos), context.config());
+        // Read the epoch before fetching any road data, so a settings change made meanwhile leaves the chunk stale
+        int epoch = liveRoadPlacer == null ? 0 : liveRoadPlacer.getBlockLog().epoch();
+        RoadBlockWriter writer = RoadBlockWriter.forWorldgen(context.level());
+        placeRoadsInChunk(writer, context.random(), chunkPos, provider.getStructureRegionCache(), context.config());
+
+        if (liveRoadPlacer != null) {
+            liveRoadPlacer.getBlockLog().record(chunkPos.toLong(), epoch, writer);
+        }
+        return true;
+    }
+
+    /**
+     * Places the roads and debug markers that reach the given chunk, as enabled in the config.
+     * Only blocks inside the chunk are modified.
+     */
+    public static void placeRoadsInChunk(RoadBlockWriter writer, RandomSource random, ChunkPos chunkPos,
+                                         StructureRegionCache structureRegionCache, RoadFeatureConfiguration config) {
+        AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
+
+        if (YungsRoadsCommon.CONFIG.debug.placeRoads) {
+            roadGenerator.placeRoadInChunk(writer, random, chunkPos,
+                    structureRegionCache.getRoadPositionsNearChunk(chunkPos), config);
+        }
 
         // Debug markers aren't indexed by chunk, so check every road that could reach this chunk
         if (anyDebugMarkersEnabled(YungsRoadsCommon.CONFIG.debug)) {
             for (StructureRegion region : structureRegionCache.getRegionsNearChunk(chunkPos)) {
                 for (Road road : region.getRoads()) {
-                    roadGenerator.placeDebugMarkers(road, context.level(), chunkPos);
+                    roadGenerator.placeDebugMarkers(road, writer, chunkPos);
                 }
             }
         }
-
-        return true;
     }
 
     private static boolean anyDebugMarkersEnabled(ConfigModule.Debug debug) {

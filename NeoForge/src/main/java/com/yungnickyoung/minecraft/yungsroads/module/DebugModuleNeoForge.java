@@ -1,59 +1,45 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
-import net.minecraft.client.KeyMapping;
+import com.yungnickyoung.minecraft.yungsroads.debug.client.RoadDebugClient;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.level.LevelEvent;
-import org.lwjgl.glfw.GLFW;
 
+/**
+ * Hooks up the client side of the road debug tools. Only loaded on the client.
+ */
 public class DebugModuleNeoForge {
-//    private static int timer = 20;
-//    private static boolean canUpdate = true;
-    private static final KeyMapping keyMapping = new KeyMapping("key.yungsroads.debugMapKey",
-            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F8, "key.categories.ui");
-
     public static void init(IEventBus eventBus) {
         if (!YungsRoadsCommon.DEBUG_MODE) {
             return;
         }
 
-        eventBus.addListener(DebugModuleNeoForge::onRegisterKeyMappingsEvent);
-        NeoForge.EVENT_BUS.addListener(DebugModuleNeoForge::onWorldUnload);
+        eventBus.addListener(DebugModuleNeoForge::onRegisterKeyMappings);
         NeoForge.EVENT_BUS.addListener(DebugModuleNeoForge::onClientTick);
+        NeoForge.EVENT_BUS.addListener(DebugModuleNeoForge::onRenderLevelStage);
+        NeoForge.EVENT_BUS.addListener(DebugModuleNeoForge::onLoggingOut);
     }
 
-//    public static void renderDebugMap(RenderGameOverlayEvent.Pre event) {
-//        if (event.getType() == RenderGameOverlayEvent.ElementType.DEBUG) {
-//            DebugRenderer.getInstance().render(Minecraft.getInstance(), event.getMatrixStack());
-//        }
-//    }
-
-    private static void onRegisterKeyMappingsEvent(RegisterKeyMappingsEvent event) {
-        event.register(keyMapping);
-
-//        if (event.getKey() == 292 && Screen.hasControlDown()) {
-//            if (canUpdate) {
-//                DebugRenderer.getInstance().enabled = !DebugRenderer.getInstance().enabled;
-//
-//                // Reset timer
-//                canUpdate = false;
-//                timer = 20;
-//            }
-//        }
+    private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(RoadDebugClient.OPEN_SCREEN_KEY);
     }
 
-    public static void onWorldUnload(LevelEvent.Unload event) {
-        DebugRenderer.getInstance().clearAll();
+    private static void onClientTick(ClientTickEvent.Post event) {
+        RoadDebugClient.onClientTick();
     }
 
-    public static void onClientTick(ClientTickEvent.Post event) {
-        while (keyMapping.consumeClick()) {
-            DebugRenderer.getInstance().enabled = !DebugRenderer.getInstance().enabled;
+    private static void onRenderLevelStage(RenderLevelStageEvent event) {
+        // Fired while the camera's rotation is applied to the model-view matrix
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            RoadDebugClient.onRenderLevel(event.getCamera());
         }
+    }
+
+    private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        RoadDebugClient.onDisconnect();
     }
 }

@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.debug.DebugRenderer;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -18,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -143,20 +143,63 @@ public class StructureRegionCache {
         return null;
     }
 
+    /**
+     * Returns every region that has finished loading or generating, in no particular order.
+     */
+    public List<StructureRegion> getLoadedRegions() {
+        List<StructureRegion> regions = new ArrayList<>();
+        for (Map.Entry<Long, CompletableFuture<StructureRegion>> entry : this.cache.entrySet()) {
+            StructureRegion region = getRegionIfLoaded(entry.getKey());
+            if (region != null) {
+                regions.add(region);
+            }
+        }
+        return regions;
+    }
+
+    /**
+     * Replaces a region in the cache and on disk, such as after regenerating it with different settings.
+     * Chunks that were already placed using the old region aren't changed.
+     */
+    public void replaceRegion(StructureRegion region) {
+        long regionKey = region.getPos().asLong();
+        this.cache.put(regionKey, CompletableFuture.completedFuture(region));
+        writeStructureRegionFile(region, this.savePath.resolve(region.getFileName()));
+    }
+
+    /**
+     * Removes a region from the cache and from disk, so it's generated again the next time it's needed.
+     */
+    public void invalidateRegion(long regionKey) {
+        this.cache.remove(regionKey);
+        try {
+            Files.deleteIfExists(this.savePath.resolve(new StructureRegionPos(regionKey).getFileName()));
+        } catch (IOException e) {
+            YungsRoadsCommon.LOGGER.error("Unable to delete structure region file for region {}", new StructureRegionPos(regionKey), e);
+        }
+    }
+
     public StructureRegionGenerator getStructureRegionGenerator() {
         return structureRegionGenerator;
     }
 
     /**
      * Returns the key of each region that could own a road reaching the chunk, in a deterministic order.
+     */
+    public static LongList regionKeysNearChunk(ChunkPos chunkPos) {
+        return regionKeysNearArea(chunkPos.getMinBlockX(), chunkPos.getMinBlockZ(), chunkPos.getMaxBlockX(), chunkPos.getMaxBlockZ());
+    }
+
+    /**
+     * Returns the key of each region that could own a road reaching the given block area, in a deterministic order.
      * A road stays within {@link #maxRoadReach} blocks of its owning region, so only regions that close are included.
      */
-    private static LongList regionKeysNearChunk(ChunkPos chunkPos) {
+    public static LongList regionKeysNearArea(int minX, int minZ, int maxX, int maxZ) {
         int reach = maxRoadReach();
-        int minRegionX = (chunkPos.getMinBlockX() - reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
-        int maxRegionX = (chunkPos.getMaxBlockX() + reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
-        int minRegionZ = (chunkPos.getMinBlockZ() - reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
-        int maxRegionZ = (chunkPos.getMaxBlockZ() + reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
+        int minRegionX = (minX - reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
+        int maxRegionX = (maxX + reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
+        int minRegionZ = (minZ - reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
+        int maxRegionZ = (maxZ + reach) >> StructureRegionPos.REGION_SIZE_SHIFT;
 
         LongList regionKeys = new LongArrayList();
         for (int regionX = minRegionX; regionX <= maxRegionX; regionX++) {
@@ -182,7 +225,6 @@ public class StructureRegionCache {
 
     private StructureRegion loadOrGenerateRegion(long regionKey) {
         StructureRegionPos structureRegionPos = new StructureRegionPos(regionKey);
-        DebugRenderer.getInstance().addStructureRegion(structureRegionPos);
 
         Path file = this.savePath.resolve(structureRegionPos.getFileName());
         if (Files.exists(file)) {

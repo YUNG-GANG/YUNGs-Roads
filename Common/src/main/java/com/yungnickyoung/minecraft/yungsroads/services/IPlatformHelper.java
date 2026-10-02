@@ -22,4 +22,9 @@ public interface IPlatformHelper {
      * @return True if in a development environment, false otherwise.
      */
     boolean isDevelopmentEnvironment();
+
+    /**
+     * Writes the current advanced and debug settings to the loader's config file.
+     */
+    void saveRoadSettings();
 }

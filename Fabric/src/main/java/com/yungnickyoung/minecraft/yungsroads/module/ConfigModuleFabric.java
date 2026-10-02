@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.module;
 import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.config.YRConfigFabric;
+import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.AdvancedSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.ConfigHolder;
@@ -50,6 +51,51 @@ public class ConfigModuleFabric {
 
     private static void bakeConfig(YRConfigFabric configFabric) {
         YungsRoadsCommon.CONFIG.general.structuresString = configFabric.general.structures;
+
+        // AutoConfig doesn't enforce ranges on decimal values, so clamp them to the valid ranges here
+        ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
+        advanced.nodeStepDistance = (int) AdvancedSetting.NODE_STEP_DISTANCE.clamp(configFabric.advanced.nodeStepDistance);
+        advanced.jitterAmount = AdvancedSetting.JITTER_AMOUNT.clamp(configFabric.advanced.jitterAmount);
+        advanced.heuristicWeight = AdvancedSetting.HEURISTIC_WEIGHT.clamp(configFabric.advanced.heuristicWeight);
+        advanced.slopeWeight = AdvancedSetting.SLOPE_WEIGHT.clamp(configFabric.advanced.slopeWeight);
+        advanced.maxGrade = AdvancedSetting.MAX_GRADE.clamp(configFabric.advanced.maxGrade);
+        advanced.waterWeight = AdvancedSetting.WATER_WEIGHT.clamp(configFabric.advanced.waterWeight);
+
+        ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
+        debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
+        debug.placeRoads = configFabric.debug.placeRoads;
+        debug.placeUnjitteredPosDebugMarkers = configFabric.debug.placeUnjitteredPosDebugMarkers;
+        debug.placeJitteredPosDebugMarkers = configFabric.debug.placeJitteredPosDebugMarkers;
+        debug.placeRoadEndpointDebugMarkers = configFabric.debug.placeRoadEndpointDebugMarkers;
+        debug.placeStraightDebugLine = configFabric.debug.placeStraightDebugLine;
+        debug.placeDebugPaths = configFabric.debug.placeDebugPaths;
+    }
+
+    /**
+     * Writes the current advanced and debug settings to the config file.
+     */
+    public static void saveRoadSettings() {
+        ConfigHolder<YRConfigFabric> holder = AutoConfig.getConfigHolder(YRConfigFabric.class);
+        YRConfigFabric configFabric = holder.getConfig();
+
+        ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
+        configFabric.advanced.nodeStepDistance = advanced.nodeStepDistance;
+        configFabric.advanced.jitterAmount = advanced.jitterAmount;
+        configFabric.advanced.heuristicWeight = advanced.heuristicWeight;
+        configFabric.advanced.slopeWeight = advanced.slopeWeight;
+        configFabric.advanced.maxGrade = advanced.maxGrade;
+        configFabric.advanced.waterWeight = advanced.waterWeight;
+
+        ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
+        configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;
+        configFabric.debug.placeRoads = debug.placeRoads;
+        configFabric.debug.placeUnjitteredPosDebugMarkers = debug.placeUnjitteredPosDebugMarkers;
+        configFabric.debug.placeJitteredPosDebugMarkers = debug.placeJitteredPosDebugMarkers;
+        configFabric.debug.placeRoadEndpointDebugMarkers = debug.placeRoadEndpointDebugMarkers;
+        configFabric.debug.placeStraightDebugLine = debug.placeStraightDebugLine;
+        configFabric.debug.placeDebugPaths = debug.placeDebugPaths;
+
+        holder.save();
     }
 
     private static HolderSet<Structure> parseStructureStringList(String listString, LevelAccessor levelAccessor) {
