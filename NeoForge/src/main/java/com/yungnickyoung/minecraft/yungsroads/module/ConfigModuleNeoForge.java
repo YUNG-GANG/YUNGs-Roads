@@ -59,6 +59,7 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.advanced.slopeWeight = YRConfigNeoForge.advanced.slopeWeight.get();
         YungsRoadsCommon.CONFIG.advanced.maxGrade = YRConfigNeoForge.advanced.maxGrade.get();
         YungsRoadsCommon.CONFIG.advanced.waterWeight = YRConfigNeoForge.advanced.waterWeight.get();
+        YungsRoadsCommon.CONFIG.advanced.maxBridgeLength = YRConfigNeoForge.advanced.maxBridgeLength.get();
 
         YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
         YungsRoadsCommon.CONFIG.debug.placeRoads = YRConfigNeoForge.debug.placeRoads.get();
@@ -80,6 +81,7 @@ public class ConfigModuleNeoForge {
         YRConfigNeoForge.advanced.slopeWeight.set(advanced.slopeWeight);
         YRConfigNeoForge.advanced.maxGrade.set(advanced.maxGrade);
         YRConfigNeoForge.advanced.waterWeight.set(advanced.waterWeight);
+        YRConfigNeoForge.advanced.maxBridgeLength.set(advanced.maxBridgeLength);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         YRConfigNeoForge.debug.enableExtraDebugF3Info.set(debug.enableExtraDebugF3Info);

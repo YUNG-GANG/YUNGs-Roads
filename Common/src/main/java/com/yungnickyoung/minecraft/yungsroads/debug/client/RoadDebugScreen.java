@@ -315,26 +315,29 @@ public class RoadDebugScreen extends Screen {
 
     /**
      * Explains how routing uses its settings, with the entered values filled in. Highlighted words and values show
-     * their definitions when hovered. Lines that don't fit above the status text are left out.
+     * their definitions when hovered. Formulas that don't fit above the status text are left out whole, so none are
+     * shown cut off.
      */
     private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int bottom) {
         ConfigModule.Advanced settings = previewSettings();
         List<Component> paragraphs = List.of(
                 Component.literal("Routing formulas").withStyle(ChatFormatting.UNDERLINE)
                         .append(Component.literal(" (hover for details)").withStyle(style -> style.withUnderlined(false).withColor(0xA0A0A0))),
-                formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × grade² + ",
-                        AdvancedSetting.WATER_WEIGHT, " if water)"),
+                formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × grade²)"),
                 formulaLine(settings, "Steps above grade ", AdvancedSetting.MAX_GRADE, " are never taken"),
+                formulaLine(settings, "Bridge cost = step cost + ", AdvancedSetting.WATER_WEIGHT, " × run"),
+                formulaLine(settings, "Bridges are at most ", AdvancedSetting.MAX_BRIDGE_LENGTH, " blocks long"),
                 formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left"));
 
         int x = MARGIN;
         int y = this.formulaY;
         Style hovered = null;
         for (Component paragraph : paragraphs) {
-            for (FormattedCharSequence line : this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2)) {
-                if (y + this.font.lineHeight > bottom) {
-                    break;
-                }
+            List<FormattedCharSequence> lines = this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2);
+            if (y + lines.size() * (this.font.lineHeight + 1) - 1 > bottom) {
+                break;
+            }
+            for (FormattedCharSequence line : lines) {
                 guiGraphics.drawString(this.font, line, x, y, 0xFFE0E0E0);
                 if (mouseY >= y && mouseY < y + this.font.lineHeight && mouseX >= x) {
                     hovered = this.font.getSplitter().componentStyleAtWidth(line, mouseX - x);

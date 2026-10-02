@@ -48,6 +48,7 @@ public class ConfigModule {
         public double slopeWeight = 25;
         public double maxGrade = 1.0;
         public double waterWeight = 8;
+        public int maxBridgeLength = 32;
 
         public Advanced copy() {
             Advanced copy = new Advanced();
@@ -89,8 +90,11 @@ public class ConfigModule {
                 "The steepest grade a step may have. Steeper terrain is never crossed. 1 is a 45 degree slope.",
                 advanced -> advanced.maxGrade, (advanced, value) -> advanced.maxGrade = value),
         WATER_WEIGHT("Water Weight", 0, 1000, false, 3,
-                "The extra cost of crossing water. Added to the multiplier in each step cost over water. Higher values make roads avoid rivers and lakes more. Oceans are never crossed.",
-                advanced -> advanced.waterWeight, (advanced, value) -> advanced.waterWeight = value);
+                "The extra cost of bridging water. Added to the multiplier in each bridge's cost. Higher values make roads detour further to avoid rivers and lakes, or to find a shorter crossing.",
+                advanced -> advanced.waterWeight, (advanced, value) -> advanced.waterWeight = value),
+        MAX_BRIDGE_LENGTH("Max Bridge Length", 0, 256, true, 1,
+                "The longest bridge a road may build, in blocks. Roads cross rivers and lakes only on straight bridges, so wider water must be routed around. 0 disables bridges. Oceans are never crossed.",
+                advanced -> advanced.maxBridgeLength, (advanced, value) -> advanced.maxBridgeLength = (int) value);
 
         public final String displayName;
         public final double min;

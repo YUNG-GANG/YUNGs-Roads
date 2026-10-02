@@ -48,6 +48,7 @@ public class RoadMapWidget extends AbstractWidget {
     private static final int REGION_BORDER_COLOR = 0xA0FFFFFF;
     private static final int PREVIOUS_ROAD_COLOR = 0xC0FF4040;
     private static final int NODE_COLOR = 0xFFFFFFFF;
+    private static final int BRIDGE_OUTLINE_COLOR = 0xFFFFFFFF;
     private static final int ENDPOINT_COLOR = 0xFF40FF40;
     private static final int PLAYER_COLOR = 0xFFFF2020;
 
@@ -90,13 +91,13 @@ public class RoadMapWidget extends AbstractWidget {
             Set<StructureRegion> current = new HashSet<>(regions);
             for (StructureRegion region : RoadTuning.previousRegions(level)) {
                 if (!current.contains(region)) {
-                    region.getRoads().forEach(road -> renderRoute(guiGraphics, road, PREVIOUS_ROAD_COLOR, 1.5f));
+                    region.getRoads().forEach(road -> renderRoute(guiGraphics, road, PREVIOUS_ROAD_COLOR, 1.5f, false));
                 }
             }
         }
         for (StructureRegion region : regions) {
             for (Road road : region.getRoads()) {
-                renderRoute(guiGraphics, road, RoadOverlayRenderer.roadColor(road), 2f);
+                renderRoute(guiGraphics, road, RoadOverlayRenderer.roadColor(road), 2f, true);
                 if (RoadDebugClient.showNodes) {
                     for (Road.DebugNode node : road.nodes) {
                         fillAround(guiGraphics, toScreenX(node.jitteredPos.getX()), toScreenY(node.jitteredPos.getZ()), 1, NODE_COLOR);
@@ -195,13 +196,23 @@ public class RoadMapWidget extends AbstractWidget {
         }
     }
 
-    private void renderRoute(GuiGraphics guiGraphics, Road road, int color, float thickness) {
+    /**
+     * Draws the road's center line through its jittered nodes.
+     *
+     * @param highlightBridges Whether to outline bridges, so they stand out whatever the road's color.
+     */
+    private void renderRoute(GuiGraphics guiGraphics, Road road, int color, float thickness, boolean highlightBridges) {
         VertexConsumer consumer = guiGraphics.bufferSource().getBuffer(RenderType.gui());
         Matrix4f pose = guiGraphics.pose().last().pose();
         for (int n = 0; n + 1 < road.nodes.size(); n++) {
             var from = road.nodes.get(n).jitteredPos;
             var to = road.nodes.get(n + 1).jitteredPos;
-            segment(consumer, pose, toScreenX(from.getX()), toScreenY(from.getZ()), toScreenX(to.getX()), toScreenY(to.getZ()), thickness, color);
+            float x1 = toScreenX(from.getX()), y1 = toScreenY(from.getZ());
+            float x2 = toScreenX(to.getX()), y2 = toScreenY(to.getZ());
+            if (highlightBridges && road.isBridgeSegment(n)) {
+                segment(consumer, pose, x1, y1, x2, y2, thickness + 2, BRIDGE_OUTLINE_COLOR);
+            }
+            segment(consumer, pose, x1, y1, x2, y2, thickness, color);
         }
     }
 
@@ -229,13 +240,17 @@ public class RoadMapWidget extends AbstractWidget {
             } else {
                 ConfigModule.Advanced settings = this.previewSettings.get();
                 lines.add(Component.literal(String.format("Height: %.1f%s, steepest grade: %.2f", height, tiles.isWater(height) ? " (water)" : "", grade)));
-                if (grade > settings.maxGrade) {
+                if (tiles.isWater(height)) {
+                    lines.add(Component.literal(String.format("Only crossed by straight bridges, up to %s blocks long",
+                            AdvancedSetting.MAX_BRIDGE_LENGTH.format(settings.maxBridgeLength))));
+                    lines.add(Component.literal(String.format("Flat bridge cost: run × (1 + %s) = run × %s",
+                            AdvancedSetting.WATER_WEIGHT.format(settings.waterWeight), AdvancedSetting.WATER_WEIGHT.format(1 + settings.waterWeight))));
+                } else if (grade > settings.maxGrade) {
                     lines.add(Component.literal(String.format("Too steep to cross (max grade %s)",
                             AdvancedSetting.MAX_GRADE.format(settings.maxGrade))));
                 } else {
-                    String waterTerm = tiles.isWater(height) ? " + " + AdvancedSetting.WATER_WEIGHT.format(settings.waterWeight) : "";
-                    lines.add(Component.literal(String.format("Steepest step cost: run × (1 + %s × %.2f²%s) = run × %.1f",
-                            AdvancedSetting.SLOPE_WEIGHT.format(settings.slopeWeight), grade, waterTerm, tiles.stepCost(height, grade, settings))));
+                    lines.add(Component.literal(String.format("Steepest step cost: run × (1 + %s × %.2f²) = run × %.1f",
+                            AdvancedSetting.SLOPE_WEIGHT.format(settings.slopeWeight), grade, tiles.stepCost(grade, settings))));
                 }
             }
         }

@@ -43,6 +43,7 @@ import java.util.Set;
 public final class RoadOverlayRenderer {
     private static final int PREVIOUS_ROAD_COLOR = 0xFFFF4040;
     private static final int NODE_COLOR = 0xFFFFFFFF;
+    private static final int BRIDGE_COLOR = 0xFFFFFFFF;
     private static final int ENDPOINT_COLOR = 0xFF40FF40;
     private static final float NODE_HEIGHT = 1.5f;
     private static final float ENDPOINT_HEIGHT = 16f;
@@ -117,12 +118,12 @@ public final class RoadOverlayRenderer {
         LineBuilder lines = new LineBuilder(Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL), cameraPos);
         for (StructureRegion region : previousRegions) {
             for (Road road : region.getRoads()) {
-                drawRoute(lines, level, cameraPos, range, road, withAlpha(PREVIOUS_ROAD_COLOR, alpha), PREVIOUS_LINE_OFFSET);
+                drawRoute(lines, level, cameraPos, range, road, withAlpha(PREVIOUS_ROAD_COLOR, alpha), withAlpha(PREVIOUS_ROAD_COLOR, alpha), PREVIOUS_LINE_OFFSET);
             }
         }
         for (StructureRegion region : currentRegions) {
             for (Road road : region.getRoads()) {
-                drawRoute(lines, level, cameraPos, range, road, withAlpha(roadColor(road), alpha), LINE_OFFSET);
+                drawRoute(lines, level, cameraPos, range, road, withAlpha(roadColor(road), alpha), withAlpha(BRIDGE_COLOR, alpha), LINE_OFFSET);
                 drawMarker(lines, level, cameraPos, range, road.getStartPos(), ENDPOINT_HEIGHT, withAlpha(ENDPOINT_COLOR, alpha));
                 drawMarker(lines, level, cameraPos, range, road.getEndPos(), ENDPOINT_HEIGHT, withAlpha(ENDPOINT_COLOR, alpha));
                 if (RoadDebugClient.showNodes) {
@@ -141,14 +142,17 @@ public final class RoadOverlayRenderer {
 
     /**
      * Draws the road's center line through its jittered nodes, following the ground one block at a time.
+     * Bridges are drawn in their own color.
      */
-    private static void drawRoute(LineBuilder lines, ClientLevel level, Vec3 cameraPos, int range, Road road, int color, float offset) {
+    private static void drawRoute(LineBuilder lines, ClientLevel level, Vec3 cameraPos, int range, Road road, int roadColor,
+                                  int bridgeColor, float offset) {
         for (int n = 0; n + 1 < road.nodes.size(); n++) {
             BlockPos from = road.nodes.get(n).jitteredPos;
             BlockPos to = road.nodes.get(n + 1).jitteredPos;
             if (!isInRange(from, cameraPos, range) && !isInRange(to, cameraPos, range)) {
                 continue;
             }
+            int color = road.isBridgeSegment(n) ? bridgeColor : roadColor;
 
             int steps = Math.max(1, (int) Math.ceil(Math.sqrt(from.distSqr(to))));
             double prevX = from.getX() + 0.5, prevZ = from.getZ() + 0.5;

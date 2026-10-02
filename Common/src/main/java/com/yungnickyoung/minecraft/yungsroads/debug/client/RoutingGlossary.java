@@ -27,17 +27,24 @@ final class RoutingGlossary {
     enum Term {
         NODE("Node", "A point on the grid that roads are routed through. Neighboring nodes are Node Step Distance blocks apart.",
                 "node", "nodes"),
-        STEP("Step", "A move from a node to one of its 8 neighbors, including diagonals.",
+        STEP("Step", "A move from a node to one of its 16 neighbors: the 8 around it, including diagonals, and the 8 "
+                + "a chess knight's move away, which allow smoother headings.",
                 "step", "steps"),
         STEP_COST("Step cost", "How much routing charges for one step. Routing picks the route with the lowest total cost, "
                 + "so costly terrain is avoided when a cheaper detour exists. A flat step on land costs its run.",
                 "step cost", "step's cost"),
-        RUN("Run", "The horizontal length of a step in blocks: Node Step Distance, or 1.41 times that for diagonal steps.",
+        BRIDGE("Bridge", "A straight crossing over water, from a node on one bank to the first dry node on the other. "
+                + "Bridges can head the same ways as steps, and their length is measured between the two bank nodes, "
+                + "so the shortest possible bridge is twice Node Step Distance. Like steps, bridges can't be steeper than "
+                + "Max Grade. Their extra cost per block makes roads take the shortest crossing that's worth it over a detour.",
+                "bridge", "bridges", "bridge's"),
+        RUN("Run", "The horizontal length of a step or bridge in blocks: Node Step Distance for each lattice move, or "
+                + "1.41 or 2.24 times that for diagonal or knight's moves.",
                 "run"),
         GRADE("Grade", "How steep a step is: its change in height divided by its run (rise over run). "
                 + "0 is flat, 0.5 climbs 1 block every 2 blocks, and 1 is a 45 degree slope. Roads over water are measured at sea level.",
                 "grade", "grades"),
-        WATER("Water", "Ground below sea level, such as rivers and lakes. Roads cross it as bridges at sea level. Oceans are never crossed.",
+        WATER("Water", "Ground below sea level, such as rivers and lakes. Steps never enter it, so roads only cross it on straight bridges at sea level. Oceans are never crossed.",
                 "water"),
         PRIORITY("Priority", "Nodes are explored in order of priority, lowest first, until the destination is reached.",
                 "priority"),

@@ -19,7 +19,7 @@ public class StructureRegion {
      * Version of the saved region format. Bump this whenever the stored data or the road generation algorithm changes,
      * so that existing region files are regenerated instead of loaded.
      */
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 5;
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.

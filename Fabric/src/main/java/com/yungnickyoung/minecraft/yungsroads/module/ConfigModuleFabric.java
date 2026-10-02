@@ -60,6 +60,7 @@ public class ConfigModuleFabric {
         advanced.slopeWeight = AdvancedSetting.SLOPE_WEIGHT.clamp(configFabric.advanced.slopeWeight);
         advanced.maxGrade = AdvancedSetting.MAX_GRADE.clamp(configFabric.advanced.maxGrade);
         advanced.waterWeight = AdvancedSetting.WATER_WEIGHT.clamp(configFabric.advanced.waterWeight);
+        advanced.maxBridgeLength = (int) AdvancedSetting.MAX_BRIDGE_LENGTH.clamp(configFabric.advanced.maxBridgeLength);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
@@ -85,6 +86,7 @@ public class ConfigModuleFabric {
         configFabric.advanced.slopeWeight = advanced.slopeWeight;
         configFabric.advanced.maxGrade = advanced.maxGrade;
         configFabric.advanced.waterWeight = advanced.waterWeight;
+        configFabric.advanced.maxBridgeLength = advanced.maxBridgeLength;
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;

@@ -150,15 +150,14 @@ public final class TerrainTiles {
     }
 
     /**
-     * The cost multiplier routing applies to a step from a point with the given height and grade, matching
-     * {@code AStarRoadGenerator}.
+     * The cost multiplier routing applies to a step on land with the given grade, matching {@code AStarRoadGenerator}.
      */
-    double stepCost(double height, double grade, ConfigModule.Advanced settings) {
-        return 1 + settings.slopeWeight * grade * grade + (isWater(height) ? settings.waterWeight : 0);
+    double stepCost(double grade, ConfigModule.Advanced settings) {
+        return 1 + settings.slopeWeight * grade * grade;
     }
 
     boolean isWater(double height) {
-        return height < this.seaLevel;
+        return TerrainSampler.isUnderwater(height, this.seaLevel);
     }
 
     void close() {
@@ -237,7 +236,7 @@ public final class TerrainTiles {
                 Minecraft.getInstance().getTextureManager().register(this.textureId, this.texture);
             }
 
-            String key = layer + "/" + settings.maxGrade + "/" + settings.slopeWeight + "/" + settings.waterWeight;
+            String key = layer + "/" + settings.maxGrade + "/" + settings.slopeWeight;
             if (!key.equals(this.coloredFor)) {
                 NativeImage pixels = this.texture.getPixels();
                 for (int j = 0; j < TILE_SIZE; j++) {
@@ -258,8 +257,8 @@ public final class TerrainTiles {
             if (Double.isNaN(height)) {
                 return OCEAN_COLOR;
             }
-            if (height < seaLevel && layer != Layer.HEIGHT) {
-                // Roads cross water as flat bridges, so its cost doesn't vary and isn't worth shading
+            if (isWater(height) && layer != Layer.HEIGHT) {
+                // Roads only cross water on bridges, whose cost depends on their length rather than the terrain
                 return WATER_COLOR;
             }
             return switch (layer) {
@@ -275,13 +274,13 @@ public final class TerrainTiles {
                         yield 0xFF6A1B5A;
                     }
                     // Log scale, so both gentle and steep differences are visible. A cost of 50x or more is full red.
-                    yield gradient(Math.log(stepCost(height, grade, settings)) / Math.log(50));
+                    yield gradient(Math.log(stepCost(grade, settings)) / Math.log(50));
                 }
             };
         }
 
         private int heightColor(int i, int j, double height) {
-            if (height < seaLevel) {
+            if (isWater(height)) {
                 return WATER_COLOR;
             }
             double t = Mth.clamp((height - seaLevel) / 160, 0, 1);

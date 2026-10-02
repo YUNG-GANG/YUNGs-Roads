@@ -13,7 +13,8 @@ public class Road {
             BlockPos.CODEC.fieldOf("start_pos").forGetter(Road::getStartPos),
             BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
             DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
-            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions))
+            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
+            Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges))
         .apply(builder, Road::new));
 
     private final BlockPos startPos;
@@ -25,15 +26,19 @@ public class Road {
     /** The road's center line, rasterized to block positions. Y values are not meaningful. */
     public List<BlockPos> positions;
 
-    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions) {
+    /** The road's water crossings, in order from start to end. Each spans two consecutive {@link #nodes}. */
+    public List<Bridge> bridges;
+
+    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges) {
         this.startPos = endpoint1.getX() <= endpoint2.getX() ? endpoint1 : endpoint2;
         this.endPos = this.startPos == endpoint1 ? endpoint2 : endpoint1;
         this.nodes = nodes;
         this.positions = positions;
+        this.bridges = bridges;
     }
 
     public Road(BlockPos startPos, BlockPos endPos) {
-        this(startPos, endPos, new ArrayList<>(), new ArrayList<>());
+        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getStartPos() {
@@ -44,9 +49,40 @@ public class Road {
         return endPos;
     }
 
+    /**
+     * Whether the segment from node n to node n + 1 is a bridge.
+     */
+    public boolean isBridgeSegment(int n) {
+        BlockPos from = this.nodes.get(n).rawPos;
+        BlockPos to = this.nodes.get(n + 1).rawPos;
+        for (Bridge bridge : this.bridges) {
+            if (sameColumn(bridge.start, from) && sameColumn(bridge.end, to)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sameColumn(BlockPos a, BlockPos b) {
+        return a.getX() == b.getX() && a.getZ() == b.getZ();
+    }
+
     @Override
     public String toString() {
-        return String.format("Road %s - %s (%d nodes)", startPos, endPos, nodes.size());
+        return String.format("Road %s - %s (%d nodes, %d bridges)", startPos, endPos, nodes.size(), bridges.size());
+    }
+
+    /**
+     * A straight water crossing between two banks, from the bank nearer the road's start to the other. Its ends are
+     * at the same x and z as the nodes it spans, but their y values are the deck heights at each bank: the bank's
+     * surface height, or sea level if that's higher.
+     */
+    public record Bridge(BlockPos start, BlockPos end) {
+        public static final Codec<Bridge> CODEC = RecordCodecBuilder.create(builder -> builder
+                .group(
+                        BlockPos.CODEC.fieldOf("start").forGetter(Bridge::start),
+                        BlockPos.CODEC.fieldOf("end").forGetter(Bridge::end)
+                ).apply(builder, Bridge::new));
     }
 
     /**

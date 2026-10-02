@@ -10,6 +10,7 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Double> slopeWeight;
     public final ModConfigSpec.ConfigValue<Double> maxGrade;
     public final ModConfigSpec.ConfigValue<Double> waterWeight;
+    public final ModConfigSpec.ConfigValue<Integer> maxBridgeLength;
 
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -67,11 +68,20 @@ public class ConfigAdvancedForge {
         waterWeight = BUILDER
                 .comment(
                         """
-                                The extra cost of crossing water. Each water step's cost multiplier is increased by this amount.
-                                Higher values make roads avoid rivers and lakes more. Oceans are never crossed.
+                                The extra cost of bridging water. Each bridge's cost multiplier is increased by this amount.
+                                Higher values make roads detour further to avoid rivers and lakes, or to find a shorter crossing.
                                 Default: 8.0""".indent(1))
                 .worldRestart()
                 .defineInRange("Water Weight", 8.0, AdvancedSetting.WATER_WEIGHT.min, AdvancedSetting.WATER_WEIGHT.max);
+
+        maxBridgeLength = BUILDER
+                .comment(
+                        """
+                                The longest bridge a road may build, in blocks. Roads cross rivers and lakes only on straight
+                                bridges, so wider water must be routed around. 0 disables bridges. Oceans are never crossed.
+                                Default: 32""".indent(1))
+                .worldRestart()
+                .defineInRange("Max Bridge Length", 32, (int) AdvancedSetting.MAX_BRIDGE_LENGTH.min, (int) AdvancedSetting.MAX_BRIDGE_LENGTH.max);
 
         BUILDER.pop();
     }

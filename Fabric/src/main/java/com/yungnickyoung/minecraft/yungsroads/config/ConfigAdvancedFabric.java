@@ -20,4 +20,7 @@ public class ConfigAdvancedFabric {
 
     @ConfigEntry.Gui.Tooltip(count = 2)
     public double waterWeight = 8.0;
+
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    public int maxBridgeLength = 32;
 }

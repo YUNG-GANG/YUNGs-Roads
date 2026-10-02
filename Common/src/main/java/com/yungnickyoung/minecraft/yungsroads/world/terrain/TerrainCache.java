@@ -18,13 +18,25 @@ public class TerrainCache {
     private static final double NOT_SAMPLED = Double.NEGATIVE_INFINITY;
 
     private final TerrainSampler sampler;
-    private final TerrainSampler.HeightSampler heightSampler;
     private final int step;
     private final Long2DoubleOpenHashMap heights = new Long2DoubleOpenHashMap();
 
+    /**
+     * Samples lattice points without rechecking water. Routing samples so many points that rechecking would make it
+     * much slower, and an occasional wrong water point only costs routing a small detour.
+     */
+    private final TerrainSampler.HeightSampler latticeSampler;
+
+    /**
+     * Samples single blocks, rechecking water. Block samples feed checks where one wrong water sample would mark a
+     * whole step as a bridge, and they're few enough that rechecking costs little.
+     */
+    private final TerrainSampler.HeightSampler blockSampler;
+
     public TerrainCache(TerrainSampler sampler, int step) {
         this.sampler = sampler;
-        this.heightSampler = sampler.createHeightSampler();
+        this.latticeSampler = sampler.createHeightSampler(false);
+        this.blockSampler = sampler.createHeightSampler(true);
         this.step = step;
         this.heights.defaultReturnValue(NOT_SAMPLED);
     }
@@ -39,7 +51,7 @@ public class TerrainCache {
         if (height == NOT_SAMPLED) {
             int x = i * this.step;
             int z = j * this.step;
-            height = this.heightSampler.surfaceHeight(x, z);
+            height = this.latticeSampler.surfaceHeight(x, z);
 
             // Ocean surfaces are always below sea level, so only those points need the more expensive biome lookup
             if (height < this.sampler.seaLevel() && this.sampler.isOcean(x, z)) {
@@ -48,6 +60,14 @@ public class TerrainCache {
             this.heights.put(key, height);
         }
         return height;
+    }
+
+    /**
+     * Samples the approximate surface height of any block column, without caching. For checks finer than the lattice.
+     * Unlike lattice points, surfaces found underwater are rechecked, so they're reliable enough to decide bridges.
+     */
+    public double surfaceHeightAtBlock(int x, int z) {
+        return this.blockSampler.surfaceHeight(x, z);
     }
 
     public int sampleCount() {
