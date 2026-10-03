@@ -5,6 +5,8 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.LongArrayTag;
@@ -19,7 +21,7 @@ public class StructureRegion {
      * Version of the saved region format. Bump this whenever the stored data or the road generation algorithm changes,
      * so that existing region files are regenerated instead of loaded.
      */
-    public static final int FORMAT_VERSION = 5;
+    public static final int FORMAT_VERSION = 6;
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.
@@ -37,6 +39,9 @@ public class StructureRegion {
 
     /** Road center positions, keyed by every chunk within {@link #INDEX_PADDING} blocks of them. */
     private final Long2ObjectMap<List<BlockPos>> roadPositionsByChunk = new Long2ObjectOpenHashMap<>();
+
+    /** The road center positions that are part of a land bridge, as {@link BlockPos#asLong}. */
+    private final LongSet landBridgePositions = new LongOpenHashSet();
 
     public StructureRegion(long regionKey) {
         this(regionKey, new ArrayList<>(), new ArrayList<>());
@@ -108,7 +113,19 @@ public class StructureRegion {
                     }
                 }
             }
+            for (Road.Span landBridge : road.landBridges) {
+                for (int i = landBridge.first(); i <= landBridge.last(); i++) {
+                    this.landBridgePositions.add(road.positions.get(i).asLong());
+                }
+            }
         }
+    }
+
+    /**
+     * Whether the road center position, including its y, is part of one of this region's land bridges.
+     */
+    public boolean isLandBridge(BlockPos roadPos) {
+        return this.landBridgePositions.contains(roadPos.asLong());
     }
 
     /**

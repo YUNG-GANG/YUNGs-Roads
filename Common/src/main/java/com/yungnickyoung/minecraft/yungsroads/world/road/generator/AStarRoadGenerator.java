@@ -143,13 +143,15 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
                     slopeCounter += Math.abs(nodePathSlope);
                 }
 
-                // Place path at current position
+                // Place path at current position. Jittered like the rest of the line, so the positions stay in order
+                // along a single center line, which the road's height profile is computed along.
                 if (!mutable.equals(nodePos) && !mutable.equals(nextNodePos)) {
-                    road.positions.add(mutable.immutable());
+                    road.positions.add(straight ? mutable.immutable() : jitteredPos(jitter, mutable.immutable(), nodePos, nextNodePos));
                 }
             }
         }
 
+        RoadProfile.apply(road, terrain, YungsRoadsCommon.CONFIG.advanced);
         return Optional.of(road);
     }
 

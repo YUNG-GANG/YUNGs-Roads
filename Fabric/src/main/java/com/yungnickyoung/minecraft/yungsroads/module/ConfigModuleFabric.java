@@ -61,6 +61,10 @@ public class ConfigModuleFabric {
         advanced.maxGrade = AdvancedSetting.MAX_GRADE.clamp(configFabric.advanced.maxGrade);
         advanced.waterWeight = AdvancedSetting.WATER_WEIGHT.clamp(configFabric.advanced.waterWeight);
         advanced.maxBridgeLength = (int) AdvancedSetting.MAX_BRIDGE_LENGTH.clamp(configFabric.advanced.maxBridgeLength);
+        advanced.smoothingRadius = (int) AdvancedSetting.SMOOTHING_RADIUS.clamp(configFabric.advanced.smoothingRadius);
+        advanced.maxCutDepth = (int) AdvancedSetting.MAX_CUT_DEPTH.clamp(configFabric.advanced.maxCutDepth);
+        advanced.maxFillDepth = (int) AdvancedSetting.MAX_FILL_DEPTH.clamp(configFabric.advanced.maxFillDepth);
+        advanced.maxLandBridgeLength = (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.clamp(configFabric.advanced.maxLandBridgeLength);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
@@ -87,6 +91,10 @@ public class ConfigModuleFabric {
         configFabric.advanced.maxGrade = advanced.maxGrade;
         configFabric.advanced.waterWeight = advanced.waterWeight;
         configFabric.advanced.maxBridgeLength = advanced.maxBridgeLength;
+        configFabric.advanced.smoothingRadius = advanced.smoothingRadius;
+        configFabric.advanced.maxCutDepth = advanced.maxCutDepth;
+        configFabric.advanced.maxFillDepth = advanced.maxFillDepth;
+        configFabric.advanced.maxLandBridgeLength = advanced.maxLandBridgeLength;
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;

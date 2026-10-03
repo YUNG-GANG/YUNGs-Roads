@@ -103,8 +103,7 @@ public class TerrainSampler {
                 : null;
 
         return (x, z) -> {
-            double preliminarySurface = preliminarySurfaceHeight(preliminaryDensity, x, z, cellHeight, minY, maxY);
-            int start = Mth.clamp(Math.floorDiv((int) preliminarySurface, cellHeight) * cellHeight + PRELIMINARY_SURFACE_OFFSET, minY, maxY);
+            int start = scanStart(preliminaryDensity, x, z, cellHeight, minY, maxY);
             double surface = pointDensitySurface(finalDensity, x, z, start, cellHeight, minY, maxY);
             // Oceans are water whatever their exact depth, and common enough that rechecking them would be slow
             if (!recheckWater || !isUnderwater(surface, seaLevel) || isOcean(x, z)) {
@@ -117,6 +116,45 @@ public class TerrainSampler {
             // water, but there's no cheap way to tell which ones won't.
             return interpolatedSurface(interpolatedFinalDensity, x, z, start, cellHeight, minY, maxY);
         };
+    }
+
+    /**
+     * Creates a sampler for surface heights that matches the generated terrain, using vanilla's interpolation for
+     * every column. See {@link #interpolatedSurface}. Along roads, the top block is the sampled height rounded down in
+     * about 90% of columns, and within a block of it in about 96%. The rest are mostly carved by carvers or adapted
+     * to structures, which the density doesn't include.
+     * <p>
+     * An isolated column takes about 0.2 ms, but neighboring columns share cached cell corners, so sampling columns in
+     * order, such as along a road, costs about as much as {@link #createHeightSampler} does.
+     */
+    public HeightSampler createExactHeightSampler() {
+        ChunkGenerator generator = this.serverLevel.getChunkSource().getGenerator();
+        RandomState randomState = this.serverLevel.getChunkSource().randomState();
+
+        if (!(generator instanceof NoiseBasedChunkGenerator noiseGenerator)) {
+            // The base height is the y above the top solid block. Subtract one so rounding down gives the top block, as it
+            // does for the density surface.
+            return (x, z) -> generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, this.serverLevel, randomState) - 1;
+        }
+
+        NoiseSettings noiseSettings = noiseGenerator.generatorSettings().value().noiseSettings();
+        int cellWidth = noiseSettings.getCellWidth();
+        int cellHeight = noiseSettings.getCellHeight();
+        int minY = noiseSettings.minY();
+        int maxY = minY + noiseSettings.height();
+        DensityFunction preliminaryDensity = withColumnCaches(randomState.router().initialDensityWithoutJaggedness());
+        DensityFunction interpolatedFinalDensity = withCellInterpolation(randomState.router().finalDensity(), cellWidth, cellHeight);
+
+        return (x, z) -> interpolatedSurface(interpolatedFinalDensity, x, z,
+                scanStart(preliminaryDensity, x, z, cellHeight, minY, maxY), cellHeight, minY, maxY);
+    }
+
+    /**
+     * Where to start searching a column for the surface: just above vanilla's preliminary surface level's cell.
+     */
+    private static int scanStart(DensityFunction preliminaryDensity, int x, int z, int cellHeight, int minY, int maxY) {
+        double preliminarySurface = preliminarySurfaceHeight(preliminaryDensity, x, z, cellHeight, minY, maxY);
+        return Mth.clamp(Math.floorDiv((int) preliminarySurface, cellHeight) * cellHeight + PRELIMINARY_SURFACE_OFFSET, minY, maxY);
     }
 
     /**

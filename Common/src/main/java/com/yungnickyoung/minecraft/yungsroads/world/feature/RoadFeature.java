@@ -18,6 +18,7 @@ import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.List;
 
 @ParametersAreNonnullByDefault
 public class RoadFeature extends Feature<RoadFeatureConfiguration> {
@@ -61,8 +62,9 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
         AbstractRoadGenerator roadGenerator = structureRegionCache.getStructureRegionGenerator().getRoadGenerator();
 
         if (YungsRoadsCommon.CONFIG.debug.placeRoads) {
-            roadGenerator.placeRoadInChunk(writer, random, chunkPos,
-                    structureRegionCache.getRoadPositionsNearChunk(chunkPos), config);
+            List<StructureRegion> regions = structureRegionCache.getRegionsNearChunk(chunkPos);
+            roadGenerator.placeRoadInChunk(writer, random, chunkPos, structureRegionCache.getRoadPositionsNearChunk(chunkPos),
+                    roadPos -> regions.stream().anyMatch(region -> region.isLandBridge(roadPos)), config);
         }
 
         // Debug markers aren't indexed by chunk, so check every road that could reach this chunk

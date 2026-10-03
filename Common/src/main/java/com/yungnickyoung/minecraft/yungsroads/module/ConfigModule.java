@@ -39,7 +39,7 @@ public class ConfigModule {
     }
 
     /**
-     * Road routing settings. See {@link AdvancedSetting} for their descriptions and valid ranges.
+     * Road routing and shaping settings. See {@link AdvancedSetting} for their descriptions and valid ranges.
      */
     public static class Advanced {
         public int nodeStepDistance = 8;
@@ -49,6 +49,10 @@ public class ConfigModule {
         public double maxGrade = 1.0;
         public double waterWeight = 8;
         public int maxBridgeLength = 32;
+        public int smoothingRadius = 6;
+        public int maxCutDepth = 4;
+        public int maxFillDepth = 2;
+        public int maxLandBridgeLength = 24;
 
         public Advanced copy() {
             Advanced copy = new Advanced();
@@ -70,32 +74,53 @@ public class ConfigModule {
     }
 
     /**
-     * The road routing settings in {@link Advanced}, with their valid ranges.
+     * The settings in {@link Advanced}, with their valid ranges.
      * Shared by the loader configs and the in-game tuning screen so the ranges are defined in one place.
      */
     public enum AdvancedSetting {
-        NODE_STEP_DISTANCE("Node Step Distance", 2, 32, true, 1,
+        NODE_STEP_DISTANCE(Group.ROUTING, "Node Step Distance", 2, 32, true, 1,
                 "The distance between neighboring nodes, in blocks. Lower values follow the terrain more closely, but are slower to generate.",
                 advanced -> advanced.nodeStepDistance, (advanced, value) -> advanced.nodeStepDistance = (int) value),
-        JITTER_AMOUNT("Jitter Amount", 0, 16, false, 1,
+        JITTER_AMOUNT(Group.ROUTING, "Jitter Amount", 0, 16, false, 1,
                 "How far jitter may shift each node sideways, in blocks. Higher values make roads wavier.",
                 advanced -> advanced.jitterAmount, (advanced, value) -> advanced.jitterAmount = value),
-        HEURISTIC_WEIGHT("Heuristic Weight", 1, 10, false, 2,
+        HEURISTIC_WEIGHT(Group.ROUTING, "Heuristic Weight", 1, 10, false, 2,
                 "How strongly routing is pulled toward the destination, by weighting the distance left in each node's priority. 1 always finds the cheapest road. Higher values generate faster but can give slightly costlier roads.",
                 advanced -> advanced.heuristicWeight, (advanced, value) -> advanced.heuristicWeight = value),
-        SLOPE_WEIGHT("Slope Weight", 0, 1000, false, 3,
+        SLOPE_WEIGHT(Group.ROUTING, "Slope Weight", 0, 1000, false, 3,
                 "The extra cost of steep terrain. Each step cost is multiplied by (1 + Slope Weight × grade²). Higher values make roads avoid hills and mountains more.",
                 advanced -> advanced.slopeWeight, (advanced, value) -> advanced.slopeWeight = value),
-        MAX_GRADE("Max Grade", 0.05, 10, false, 2,
+        MAX_GRADE(Group.ROUTING, "Max Grade", 0.05, 10, false, 2,
                 "The steepest grade a step may have. Steeper terrain is never crossed. 1 is a 45 degree slope.",
                 advanced -> advanced.maxGrade, (advanced, value) -> advanced.maxGrade = value),
-        WATER_WEIGHT("Water Weight", 0, 1000, false, 3,
+        WATER_WEIGHT(Group.ROUTING, "Water Weight", 0, 1000, false, 3,
                 "The extra cost of bridging water. Added to the multiplier in each bridge's cost. Higher values make roads detour further to avoid rivers and lakes, or to find a shorter crossing.",
                 advanced -> advanced.waterWeight, (advanced, value) -> advanced.waterWeight = value),
-        MAX_BRIDGE_LENGTH("Max Bridge Length", 0, 256, true, 1,
+        MAX_BRIDGE_LENGTH(Group.ROUTING, "Max Bridge Length", 0, 256, true, 1,
                 "The longest bridge a road may build, in blocks. Roads cross rivers and lakes only on straight bridges, so wider water must be routed around. 0 disables bridges. Oceans are never crossed.",
-                advanced -> advanced.maxBridgeLength, (advanced, value) -> advanced.maxBridgeLength = (int) value);
+                advanced -> advanced.maxBridgeLength, (advanced, value) -> advanced.maxBridgeLength = (int) value),
+        SMOOTHING_RADIUS(Group.SHAPING, "Smoothing Radius", 0, 32, true, 1,
+                "How far along the road its height is averaged, in blocks. Higher values give gentler slopes, with more cutting and filling to level the ground. 0 follows the terrain.",
+                advanced -> advanced.smoothingRadius, (advanced, value) -> advanced.smoothingRadius = (int) value),
+        MAX_CUT_DEPTH(Group.SHAPING, "Max Cut Depth", 0, 16, true, 1,
+                "The deepest a road may cut into the ground above it to stay level, in blocks. Where the ground rises higher, the road rises too.",
+                advanced -> advanced.maxCutDepth, (advanced, value) -> advanced.maxCutDepth = (int) value),
+        MAX_FILL_DEPTH(Group.SHAPING, "Max Fill Depth", 0, 16, true, 1,
+                "The deepest gap under a road that's filled with ground, in blocks. Deeper gaps, such as ravines and cave openings, are crossed on a land bridge instead.",
+                advanced -> advanced.maxFillDepth, (advanced, value) -> advanced.maxFillDepth = (int) value),
+        MAX_LAND_BRIDGE_LENGTH(Group.SHAPING, "Max Land Bridge Length", 0, 64, true, 1,
+                "The longest dip in the terrain that a road crosses on a land bridge, in blocks, if it's deeper than Max Fill Depth. Longer dips are followed instead. Ravines and caves made by carvers always get a land bridge, since routing can't see them.",
+                advanced -> advanced.maxLandBridgeLength, (advanced, value) -> advanced.maxLandBridgeLength = (int) value);
 
+        /** Which part of road generation a setting tunes. */
+        public enum Group {
+            /** Where roads go. */
+            ROUTING,
+            /** How roads fit the terrain along their route. */
+            SHAPING
+        }
+
+        public final Group group;
         public final String displayName;
         public final double min;
         public final double max;
@@ -109,8 +134,9 @@ public class ConfigModule {
         private final ToDoubleFunction<Advanced> getter;
         private final ObjDoubleConsumer<Advanced> setter;
 
-        AdvancedSetting(String displayName, double min, double max, boolean isInteger, double sliderExponent, String description,
+        AdvancedSetting(Group group, String displayName, double min, double max, boolean isInteger, double sliderExponent, String description,
                         ToDoubleFunction<Advanced> getter, ObjDoubleConsumer<Advanced> setter) {
+            this.group = group;
             this.displayName = displayName;
             this.min = min;
             this.max = max;

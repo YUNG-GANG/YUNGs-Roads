@@ -80,19 +80,24 @@ public class RoadBlockWriter {
     }
 
     /**
-     * Returns the y-coordinate of the ground block in the given column, ignoring trees.
+     * Returns the y-coordinate of the ground block in the given column, ignoring trees and plants.
      * Fluids count as ground, so roads over water become bridges.
      */
     public int surfaceHeight(int x, int z) {
-        if (!this.live) {
-            return this.level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
-        }
-
-        // Leaves are already excluded by the heightmap, so only tree trunks need to be skipped
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(x, this.level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
-        while (mutable.getY() > this.level.getMinBuildHeight() && this.level.getBlockState(mutable).is(BlockTags.LOGS)) {
+        // Worldgen heightmaps only exist while a chunk generates
+        Heightmap.Types heightmap = this.live ? Heightmap.Types.MOTION_BLOCKING_NO_LEAVES : Heightmap.Types.WORLD_SURFACE_WG;
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos(x, this.level.getHeight(heightmap, x, z) - 1, z);
+        while (mutable.getY() > this.level.getMinBuildHeight() && isAboveGround(this.level.getBlockState(mutable))) {
             mutable.move(Direction.DOWN);
         }
         return mutable.getY();
+    }
+
+    /**
+     * Whether the block stands on the ground rather than being part of it: air, trees, and plants.
+     * During worldgen, neighboring chunks' trees may already reach into a chunk when its roads are placed.
+     */
+    private static boolean isAboveGround(BlockState state) {
+        return state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES) || (state.canBeReplaced() && state.getFluidState().isEmpty());
     }
 }

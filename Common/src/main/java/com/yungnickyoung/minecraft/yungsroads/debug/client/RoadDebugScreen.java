@@ -53,6 +53,7 @@ public class RoadDebugScreen extends Screen {
 
     private enum Tab {
         ROUTING("Routing"),
+        SHAPING("Shaping"),
         PLACEMENT("Placement"),
         VIEW("View");
 
@@ -61,22 +62,30 @@ public class RoadDebugScreen extends Screen {
         Tab(String displayName) {
             this.displayName = displayName;
         }
+
+        /** The tab a setting is edited on. */
+        static Tab of(AdvancedSetting setting) {
+            return switch (setting.group) {
+                case ROUTING -> ROUTING;
+                case SHAPING -> SHAPING;
+            };
+        }
     }
 
     private Tab tab = Tab.ROUTING;
     private final Map<Tab, List<AbstractWidget>> tabWidgets = new EnumMap<>(Tab.class);
 
     /**
-     * Values as edited on the routing and placement tabs. Kept outside the widgets so they survive the widgets being
-     * rebuilt, such as when the window is resized. Not applied until the Apply button is pressed.
+     * Values as edited on the settings tabs. Kept outside the widgets so they survive the widgets being rebuilt, such
+     * as when the window is resized. Not applied until the Apply button is pressed.
      */
     private final Map<AdvancedSetting, String> pendingText = new EnumMap<>(AdvancedSetting.class);
-    /** Each routing setting's slider and text box, for showing its tooltip when either is hovered. */
+    /** Each setting's slider and text box, for showing its tooltip when either is hovered. */
     private final Map<AdvancedSetting, List<AbstractWidget>> settingRows = new EnumMap<>(AdvancedSetting.class);
     private ConfigModule.Debug pendingDebug;
 
-    /** Where the routing formula starts, below the routing settings. */
-    private int formulaY;
+    /** Where each settings tab's formulas start, below its settings. */
+    private final Map<Tab, Integer> formulaY = new EnumMap<>(Tab.class);
     private Button applyButton;
     private Button revertButton;
     /** Kept across rebuilds, so the map's position and zoom aren't reset. */
@@ -94,20 +103,30 @@ public class RoadDebugScreen extends Screen {
         int x = MARGIN;
         int contentWidth = PANEL_WIDTH - MARGIN * 2;
 
-        // Tabs
-        int tabWidth = contentWidth / Tab.values().length;
+        // Tabs, each fitting its label, with the remaining width shared between them
+        int labelsWidth = 0;
         for (Tab t : Tab.values()) {
+            labelsWidth += this.font.width(t.displayName);
+        }
+        int spareWidth = (contentWidth - labelsWidth) / Tab.values().length;
+        int tabX = x;
+        for (Tab t : Tab.values()) {
+            // The last tab takes any width left over from rounding
+            int tabWidth = t.ordinal() == Tab.values().length - 1 ? x + contentWidth - tabX : this.font.width(t.displayName) + spareWidth;
             addRenderableWidget(Button.builder(Component.literal(t.displayName), button -> selectTab(t))
-                    .bounds(x + t.ordinal() * tabWidth, MARGIN, tabWidth - 2, 16)
+                    .bounds(tabX, MARGIN, tabWidth - 2, 16)
                     .build());
+            tabX += tabWidth;
         }
         int contentY = MARGIN + 22;
 
-        // Routing settings, each a slider for quick changes with a text box for exact values. Changes are previewed on
-        // the map's terrain right away, but only applied to roads on Apply.
-        int y = contentY;
+        // Routing and shaping settings, each a slider for quick changes with a text box for exact values. Routing
+        // changes are previewed on the map's terrain right away, but only applied to roads on Apply.
+        Map<Tab, Integer> rowY = new EnumMap<>(Tab.class);
         int sliderWidth = contentWidth - VALUE_BOX_WIDTH - 4;
         for (AdvancedSetting setting : AdvancedSetting.values()) {
+            Tab settingTab = Tab.of(setting);
+            int y = rowY.getOrDefault(settingTab, contentY);
             EditBox box = new EditBox(this.font, x + sliderWidth + 4, y + 1, VALUE_BOX_WIDTH, 14, Component.literal(setting.displayName));
             SettingSlider slider = new SettingSlider(x, y, sliderWidth, 16, setting, box);
             box.setMaxLength(12);
@@ -121,14 +140,14 @@ public class RoadDebugScreen extends Screen {
             });
             box.setValue(this.pendingText.get(setting));
             this.settingRows.put(setting, List.of(slider, box));
-            addTabWidget(Tab.ROUTING, slider);
-            addTabWidget(Tab.ROUTING, box);
-            y += ROW_HEIGHT;
+            addTabWidget(settingTab, slider);
+            addTabWidget(settingTab, box);
+            rowY.put(settingTab, y + ROW_HEIGHT);
+            this.formulaY.put(settingTab, y + ROW_HEIGHT + 6);
         }
-        this.formulaY = y + 6;
 
         // Placement options
-        y = contentY;
+        int y = contentY;
         y = addDebugCheckbox(x, y, contentWidth, "Place roads", "Place road blocks. Turn off to see routes on the overlay without changing terrain.",
                 debug -> debug.placeRoads, (debug, value) -> debug.placeRoads = value);
         y = addDebugCheckbox(x, y, contentWidth, "Debug paths", "Place single-block diamond paths along each road's center line instead of normal roads.",
@@ -275,10 +294,24 @@ public class RoadDebugScreen extends Screen {
             y += 10;
         }
 
+        ConfigModule.Advanced settings = previewSettings();
         if (this.tab == Tab.ROUTING) {
-            renderFormula(guiGraphics, mouseX, mouseY, statusTop);
-            renderSettingTooltip(guiGraphics, mouseX, mouseY);
+            renderFormula(guiGraphics, mouseX, mouseY, this.formulaY.get(Tab.ROUTING), statusTop, List.of(
+                    formulaTitle("Routing formulas"),
+                    formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × grade²)"),
+                    formulaLine(settings, "Steps above grade ", AdvancedSetting.MAX_GRADE, " are never taken"),
+                    formulaLine(settings, "Bridge cost = step cost + ", AdvancedSetting.WATER_WEIGHT, " × run"),
+                    formulaLine(settings, "Bridges are at most ", AdvancedSetting.MAX_BRIDGE_LENGTH, " blocks long"),
+                    formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left")));
+        } else if (this.tab == Tab.SHAPING) {
+            renderFormula(guiGraphics, mouseX, mouseY, this.formulaY.get(Tab.SHAPING), statusTop, List.of(
+                    formulaTitle("Shaping rules"),
+                    formulaLine(settings, "Road height = ground averaged over ", AdvancedSetting.SMOOTHING_RADIUS, " blocks each way"),
+                    formulaLine(settings, "Ground up to ", AdvancedSetting.MAX_CUT_DEPTH, " blocks above the road is cut away"),
+                    formulaLine(settings, "Gaps up to ", AdvancedSetting.MAX_FILL_DEPTH, " blocks below the road are filled, and deeper holes get a land bridge"),
+                    formulaLine(settings, "Dips up to ", AdvancedSetting.MAX_LAND_BRIDGE_LENGTH, " blocks long get a land bridge")));
         }
+        renderSettingTooltip(guiGraphics, mouseX, mouseY);
     }
 
     /**
@@ -290,7 +323,8 @@ public class RoadDebugScreen extends Screen {
             return;
         }
         for (Map.Entry<AdvancedSetting, List<AbstractWidget>> row : this.settingRows.entrySet()) {
-            if (row.getValue().stream().noneMatch(AbstractWidget::isHovered)) {
+            // Hidden widgets keep the hover state they had when last rendered
+            if (row.getValue().stream().noneMatch(widget -> widget.visible && widget.isHovered())) {
                 continue;
             }
             AdvancedSetting setting = row.getKey();
@@ -314,23 +348,13 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Explains how routing uses its settings, with the entered values filled in. Highlighted words and values show
+     * Explains how a tab's settings are used, with the entered values filled in. Highlighted words and values show
      * their definitions when hovered. Formulas that don't fit above the status text are left out whole, so none are
      * shown cut off.
      */
-    private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int bottom) {
-        ConfigModule.Advanced settings = previewSettings();
-        List<Component> paragraphs = List.of(
-                Component.literal("Routing formulas").withStyle(ChatFormatting.UNDERLINE)
-                        .append(Component.literal(" (hover for details)").withStyle(style -> style.withUnderlined(false).withColor(0xA0A0A0))),
-                formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × grade²)"),
-                formulaLine(settings, "Steps above grade ", AdvancedSetting.MAX_GRADE, " are never taken"),
-                formulaLine(settings, "Bridge cost = step cost + ", AdvancedSetting.WATER_WEIGHT, " × run"),
-                formulaLine(settings, "Bridges are at most ", AdvancedSetting.MAX_BRIDGE_LENGTH, " blocks long"),
-                formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left"));
-
+    private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
         int x = MARGIN;
-        int y = this.formulaY;
+        int y = top;
         Style hovered = null;
         for (Component paragraph : paragraphs) {
             List<FormattedCharSequence> lines = this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2);
@@ -354,9 +378,14 @@ public class RoadDebugScreen extends Screen {
         }
     }
 
+    private static Component formulaTitle(String title) {
+        return Component.literal(title).withStyle(ChatFormatting.UNDERLINE)
+                .append(Component.literal(" (hover for details)").withStyle(style -> style.withUnderlined(false).withColor(0xA0A0A0)));
+    }
+
     /**
-     * Builds a line of the routing formula from strings, with their glossary words highlighted, and settings, shown as
-     * their value in the given instance.
+     * Builds a line of a formula from strings, with their glossary words highlighted, and settings, shown as their
+     * value in the given instance.
      */
     private static Component formulaLine(ConfigModule.Advanced settings, Object... parts) {
         MutableComponent line = Component.empty();
@@ -444,7 +473,7 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Parses the settings entered on the routing tab.
+     * Parses the settings entered on the settings tabs.
      *
      * @return The settings, or null if any value is invalid.
      */
@@ -478,7 +507,7 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Slider for one routing setting. Dragging it writes the value, rounded to two significant figures, into the
+     * Slider for one setting. Dragging it writes the value, rounded to two significant figures, into the
      * setting's text box, which in turn records it as pending.
      */
     private static class SettingSlider extends AbstractSliderButton {

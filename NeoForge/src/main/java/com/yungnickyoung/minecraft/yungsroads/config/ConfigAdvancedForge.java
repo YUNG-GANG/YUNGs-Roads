@@ -11,6 +11,10 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Double> maxGrade;
     public final ModConfigSpec.ConfigValue<Double> waterWeight;
     public final ModConfigSpec.ConfigValue<Integer> maxBridgeLength;
+    public final ModConfigSpec.ConfigValue<Integer> smoothingRadius;
+    public final ModConfigSpec.ConfigValue<Integer> maxCutDepth;
+    public final ModConfigSpec.ConfigValue<Integer> maxFillDepth;
+    public final ModConfigSpec.ConfigValue<Integer> maxLandBridgeLength;
 
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -82,6 +86,43 @@ public class ConfigAdvancedForge {
                                 Default: 32""".indent(1))
                 .worldRestart()
                 .defineInRange("Max Bridge Length", 32, (int) AdvancedSetting.MAX_BRIDGE_LENGTH.min, (int) AdvancedSetting.MAX_BRIDGE_LENGTH.max);
+
+        smoothingRadius = BUILDER
+                .comment(
+                        """
+                                How far along the road its height is averaged, in blocks. Higher values give gentler slopes,
+                                with more cutting and filling to level the ground. 0 follows the terrain.
+                                Default: 6""".indent(1))
+                .worldRestart()
+                .defineInRange("Smoothing Radius", 6, (int) AdvancedSetting.SMOOTHING_RADIUS.min, (int) AdvancedSetting.SMOOTHING_RADIUS.max);
+
+        maxCutDepth = BUILDER
+                .comment(
+                        """
+                                The deepest a road may cut into the ground above it to stay level, in blocks.
+                                Where the ground rises higher, the road rises too.
+                                Default: 4""".indent(1))
+                .worldRestart()
+                .defineInRange("Max Cut Depth", 4, (int) AdvancedSetting.MAX_CUT_DEPTH.min, (int) AdvancedSetting.MAX_CUT_DEPTH.max);
+
+        maxFillDepth = BUILDER
+                .comment(
+                        """
+                                The deepest gap under a road that's filled with ground, in blocks.
+                                Deeper gaps, such as ravines and cave openings, are crossed on a land bridge instead.
+                                Default: 2""".indent(1))
+                .worldRestart()
+                .defineInRange("Max Fill Depth", 2, (int) AdvancedSetting.MAX_FILL_DEPTH.min, (int) AdvancedSetting.MAX_FILL_DEPTH.max);
+
+        maxLandBridgeLength = BUILDER
+                .comment(
+                        """
+                                The longest dip in the terrain that a road crosses on a land bridge, in blocks, if it's deeper
+                                than Max Fill Depth. Longer dips are followed instead. Ravines and caves made by carvers always
+                                get a land bridge, since routing can't see them.
+                                Default: 24""".indent(1))
+                .worldRestart()
+                .defineInRange("Max Land Bridge Length", 24, (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.min, (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.max);
 
         BUILDER.pop();
     }

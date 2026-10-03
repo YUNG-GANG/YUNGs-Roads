@@ -14,7 +14,8 @@ public class Road {
             BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
             DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
             BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
-            Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges))
+            Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges),
+            Span.CODEC.listOf().fieldOf("land_bridges").forGetter(road -> road.landBridges))
         .apply(builder, Road::new));
 
     private final BlockPos startPos;
@@ -23,22 +24,33 @@ public class Road {
     /** The pathfinding nodes making up this road, in order from start to end. */
     public List<DebugNode> nodes;
 
-    /** The road's center line, rasterized to block positions. Y values are not meaningful. */
+    /**
+     * The road's center line, rasterized to block positions. Each y is the road's surface height there: the y of the
+     * block the road is placed at, smoothed along the road. See {@code RoadProfile}.
+     */
     public List<BlockPos> positions;
 
     /** The road's water crossings, in order from start to end. Each spans two consecutive {@link #nodes}. */
     public List<Bridge> bridges;
 
-    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges) {
+    /**
+     * The dips in the terrain the road crosses on land bridges, as ranges of {@link #positions}, in order from start to
+     * end. Holes that routing can't see, such as ravines, aren't included, since they're only found when placing.
+     */
+    public List<Span> landBridges;
+
+    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges,
+                List<Span> landBridges) {
         this.startPos = endpoint1.getX() <= endpoint2.getX() ? endpoint1 : endpoint2;
         this.endPos = this.startPos == endpoint1 ? endpoint2 : endpoint1;
         this.nodes = nodes;
         this.positions = positions;
         this.bridges = bridges;
+        this.landBridges = landBridges;
     }
 
     public Road(BlockPos startPos, BlockPos endPos) {
-        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getStartPos() {
@@ -83,6 +95,17 @@ public class Road {
                         BlockPos.CODEC.fieldOf("start").forGetter(Bridge::start),
                         BlockPos.CODEC.fieldOf("end").forGetter(Bridge::end)
                 ).apply(builder, Bridge::new));
+    }
+
+    /**
+     * A range of a road's {@link #positions}, from the first index to the last, inclusive.
+     */
+    public record Span(int first, int last) {
+        public static final Codec<Span> CODEC = RecordCodecBuilder.create(builder -> builder
+                .group(
+                        Codec.INT.fieldOf("first").forGetter(Span::first),
+                        Codec.INT.fieldOf("last").forGetter(Span::last)
+                ).apply(builder, Span::new));
     }
 
     /**

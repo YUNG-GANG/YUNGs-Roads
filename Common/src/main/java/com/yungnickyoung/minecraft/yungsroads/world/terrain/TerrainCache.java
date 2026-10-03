@@ -33,6 +33,9 @@ public class TerrainCache {
      */
     private final TerrainSampler.HeightSampler blockSampler;
 
+    /** Samples single blocks to match the generated terrain. Created when first needed. */
+    private TerrainSampler.HeightSampler exactSampler;
+
     public TerrainCache(TerrainSampler sampler, int step) {
         this.sampler = sampler;
         this.latticeSampler = sampler.createHeightSampler(false);
@@ -68,6 +71,18 @@ public class TerrainCache {
      */
     public double surfaceHeightAtBlock(int x, int z) {
         return this.blockSampler.surfaceHeight(x, z);
+    }
+
+    /**
+     * Samples the surface height of any block column to match the generated terrain, without caching. Slower than
+     * {@link #surfaceHeightAtBlock} for isolated columns, but about as fast when sampling neighboring columns in order.
+     * See {@link TerrainSampler#createExactHeightSampler}.
+     */
+    public double exactSurfaceHeightAtBlock(int x, int z) {
+        if (this.exactSampler == null) {
+            this.exactSampler = this.sampler.createExactHeightSampler();
+        }
+        return this.exactSampler.surfaceHeight(x, z);
     }
 
     public int sampleCount() {

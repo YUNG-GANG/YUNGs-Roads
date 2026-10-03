@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Definitions of routing terms that designers may not know, highlighted wherever they appear in the debug screen's text.
+ * Definitions of road generation terms that designers may not know, highlighted wherever they appear in the debug
+ * screen's text.
  */
 final class RoutingGlossary {
     static final int TERM_COLOR = 0xFFE080;
@@ -55,7 +56,12 @@ final class RoutingGlossary {
                 + "the destination, which generates faster but can give slightly costlier roads.",
                 "distance left"),
         JITTER("Jitter", "A noise-based sideways shift applied to each node after routing, so roads look less straight. It doesn't affect cost.",
-                "jitter");
+                "jitter"),
+        LAND_BRIDGE("Land bridge", "A crossing over a hole or dip in the ground, such as a ravine or cave opening, built "
+                + "from bridge blocks at the height of the road on either side. Routing plans one over each dip in the terrain "
+                + "deeper than Max Fill Depth and up to Max Land Bridge Length long. Holes made by carvers, which routing "
+                + "can't see, get one wherever the road would be more than Max Fill Depth above the ground.",
+                "land bridge", "land bridges");
 
         final String label;
         final String definition;
