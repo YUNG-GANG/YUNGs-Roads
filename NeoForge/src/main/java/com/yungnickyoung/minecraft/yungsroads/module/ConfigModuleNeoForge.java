@@ -32,6 +32,10 @@ public class ConfigModuleNeoForge {
     }
 
     private static void onWorldLoad(LevelEvent.Load event) {
+        // Client levels load again on every dimension change, which would undo settings applied from the debug screen
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
         bakeConfig();
         YungsRoadsCommon.CONFIG.general.structures = parseStructureStringList(
                 YRConfigNeoForge.general.structures.get(),
@@ -45,12 +49,26 @@ public class ConfigModuleNeoForge {
     }
 
     private static void onConfigChange(ModConfigEvent event) {
-        if (event.getConfig().getSpec() == YRConfigNeoForge.SPEC) {
+        if (event.getConfig().getSpec() != YRConfigNeoForge.SPEC) {
+            return;
+        }
+        if (event instanceof ModConfigEvent.Reloading) {
+            // Settings that need a world restart keep returning the values they were loaded with until the world
+            // restarts, even after the file changes, so baking them here would undo settings applied from the debug
+            // screen. That includes the reload fired when the debug screen saves.
+            bakeDebugConfig();
+        } else {
             bakeConfig();
         }
     }
 
     private static void bakeConfig() {
+        bakeWorldConfig();
+        bakeDebugConfig();
+    }
+
+    /** Bakes the settings that need a world restart to change. */
+    private static void bakeWorldConfig() {
         YungsRoadsCommon.CONFIG.general.structuresString = YRConfigNeoForge.general.structures.get();
 
         YungsRoadsCommon.CONFIG.advanced.nodeStepDistance = YRConfigNeoForge.advanced.nodeStepDistance.get();
@@ -64,7 +82,9 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.advanced.maxCutDepth = YRConfigNeoForge.advanced.maxCutDepth.get();
         YungsRoadsCommon.CONFIG.advanced.maxFillDepth = YRConfigNeoForge.advanced.maxFillDepth.get();
         YungsRoadsCommon.CONFIG.advanced.maxLandBridgeLength = YRConfigNeoForge.advanced.maxLandBridgeLength.get();
+    }
 
+    private static void bakeDebugConfig() {
         YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
         YungsRoadsCommon.CONFIG.debug.placeRoads = YRConfigNeoForge.debug.placeRoads.get();
         YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers = YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.get();
