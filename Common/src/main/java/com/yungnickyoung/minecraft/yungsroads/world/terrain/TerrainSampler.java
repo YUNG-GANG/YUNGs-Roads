@@ -112,8 +112,8 @@ public class TerrainSampler {
 
             // The point density misses how vanilla shapes terrain: it interpolates the density between cell corners.
             // That can read a block or two low near sea level, or skip past the surface into a cave below it, which
-            // would both be taken for water. Recheck with vanilla's interpolation. Most rechecks only confirm the
-            // water, but there's no cheap way to tell which ones won't.
+            // would both be taken for water. So, we recheck with vanilla's interpolation. Most rechecks only confirm the
+            // water, but as far as I can tell there's no cheap way to tell which ones won't.
             return interpolatedSurface(interpolatedFinalDensity, x, z, start, cellHeight, minY, maxY);
         };
     }
@@ -212,6 +212,7 @@ public class TerrainSampler {
                 break; // Nothing above the build limit
             }
             if (density(density, x, checkY, z) > 0) {
+                // Found a solid cell, so the clear stretch ended. Start over from the next cell.
                 clearFrom = checkY + cellHeight;
                 clearCells = 0;
             } else {

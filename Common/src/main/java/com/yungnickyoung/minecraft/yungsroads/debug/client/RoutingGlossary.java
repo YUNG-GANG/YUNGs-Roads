@@ -60,7 +60,8 @@ final class RoutingGlossary {
         LAND_BRIDGE("Land bridge", "A crossing over a hole or dip in the ground, such as a ravine or cave opening, built "
                 + "from bridge blocks at the height of the road on either side. Routing plans one over each dip in the terrain "
                 + "deeper than Max Fill Depth and up to Max Land Bridge Length long. Holes made by carvers, which routing "
-                + "can't see, get one wherever the road would be more than Max Fill Depth above the ground.",
+                + "can't see, get one wherever the road would be more than Max Fill Depth above the ground. Each bridge "
+                + "extends a few blocks past its rims and spans every gap beneath its deck.",
                 "land bridge", "land bridges");
 
         final String label;

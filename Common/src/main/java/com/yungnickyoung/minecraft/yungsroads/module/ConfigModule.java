@@ -53,6 +53,8 @@ public class ConfigModule {
         public int maxCutDepth = 4;
         public int maxFillDepth = 2;
         public int maxLandBridgeLength = 24;
+        public double landBridgeEdgeRoughness = 0;
+        public double landBridgeDecay = 0;
 
         public Advanced copy() {
             Advanced copy = new Advanced();
@@ -110,7 +112,13 @@ public class ConfigModule {
                 advanced -> advanced.maxFillDepth, (advanced, value) -> advanced.maxFillDepth = (int) value),
         MAX_LAND_BRIDGE_LENGTH(Group.SHAPING, "Max Land Bridge Length", 0, 64, true, 1,
                 "The longest dip in the terrain that a road crosses on a land bridge, in blocks, if it's deeper than Max Fill Depth. Longer dips are followed instead. Ravines and caves made by carvers always get a land bridge, since routing can't see them.",
-                advanced -> advanced.maxLandBridgeLength, (advanced, value) -> advanced.maxLandBridgeLength = (int) value);
+                advanced -> advanced.maxLandBridgeLength, (advanced, value) -> advanced.maxLandBridgeLength = (int) value),
+        LAND_BRIDGE_EDGE_ROUGHNESS(Group.SHAPING, "Land Bridge Edge Roughness", 0, 1, false, 1,
+                "How ragged the edges of land bridges are. 0 gives straight edges. Higher values move each edge block up to a block in or out.",
+                advanced -> advanced.landBridgeEdgeRoughness, (advanced, value) -> advanced.landBridgeEdgeRoughness = value),
+        LAND_BRIDGE_DECAY(Group.SHAPING, "Land Bridge Decay", 0, 1, false, 1,
+                "How much of each land bridge's deck is missing, for a ruined look. Blocks are likelier to be missing toward the edges, and the center line is always kept. 0 keeps the whole deck.",
+                advanced -> advanced.landBridgeDecay, (advanced, value) -> advanced.landBridgeDecay = value);
 
         /** Which part of road generation a setting tunes. */
         public enum Group {

@@ -15,6 +15,8 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Integer> maxCutDepth;
     public final ModConfigSpec.ConfigValue<Integer> maxFillDepth;
     public final ModConfigSpec.ConfigValue<Integer> maxLandBridgeLength;
+    public final ModConfigSpec.ConfigValue<Double> landBridgeEdgeRoughness;
+    public final ModConfigSpec.ConfigValue<Double> landBridgeDecay;
 
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -123,6 +125,25 @@ public class ConfigAdvancedForge {
                                 Default: 24""".indent(1))
                 .worldRestart()
                 .defineInRange("Max Land Bridge Length", 24, (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.min, (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.max);
+
+        landBridgeEdgeRoughness = BUILDER
+                .comment(
+                        """
+                                How ragged the edges of land bridges are, from 0 to 1. 0 gives straight edges.
+                                Higher values move each edge block up to a block in or out.
+                                Default: 0.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Land Bridge Edge Roughness", 0.0, AdvancedSetting.LAND_BRIDGE_EDGE_ROUGHNESS.min, AdvancedSetting.LAND_BRIDGE_EDGE_ROUGHNESS.max);
+
+        landBridgeDecay = BUILDER
+                .comment(
+                        """
+                                How much of each land bridge's deck is missing, for a ruined look, from 0 to 1.
+                                Blocks are likelier to be missing toward the edges, and the center line is always kept.
+                                0 keeps the whole deck.
+                                Default: 0.0""".indent(1))
+                .worldRestart()
+                .defineInRange("Land Bridge Decay", 0.0, AdvancedSetting.LAND_BRIDGE_DECAY.min, AdvancedSetting.LAND_BRIDGE_DECAY.max);
 
         BUILDER.pop();
     }

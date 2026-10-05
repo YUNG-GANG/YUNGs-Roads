@@ -21,13 +21,13 @@ public class StructureRegion {
      * Version of the saved region format. Bump this whenever the stored data or the road generation algorithm changes,
      * so that existing region files are regenerated instead of loaded.
      */
-    public static final int FORMAT_VERSION = 6;
+    public static final int FORMAT_VERSION = 7;
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.
-     * Must cover both block placement around each position and the range of road proximity checks.
+     * Must cover both the positions that can affect placement in a chunk and the range of road proximity checks.
      */
-    public static final int INDEX_PADDING = Math.max(AbstractRoadGenerator.PLACEMENT_REACH, 3);
+    public static final int INDEX_PADDING = Math.max(AbstractRoadGenerator.PLACEMENT_LOOKUP_REACH, 3);
 
     private static final String VERSION_KEY = "version";
     private static final String ENDPOINT_CHUNKS_KEY = "endpoint_chunks";

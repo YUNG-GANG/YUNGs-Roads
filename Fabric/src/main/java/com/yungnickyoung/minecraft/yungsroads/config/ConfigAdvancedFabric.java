@@ -35,4 +35,10 @@ public class ConfigAdvancedFabric {
 
     @ConfigEntry.Gui.Tooltip(count = 3)
     public int maxLandBridgeLength = 24;
+
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public double landBridgeEdgeRoughness = 0.0;
+
+    @ConfigEntry.Gui.Tooltip(count = 3)
+    public double landBridgeDecay = 0.0;
 }

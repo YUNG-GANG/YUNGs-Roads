@@ -65,6 +65,8 @@ public class ConfigModuleFabric {
         advanced.maxCutDepth = (int) AdvancedSetting.MAX_CUT_DEPTH.clamp(configFabric.advanced.maxCutDepth);
         advanced.maxFillDepth = (int) AdvancedSetting.MAX_FILL_DEPTH.clamp(configFabric.advanced.maxFillDepth);
         advanced.maxLandBridgeLength = (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.clamp(configFabric.advanced.maxLandBridgeLength);
+        advanced.landBridgeEdgeRoughness = AdvancedSetting.LAND_BRIDGE_EDGE_ROUGHNESS.clamp(configFabric.advanced.landBridgeEdgeRoughness);
+        advanced.landBridgeDecay = AdvancedSetting.LAND_BRIDGE_DECAY.clamp(configFabric.advanced.landBridgeDecay);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
@@ -95,6 +97,8 @@ public class ConfigModuleFabric {
         configFabric.advanced.maxCutDepth = advanced.maxCutDepth;
         configFabric.advanced.maxFillDepth = advanced.maxFillDepth;
         configFabric.advanced.maxLandBridgeLength = advanced.maxLandBridgeLength;
+        configFabric.advanced.landBridgeEdgeRoughness = advanced.landBridgeEdgeRoughness;
+        configFabric.advanced.landBridgeDecay = advanced.landBridgeDecay;
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;

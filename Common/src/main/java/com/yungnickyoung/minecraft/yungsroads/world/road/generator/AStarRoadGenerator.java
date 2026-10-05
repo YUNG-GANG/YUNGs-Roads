@@ -486,7 +486,6 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
     /**
      * A found path.
-     *
      * @param nodes The path's nodes from start to end, including the exact start and end positions.
      * @param bridges The path's bridges from start to end. Each spans two consecutive lattice nodes.
      */
