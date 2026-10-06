@@ -8,6 +8,8 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Double> jitterAmount;
     public final ModConfigSpec.ConfigValue<Double> heuristicWeight;
     public final ModConfigSpec.ConfigValue<Double> slopeWeight;
+    public final ModConfigSpec.ConfigValue<Double> freeGrade;
+    public final ModConfigSpec.ConfigValue<Boolean> straightenRoutes;
     public final ModConfigSpec.ConfigValue<Double> maxGrade;
     public final ModConfigSpec.ConfigValue<Double> waterWeight;
     public final ModConfigSpec.ConfigValue<Integer> maxBridgeLength;
@@ -59,11 +61,32 @@ public class ConfigAdvancedForge {
         slopeWeight = BUILDER
                 .comment(
                         """
-                                The extra cost of steep terrain. Each step's cost is multiplied by (1 + Slope Weight * grade^2),
-                                where grade is rise over run. Higher values make roads avoid hills and mountains more.
+                                The extra cost of steep terrain. Each step's cost is multiplied by
+                                (1 + Slope Weight * (grade^2 - Free Grade^2)), where grade is rise over run, so grades up to
+                                Free Grade cost nothing extra. Higher values make roads avoid hills and mountains more.
                                 Default: 25.0""".indent(1))
                 .worldRestart()
                 .defineInRange("Slope Weight", 25.0, AdvancedSetting.SLOPE_WEIGHT.min, AdvancedSetting.SLOPE_WEIGHT.max);
+
+        freeGrade = BUILDER
+                .comment(
+                        """
+                                The steepest grade that costs nothing extra to route over. Higher values let roads run
+                                straight over gentle rises instead of weaving around them, but weaken the pull toward
+                                switchbacks on hillsides. A 1-block rise over one node step is a grade of 0.125 at the
+                                default Node Step Distance.
+                                Default: 0.15""".indent(1))
+                .worldRestart()
+                .defineInRange("Free Grade", 0.15, AdvancedSetting.FREE_GRADE.min, AdvancedSetting.FREE_GRADE.max);
+
+        straightenRoutes = BUILDER
+                .comment(
+                        """
+                                Whether each route is straightened after routing, by cutting out nodes the road can bypass
+                                in a straight line that costs no more, stays within Max Grade, and doesn't cross water.
+                                Default: true""".indent(1))
+                .worldRestart()
+                .define("Straighten Routes", true);
 
         maxGrade = BUILDER
                 .comment(

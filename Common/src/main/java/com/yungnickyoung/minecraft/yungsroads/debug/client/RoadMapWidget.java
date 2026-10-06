@@ -249,8 +249,9 @@ public class RoadMapWidget extends AbstractWidget {
                     lines.add(Component.literal(String.format("Too steep to cross (max grade %s)",
                             AdvancedSetting.MAX_GRADE.format(settings.maxGrade))));
                 } else {
-                    lines.add(Component.literal(String.format("Steepest step cost: run × (1 + %s × %.2f²) = run × %.1f",
-                            AdvancedSetting.SLOPE_WEIGHT.format(settings.slopeWeight), grade, tiles.stepCost(grade, settings))));
+                    lines.add(Component.literal(String.format("Steepest step cost: run × (1 + %s × max(0, %.2f² - %s²)) = run × %.1f",
+                            AdvancedSetting.SLOPE_WEIGHT.format(settings.slopeWeight), grade,
+                            AdvancedSetting.FREE_GRADE.format(settings.freeGrade), tiles.stepCost(grade, settings))));
                 }
             }
         }

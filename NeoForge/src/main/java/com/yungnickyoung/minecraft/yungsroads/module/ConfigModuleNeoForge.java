@@ -75,6 +75,8 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.advanced.jitterAmount = YRConfigNeoForge.advanced.jitterAmount.get();
         YungsRoadsCommon.CONFIG.advanced.heuristicWeight = YRConfigNeoForge.advanced.heuristicWeight.get();
         YungsRoadsCommon.CONFIG.advanced.slopeWeight = YRConfigNeoForge.advanced.slopeWeight.get();
+        YungsRoadsCommon.CONFIG.advanced.freeGrade = YRConfigNeoForge.advanced.freeGrade.get();
+        YungsRoadsCommon.CONFIG.advanced.straightenRoutes = YRConfigNeoForge.advanced.straightenRoutes.get();
         YungsRoadsCommon.CONFIG.advanced.maxGrade = YRConfigNeoForge.advanced.maxGrade.get();
         YungsRoadsCommon.CONFIG.advanced.waterWeight = YRConfigNeoForge.advanced.waterWeight.get();
         YungsRoadsCommon.CONFIG.advanced.maxBridgeLength = YRConfigNeoForge.advanced.maxBridgeLength.get();
@@ -108,6 +110,8 @@ public class ConfigModuleNeoForge {
         YRConfigNeoForge.advanced.jitterAmount.set(advanced.jitterAmount);
         YRConfigNeoForge.advanced.heuristicWeight.set(advanced.heuristicWeight);
         YRConfigNeoForge.advanced.slopeWeight.set(advanced.slopeWeight);
+        YRConfigNeoForge.advanced.freeGrade.set(advanced.freeGrade);
+        YRConfigNeoForge.advanced.straightenRoutes.set(advanced.straightenRoutes);
         YRConfigNeoForge.advanced.maxGrade.set(advanced.maxGrade);
         YRConfigNeoForge.advanced.waterWeight.set(advanced.waterWeight);
         YRConfigNeoForge.advanced.maxBridgeLength.set(advanced.maxBridgeLength);

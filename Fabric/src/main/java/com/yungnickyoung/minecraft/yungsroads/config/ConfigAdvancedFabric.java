@@ -16,6 +16,12 @@ public class ConfigAdvancedFabric {
     public double slopeWeight = 25.0;
 
     @ConfigEntry.Gui.Tooltip(count = 3)
+    public double freeGrade = 0.15;
+
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public boolean straightenRoutes = true;
+
+    @ConfigEntry.Gui.Tooltip(count = 3)
     public double maxGrade = 1.0;
 
     @ConfigEntry.Gui.Tooltip(count = 2)

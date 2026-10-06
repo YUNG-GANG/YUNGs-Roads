@@ -57,7 +57,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         for (int n = 0; n < isBridgeSegment.length; n++) {
             BlockPos from = road.nodes.get(n).rawPos;
             BlockPos to = road.nodes.get(n + 1).rawPos;
-            isBridgeSegment[n] = routedBridges.get(n) || crossesWater(from, to, terrain);
+            isBridgeSegment[n] = routedBridges.get(n) || LatticePathfinder.crossesWater(from, to, terrain);
             if (isBridgeSegment[n]) {
                 road.bridges.add(new Road.Bridge(atDeckHeight(from, terrain), atDeckHeight(to, terrain)));
             }
@@ -175,22 +175,6 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         double dz = to.getZ() - from.getZ();
         double length = Math.sqrt(dx * dx + dz * dz);
         return new double[]{dx / length, dz / length};
-    }
-
-    /**
-     * Whether the straight line between two positions passes over water, checked at every block between them.
-     */
-    private static boolean crossesWater(BlockPos from, BlockPos to, TerrainCache terrain) {
-        int length = (int) Math.ceil(Math.sqrt(horizontalDistSqr(from, to)));
-        for (int s = 1; s < length; s++) {
-            double t = s / (double) length;
-            int x = (int) Math.round(Mth.lerp(t, from.getX(), to.getX()));
-            int z = (int) Math.round(Mth.lerp(t, from.getZ(), to.getZ()));
-            if (LatticePathfinder.isWater(terrain.surfaceHeightAtBlock(x, z), terrain.seaLevel())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static double horizontalDistSqr(BlockPos a, BlockPos b) {

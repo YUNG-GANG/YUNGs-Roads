@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
@@ -153,7 +154,7 @@ public final class TerrainTiles {
      * The cost multiplier routing applies to a step on land with the given grade, matching {@code LatticePathfinder}.
      */
     double stepCost(double grade, ConfigModule.Advanced settings) {
-        return 1 + settings.slopeWeight * grade * grade;
+        return LatticePathfinder.slopeCostFactor(grade, settings);
     }
 
     boolean isWater(double height) {
@@ -236,7 +237,7 @@ public final class TerrainTiles {
                 Minecraft.getInstance().getTextureManager().register(this.textureId, this.texture);
             }
 
-            String key = layer + "/" + settings.maxGrade + "/" + settings.slopeWeight;
+            String key = layer + "/" + settings.maxGrade + "/" + settings.slopeWeight + "/" + settings.freeGrade;
             if (!key.equals(this.coloredFor)) {
                 NativeImage pixels = this.texture.getPixels();
                 for (int j = 0; j < TILE_SIZE; j++) {

@@ -3,7 +3,9 @@ package com.yungnickyoung.minecraft.yungsroads.module;
 import net.minecraft.core.HolderSet;
 import net.minecraft.world.level.levelgen.structure.Structure;
 
+import java.util.function.BiConsumer;
 import java.util.function.ObjDoubleConsumer;
+import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 
 public class ConfigModule {
@@ -46,6 +48,8 @@ public class ConfigModule {
         public double jitterAmount = 4;
         public double heuristicWeight = 1.2;
         public double slopeWeight = 25;
+        public double freeGrade = 0.15;
+        public boolean straightenRoutes = true;
         public double maxGrade = 1.0;
         public double waterWeight = 8;
         public int maxBridgeLength = 32;
@@ -93,8 +97,14 @@ public class ConfigModule {
                 "How strongly routing is pulled toward the destination, by weighting the distance left in each node's priority. 1 always finds the cheapest road. Higher values generate faster but can give slightly costlier roads.",
                 advanced -> advanced.heuristicWeight, (advanced, value) -> advanced.heuristicWeight = value),
         SLOPE_WEIGHT(Group.ROUTING, "Slope Weight", 0, 1000, false, 3,
-                "The extra cost of steep terrain. Each step cost is multiplied by (1 + Slope Weight × grade²). Higher values make roads avoid hills and mountains more.",
+                "The extra cost of steep terrain. Each step cost is multiplied by (1 + Slope Weight × (grade² - Free Grade²)), so grades up to Free Grade cost nothing extra. Higher values make roads avoid hills and mountains more.",
                 advanced -> advanced.slopeWeight, (advanced, value) -> advanced.slopeWeight = value),
+        FREE_GRADE(Group.ROUTING, "Free Grade", 0, 1, false, 2,
+                "The steepest grade that costs nothing extra to route over. Higher values let roads run straight over gentle rises instead of weaving around them, but weaken the pull toward switchbacks on hillsides. A 1-block rise over one node step is a grade of 0.125 at the default Node Step Distance.",
+                advanced -> advanced.freeGrade, (advanced, value) -> advanced.freeGrade = value),
+        STRAIGHTEN_ROUTES(Group.ROUTING, "Straighten Routes",
+                "Whether each route is straightened after routing, by cutting out nodes the road can bypass in a straight line that costs no more, stays within Max Grade, and doesn't cross water. Turn off to see the route as routing found it.",
+                advanced -> advanced.straightenRoutes, (advanced, value) -> advanced.straightenRoutes = value),
         MAX_GRADE(Group.ROUTING, "Max Grade", 0.05, 10, false, 2,
                 "The steepest grade a road may have. Routing never crosses steeper terrain, and where the ground between nodes is steeper, the road cuts or tunnels through it. 1 is a 45 degree slope.",
                 advanced -> advanced.maxGrade, (advanced, value) -> advanced.maxGrade = value),
@@ -145,6 +155,8 @@ public class ConfigModule {
         public final double min;
         public final double max;
         public final boolean isInteger;
+        /** Whether the setting is either on or off, stored as 1 or 0, rather than a number. */
+        public final boolean isToggle;
         /**
          * Shapes the in-game slider, which maps its position t in [0, 1] to min + (max - min) * t^sliderExponent.
          * Values above 1 give more of the slider to the low end, for wide ranges whose useful values are small.
@@ -156,11 +168,23 @@ public class ConfigModule {
 
         AdvancedSetting(Group group, String displayName, double min, double max, boolean isInteger, double sliderExponent, String description,
                         ToDoubleFunction<Advanced> getter, ObjDoubleConsumer<Advanced> setter) {
+            this(group, displayName, min, max, isInteger, false, sliderExponent, description, getter, setter);
+        }
+
+        /** A setting that's either on or off. */
+        AdvancedSetting(Group group, String displayName, String description, Predicate<Advanced> getter, BiConsumer<Advanced, Boolean> setter) {
+            this(group, displayName, 0, 1, true, true, 1, description,
+                    advanced -> getter.test(advanced) ? 1 : 0, (advanced, value) -> setter.accept(advanced, value != 0));
+        }
+
+        AdvancedSetting(Group group, String displayName, double min, double max, boolean isInteger, boolean isToggle, double sliderExponent,
+                        String description, ToDoubleFunction<Advanced> getter, ObjDoubleConsumer<Advanced> setter) {
             this.group = group;
             this.displayName = displayName;
             this.min = min;
             this.max = max;
             this.isInteger = isInteger;
+            this.isToggle = isToggle;
             this.sliderExponent = sliderExponent;
             this.description = description;
             this.getter = getter;

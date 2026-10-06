@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -26,6 +27,8 @@ import java.util.PriorityQueue;
  * <p>
  * Each move has a cost: its horizontal length scaled by how steep it is. Moves steeper than the configured max grade
  * are not allowed at all, and oceans are impassable. The search finds the route whose moves cost the least in total.
+ * Grades up to the configured free grade cost nothing extra, so on flat ground the road doesn't weave around every small
+ * bump.
  * <p>
  * How the search works: it keeps a frontier of points it can reach, each with the cost of the cheapest route found to
  * it so far. It repeatedly explores the frontier point with the lowest priority, which is that cost plus an estimate
@@ -77,7 +80,7 @@ public final class LatticePathfinder {
     }
 
     /**
-     * Finds the cheapest route between two positions.
+     * Finds the cheapest route between two positions, then straightens it with {@link RouteStraightener} if enabled.
      *
      * @return The route, whose nodes run from start to end and include the exact start and end positions,
      * or empty if no route was found.
@@ -156,7 +159,7 @@ public final class LatticePathfinder {
                     continue;
                 }
 
-                double moveCost = run * (1 + settings.slopeWeight * grade * grade);
+                double moveCost = run * slopeCostFactor(grade, settings);
                 search.offerRoute(currentKey, neighborX, neighborZ, current.costSoFar + moveCost, false);
             }
         }
@@ -189,7 +192,8 @@ public final class LatticePathfinder {
         }
         nodes.add(new Road.DebugNode(endPos, reachedGoal.costSoFar, 0));
 
-        return Optional.of(new Path(nodes, bridgeSegments));
+        Path path = new Path(nodes, bridgeSegments);
+        return Optional.of(settings.straightenRoutes ? RouteStraightener.straighten(path, terrain, settings) : path);
     }
 
     /**
@@ -227,7 +231,7 @@ public final class LatticePathfinder {
             double run = movesAcross * moveLength;
             double grade = Math.abs(roadHeight(surface, seaLevel) - fromHeight) / run;
             if (grade <= settings.maxGrade && !search.explored.contains(GridKeys.pack(x, z))) {
-                double bridgeCost = run * (1 + settings.slopeWeight * grade * grade + settings.waterWeight);
+                double bridgeCost = run * (slopeCostFactor(grade, settings) + settings.waterWeight);
                 search.offerRoute(fromKey, x, z, from.costSoFar + bridgeCost, true);
             }
             return;
@@ -268,6 +272,34 @@ public final class LatticePathfinder {
      * @param priority The cost so far plus the estimated cost left to the goal. Lower is explored first.
      */
     private record FrontierEntry(int x, int z, double costSoFar, double priority) {
+    }
+
+    /**
+     * Whether the straight line between two positions passes over water, checked at every block between them.
+     */
+    static boolean crossesWater(BlockPos from, BlockPos to, TerrainCache terrain) {
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        int length = (int) Math.ceil(Math.sqrt(dx * dx + dz * dz));
+        for (int s = 1; s < length; s++) {
+            double t = s / (double) length;
+            int x = (int) Math.round(Mth.lerp(t, from.getX(), to.getX()));
+            int z = (int) Math.round(Mth.lerp(t, from.getZ(), to.getZ()));
+            if (isWater(terrain.surfaceHeightAtBlock(x, z), terrain.seaLevel())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * How much a run of road with the given grade costs per block of length. The extra cost of steepness grows with the
+     * square of the grade, less that of the free grade, so it starts at zero there and is nearly unchanged on steep
+     * slopes, where it makes roads wind up hillsides in switchbacks.
+     */
+    public static double slopeCostFactor(double grade, ConfigModule.Advanced settings) {
+        double freeGrade = settings.freeGrade;
+        return 1 + settings.slopeWeight * Math.max(0, grade * grade - freeGrade * freeGrade);
     }
 
     /**

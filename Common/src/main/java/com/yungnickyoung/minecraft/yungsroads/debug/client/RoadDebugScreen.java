@@ -31,6 +31,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -44,6 +45,8 @@ import java.util.function.Predicate;
 public class RoadDebugScreen extends Screen {
     private static final int PANEL_WIDTH = 200;
     private static final int MARGIN = 6;
+    /** The top of each tab's content, below the tab buttons. */
+    private static final int CONTENT_Y = MARGIN + 22;
     private static final int ROW_HEIGHT = 18;
     private static final int CHECKBOX_ROW_HEIGHT = 20;
     private static final int VALUE_BOX_WIDTH = 40;
@@ -61,6 +64,11 @@ public class RoadDebugScreen extends Screen {
 
         Tab(String displayName) {
             this.displayName = displayName;
+        }
+
+        /** Whether the tab's content scrolls, since its settings and formulas can be taller than the panel. */
+        boolean scrolls() {
+            return this == ROUTING || this == SHAPING;
         }
 
         /** The tab a setting is edited on. */
@@ -86,6 +94,12 @@ public class RoadDebugScreen extends Screen {
 
     /** Where each settings tab's formulas start, below its settings. */
     private final Map<Tab, Integer> formulaY = new EnumMap<>(Tab.class);
+    /** How far each scrolling tab is scrolled down, in pixels. Kept across rebuilds. */
+    private final Map<Tab, Integer> scroll = new EnumMap<>(Tab.class);
+    /** The furthest each scrolling tab could scroll when it was last rendered. */
+    private final Map<Tab, Integer> maxScroll = new EnumMap<>(Tab.class);
+    /** The y of each widget on a scrolling tab when the tab isn't scrolled. */
+    private final Map<AbstractWidget, Integer> unscrolledY = new HashMap<>();
     private Button applyButton;
     private Button revertButton;
     /** Kept across rebuilds, so the map's position and zoom aren't reset. */
@@ -100,6 +114,7 @@ public class RoadDebugScreen extends Screen {
     protected void init() {
         this.tabWidgets.clear();
         this.settingRows.clear();
+        this.unscrolledY.clear();
         int x = MARGIN;
         int contentWidth = PANEL_WIDTH - MARGIN * 2;
 
@@ -118,15 +133,29 @@ public class RoadDebugScreen extends Screen {
                     .build());
             tabX += tabWidth;
         }
-        int contentY = MARGIN + 22;
+        int contentY = CONTENT_Y;
 
-        // Routing and shaping settings, each a slider for quick changes with a text box for exact values. Routing
-        // changes are previewed on the map's terrain right away, but only applied to roads on Apply.
+        // Routing and shaping settings, each a slider for quick changes with a text box for exact values, or a checkbox
+        // for a toggle. Routing changes are previewed on the map's terrain right away, but only applied to roads on Apply.
         Map<Tab, Integer> rowY = new EnumMap<>(Tab.class);
         int sliderWidth = contentWidth - VALUE_BOX_WIDTH - 4;
         for (AdvancedSetting setting : AdvancedSetting.values()) {
             Tab settingTab = Tab.of(setting);
             int y = rowY.getOrDefault(settingTab, contentY);
+            rowY.put(settingTab, y + ROW_HEIGHT);
+            this.formulaY.put(settingTab, y + ROW_HEIGHT + 6);
+            if (setting.isToggle) {
+                Double value = parse(setting, this.pendingText.get(setting));
+                Checkbox checkbox = Checkbox.builder(Component.literal(setting.displayName), this.font)
+                        .pos(x, y)
+                        .maxWidth(contentWidth)
+                        .selected(value != null && value != 0)
+                        .onValueChange((box, selected) -> this.pendingText.put(setting, selected ? "1" : "0"))
+                        .build();
+                this.settingRows.put(setting, List.of(checkbox));
+                addScrollingWidget(settingTab, checkbox, y);
+                continue;
+            }
             EditBox box = new EditBox(this.font, x + sliderWidth + 4, y + 1, VALUE_BOX_WIDTH, 14, Component.literal(setting.displayName));
             SettingSlider slider = new SettingSlider(x, y, sliderWidth, 16, setting, box);
             box.setMaxLength(12);
@@ -140,10 +169,8 @@ public class RoadDebugScreen extends Screen {
             });
             box.setValue(this.pendingText.get(setting));
             this.settingRows.put(setting, List.of(slider, box));
-            addTabWidget(settingTab, slider);
-            addTabWidget(settingTab, box);
-            rowY.put(settingTab, y + ROW_HEIGHT);
-            this.formulaY.put(settingTab, y + ROW_HEIGHT + 6);
+            addScrollingWidget(settingTab, slider, y);
+            addScrollingWidget(settingTab, box, y + 1);
         }
 
         // Placement options
@@ -250,6 +277,16 @@ public class RoadDebugScreen extends Screen {
         this.tabWidgets.computeIfAbsent(tab, t -> new ArrayList<>()).add(widget);
     }
 
+    /**
+     * Adds a widget to a scrolling tab.
+     *
+     * @param y The widget's y when the tab isn't scrolled.
+     */
+    private void addScrollingWidget(Tab tab, AbstractWidget widget, int y) {
+        addTabWidget(tab, widget);
+        this.unscrolledY.put(widget, y);
+    }
+
     private void selectTab(Tab tab) {
         this.tab = tab;
         this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == tab));
@@ -270,9 +307,6 @@ public class RoadDebugScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-
-        int x = MARGIN;
         // Status, wrapped above the action buttons
         List<String> statusLines = new ArrayList<>();
         statusLines.add(RoadTuning.status());
@@ -288,31 +322,93 @@ public class RoadDebugScreen extends Screen {
             }
         }
         int statusTop = this.applyButton.getY() - 4 - wrapped.size() * 10;
+
+        List<Component> formulas = formulas(this.tab, previewSettings());
+        if (this.tab.scrolls()) {
+            layOutScrollingTab(statusTop, formulas);
+        }
+
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+
         int y = statusTop;
         for (FormattedCharSequence line : wrapped) {
-            guiGraphics.drawString(this.font, line, x, y, 0xFFC0C0C0);
+            guiGraphics.drawString(this.font, line, MARGIN, y, 0xFFC0C0C0);
             y += 10;
         }
 
-        ConfigModule.Advanced settings = previewSettings();
-        if (this.tab == Tab.ROUTING) {
-            renderFormula(guiGraphics, mouseX, mouseY, this.formulaY.get(Tab.ROUTING), statusTop, List.of(
+        if (this.tab.scrolls()) {
+            int formulaTop = this.formulaY.get(this.tab) - this.scroll.getOrDefault(this.tab, 0);
+            renderFormula(guiGraphics, mouseX, mouseY, formulaTop, statusTop, formulas);
+            renderScrollbar(guiGraphics, statusTop);
+        }
+        renderSettingTooltip(guiGraphics, mouseX, mouseY);
+    }
+
+    /** The formulas explaining how a tab's settings are used, with the given settings' values filled in. */
+    private static List<Component> formulas(Tab tab, ConfigModule.Advanced settings) {
+        return switch (tab) {
+            case ROUTING -> List.of(
                     formulaTitle("Routing formulas"),
-                    formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × grade²)"),
+                    formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × max(0, grade² - ", AdvancedSetting.FREE_GRADE, "²))"),
                     formulaLine(settings, "Steps above grade ", AdvancedSetting.MAX_GRADE, " are never taken"),
                     formulaLine(settings, "Bridge cost = step cost + ", AdvancedSetting.WATER_WEIGHT, " × run"),
                     formulaLine(settings, "Bridges are at most ", AdvancedSetting.MAX_BRIDGE_LENGTH, " blocks long"),
-                    formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left")));
-        } else if (this.tab == Tab.SHAPING) {
-            renderFormula(guiGraphics, mouseX, mouseY, this.formulaY.get(Tab.SHAPING), statusTop, List.of(
+                    formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left"));
+            case SHAPING -> List.of(
                     formulaTitle("Shaping rules"),
                     formulaLine(settings, "Road height = ground averaged over ", AdvancedSetting.SMOOTHING_RADIUS, " blocks each way"),
                     formulaLine(settings, "Ground up to ", AdvancedSetting.MAX_CUT_DEPTH, " blocks above the road is cut away"),
                     formulaLine(settings, "Gaps up to ", AdvancedSetting.MAX_FILL_DEPTH, " blocks below the road are filled, and deeper holes get a land bridge"),
                     formulaLine(settings, "Dips up to ", AdvancedSetting.MAX_LAND_BRIDGE_LENGTH, " blocks long get a land bridge"),
-                    formulaLine(settings, "Land bridge edges with drops of ", AdvancedSetting.LAND_BRIDGE_RAILING_DROP, "+ blocks get railings")));
+                    formulaLine(settings, "Land bridge edges with drops of ", AdvancedSetting.LAND_BRIDGE_RAILING_DROP, "+ blocks get railings"));
+            case PLACEMENT, VIEW -> List.of();
+        };
+    }
+
+    /**
+     * Keeps the current tab's scroll within its settings and formulas, moves its widgets to match, and shows only the
+     * widgets that fit between the tab buttons and the given bottom, so none are shown cut off.
+     */
+    private void layOutScrollingTab(int bottom, List<Component> formulas) {
+        int contentBottom = this.formulaY.get(this.tab) + formulasHeight(formulas);
+        // Scrolling is by whole rows, so the top row always sits right below the tab buttons instead of being hidden
+        int max = Mth.positiveCeilDiv(Math.max(0, contentBottom - bottom), ROW_HEIGHT) * ROW_HEIGHT;
+        int offset = Mth.clamp(this.scroll.getOrDefault(this.tab, 0), 0, max);
+        this.maxScroll.put(this.tab, max);
+        this.scroll.put(this.tab, offset);
+        for (AbstractWidget widget : this.tabWidgets.getOrDefault(this.tab, List.of())) {
+            int y = this.unscrolledY.get(widget) - offset;
+            widget.setY(y);
+            widget.visible = y >= CONTENT_Y && y + widget.getHeight() <= bottom;
+            // A hidden text box must not keep receiving key presses
+            if (!widget.visible && getFocused() == widget) {
+                setFocused(null);
+            }
         }
-        renderSettingTooltip(guiGraphics, mouseX, mouseY);
+    }
+
+    /** Draws a scrollbar at the panel's right edge, if the current tab's content doesn't fit. */
+    private void renderScrollbar(GuiGraphics guiGraphics, int bottom) {
+        int max = this.maxScroll.getOrDefault(this.tab, 0);
+        if (max <= 0) {
+            return;
+        }
+        int x = PANEL_WIDTH - 3;
+        int trackHeight = bottom - CONTENT_Y;
+        int thumbHeight = Math.max(8, trackHeight * trackHeight / (trackHeight + max));
+        int thumbY = CONTENT_Y + (trackHeight - thumbHeight) * this.scroll.getOrDefault(this.tab, 0) / max;
+        guiGraphics.fill(x, CONTENT_Y, x + 2, bottom, 0x40FFFFFF);
+        guiGraphics.fill(x, thumbY, x + 2, thumbY + thumbHeight, 0xC0FFFFFF);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (mouseX < PANEL_WIDTH && this.tab.scrolls()) {
+            int offset = this.scroll.getOrDefault(this.tab, 0) - (int) Math.round(scrollY * ROW_HEIGHT);
+            this.scroll.put(this.tab, Mth.clamp(offset, 0, this.maxScroll.getOrDefault(this.tab, 0)));
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     /**
@@ -329,9 +425,11 @@ public class RoadDebugScreen extends Screen {
                 continue;
             }
             AdvancedSetting setting = row.getKey();
-            Component text = RoutingGlossary.withDefinitions(setting.description + "\nRange: "
-                    + setting.format(setting.min) + " to " + setting.format(setting.max)
-                    + "\nDefault: " + setting.format(setting.defaultValue()));
+            String details = setting.isToggle
+                    ? "\nDefault: " + (setting.defaultValue() != 0 ? "on" : "off")
+                    : "\nRange: " + setting.format(setting.min) + " to " + setting.format(setting.max)
+                    + "\nDefault: " + setting.format(setting.defaultValue());
+            Component text = RoutingGlossary.withDefinitions(setting.description + details);
             renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
             return;
         }
@@ -350,8 +448,10 @@ public class RoadDebugScreen extends Screen {
 
     /**
      * Explains how a tab's settings are used, with the entered values filled in. Highlighted words and values show
-     * their definitions when hovered. Formulas that don't fit above the status text are left out whole, so none are
-     * shown cut off.
+     * their definitions when hovered. Formulas scrolled above the content area or that don't fit above the status text
+     * are left out whole, so none are shown cut off.
+     *
+     * @param top Where the first formula starts, which is above the content area when the tab is scrolled.
      */
     private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
         int x = MARGIN;
@@ -361,6 +461,10 @@ public class RoadDebugScreen extends Screen {
             List<FormattedCharSequence> lines = this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2);
             if (y + lines.size() * (this.font.lineHeight + 1) - 1 > bottom) {
                 break;
+            }
+            if (y < CONTENT_Y) {
+                y += lines.size() * (this.font.lineHeight + 1) + 2;
+                continue;
             }
             for (FormattedCharSequence line : lines) {
                 guiGraphics.drawString(this.font, line, x, y, 0xFFE0E0E0);
@@ -377,6 +481,15 @@ public class RoadDebugScreen extends Screen {
                 renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
             }
         }
+    }
+
+    /** The height of the given formulas, as drawn by {@link #renderFormula}. */
+    private int formulasHeight(List<Component> paragraphs) {
+        int height = 0;
+        for (Component paragraph : paragraphs) {
+            height += this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2).size() * (this.font.lineHeight + 1) + 2;
+        }
+        return height;
     }
 
     private static Component formulaTitle(String title) {

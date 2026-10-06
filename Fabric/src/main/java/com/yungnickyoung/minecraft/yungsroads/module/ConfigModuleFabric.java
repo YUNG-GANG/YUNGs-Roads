@@ -58,6 +58,8 @@ public class ConfigModuleFabric {
         advanced.jitterAmount = AdvancedSetting.JITTER_AMOUNT.clamp(configFabric.advanced.jitterAmount);
         advanced.heuristicWeight = AdvancedSetting.HEURISTIC_WEIGHT.clamp(configFabric.advanced.heuristicWeight);
         advanced.slopeWeight = AdvancedSetting.SLOPE_WEIGHT.clamp(configFabric.advanced.slopeWeight);
+        advanced.freeGrade = AdvancedSetting.FREE_GRADE.clamp(configFabric.advanced.freeGrade);
+        advanced.straightenRoutes = configFabric.advanced.straightenRoutes;
         advanced.maxGrade = AdvancedSetting.MAX_GRADE.clamp(configFabric.advanced.maxGrade);
         advanced.waterWeight = AdvancedSetting.WATER_WEIGHT.clamp(configFabric.advanced.waterWeight);
         advanced.maxBridgeLength = (int) AdvancedSetting.MAX_BRIDGE_LENGTH.clamp(configFabric.advanced.maxBridgeLength);
@@ -93,6 +95,8 @@ public class ConfigModuleFabric {
         configFabric.advanced.jitterAmount = advanced.jitterAmount;
         configFabric.advanced.heuristicWeight = advanced.heuristicWeight;
         configFabric.advanced.slopeWeight = advanced.slopeWeight;
+        configFabric.advanced.freeGrade = advanced.freeGrade;
+        configFabric.advanced.straightenRoutes = advanced.straightenRoutes;
         configFabric.advanced.maxGrade = advanced.maxGrade;
         configFabric.advanced.waterWeight = advanced.waterWeight;
         configFabric.advanced.maxBridgeLength = advanced.maxBridgeLength;
