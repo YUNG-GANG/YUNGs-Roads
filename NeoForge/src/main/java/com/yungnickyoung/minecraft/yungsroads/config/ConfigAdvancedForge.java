@@ -17,6 +17,8 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Integer> maxLandBridgeLength;
     public final ModConfigSpec.ConfigValue<Double> landBridgeEdgeRoughness;
     public final ModConfigSpec.ConfigValue<Double> landBridgeDecay;
+    public final ModConfigSpec.ConfigValue<Integer> landBridgeRailingDrop;
+    public final ModConfigSpec.ConfigValue<Integer> landBridgeRailingChance;
 
     public ConfigAdvancedForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -144,6 +146,24 @@ public class ConfigAdvancedForge {
                                 Default: 0.0""".indent(1))
                 .worldRestart()
                 .defineInRange("Land Bridge Decay", 0.0, AdvancedSetting.LAND_BRIDGE_DECAY.min, AdvancedSetting.LAND_BRIDGE_DECAY.max);
+
+        landBridgeRailingDrop = BUILDER
+                .comment(
+                        """
+                                The shortest drop beside a land bridge that gets a railing along its edge, in blocks,
+                                from the deck down to the ground. Lower values put railings along more of each bridge.
+                                Default: 4""".indent(1))
+                .worldRestart()
+                .defineInRange("Land Bridge Railing Drop", 4, (int) AdvancedSetting.LAND_BRIDGE_RAILING_DROP.min, (int) AdvancedSetting.LAND_BRIDGE_RAILING_DROP.max);
+
+        landBridgeRailingChance = BUILDER
+                .comment(
+                        """
+                                The percent chance that each spot where a land bridge railing could go gets one, from 0 to 100.
+                                100 lines every edge with a drop beside it, and 0 places no railings.
+                                Default: 100""".indent(1))
+                .worldRestart()
+                .defineInRange("Land Bridge Railing Chance", 100, (int) AdvancedSetting.LAND_BRIDGE_RAILING_CHANCE.min, (int) AdvancedSetting.LAND_BRIDGE_RAILING_CHANCE.max);
 
         BUILDER.pop();
     }

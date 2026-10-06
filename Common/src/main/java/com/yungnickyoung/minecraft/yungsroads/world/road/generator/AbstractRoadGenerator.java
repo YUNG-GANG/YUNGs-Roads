@@ -17,10 +17,14 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.WallSide;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -41,10 +45,20 @@ public abstract class AbstractRoadGenerator {
     public static final int BRIDGE_MARGIN = 3;
 
     /**
+     * How far, in blocks, past a chunk's edges the shape of bridge decks is worked out to decide its railings. A chunk
+     * needs the railings one block past its edges, which its own railings connect to, and those need the deck's shape
+     * one block further out.
+     */
+    private static final int RAILING_REACH = 2;
+
+    /** Mixed into the world seed when rolling for the railing chance, so the roll is independent of decay's. */
+    private static final long RAILING_CHANCE_SALT = 0x5DEECE66DL;
+
+    /**
      * The furthest horizontal distance (along either axis) from a chunk at which a road center position can affect
      * what's placed in it.
      */
-    public static final int PLACEMENT_LOOKUP_REACH = PLACEMENT_REACH + BRIDGE_MARGIN;
+    public static final int PLACEMENT_LOOKUP_REACH = PLACEMENT_REACH + BRIDGE_MARGIN + RAILING_REACH;
 
     /** How far, in blocks, edge roughness may move a bridge's edge in or out, at the maximum setting. */
     private static final double MAX_EDGE_ROUGHNESS = 1.0;
@@ -57,6 +71,7 @@ public abstract class AbstractRoadGenerator {
             TempEnum.ANY,
             new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
                     .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f),
+            Optional.of(new BlockStateRandomizer(Blocks.DIRT.defaultBlockState())),
             1.5f,
             2.0f,
             List.of());
@@ -120,9 +135,7 @@ public abstract class AbstractRoadGenerator {
         int[] groundHeights = new int[16 * 16];
         RoadTypeConfig[] roadTypes = new RoadTypeConfig[16 * 16];
         boolean[] isGroundRoad = new boolean[16 * 16];
-        int[] nearestDistSq = new int[16 * 16];
-        BlockPos[] nearestCenters = new BlockPos[16 * 16];
-        Arrays.fill(nearestDistSq, Integer.MAX_VALUE);
+        NearestCenters nearest = new NearestCenters(chunkPos);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (BlockPos center : centers) {
@@ -132,6 +145,9 @@ public abstract class AbstractRoadGenerator {
                 for (int dz = -PLACEMENT_REACH; dz <= PLACEMENT_REACH; dz++) {
                     int x = center.getX() + dx;
                     int z = center.getZ() + dz;
+                    // Distances are kept as squared values as an optimization
+                    int distSq = dx * dx + dz * dz;
+                    nearest.offer(x, z, center, distSq);
                     if (!isInChunk(chunkPos, x, z)) {
                         continue;
                     }
@@ -141,43 +157,38 @@ public abstract class AbstractRoadGenerator {
                         groundHeights[column] = writer.surfaceHeight(x, z);
                         roadTypes[column] = getRoadTypeAt(writer, mutable.set(x, groundHeights[column], z), config);
                     }
-
-                    // Distances are kept as squared values as an optimization
-                    int distSq = dx * dx + dz * dz;
                     if (distSq < maxRoadDistSq(roadTypes[column], widthNoise)) {
                         isGroundRoad[column] = true;
-                    }
-                    if (distSq < nearestDistSq[column]) {
-                        nearestDistSq[column] = distSq;
-                        nearestCenters[column] = center;
                     }
                 }
             }
         }
 
-        // Decided before placing anything, since placing changes the ground the decision reads
+        // Decided before placing anything, since placing changes the ground the decisions read
         ConfigModule.Advanced settings = YungsRoadsCommon.CONFIG.advanced;
         Set<BlockPos> bridgeCenters = findBridgeCenters(writer, centers, isLandBridge, config, settings);
+        BridgeDecks decks = new BridgeDecks(writer, nearest, bridgeCenters, config, settings);
+        boolean[] hasRailing = config.bridgeRailingBlockStates.isPresent()
+                ? decks.findRailings(chunkPos)
+                : new boolean[NearestCenters.SIZE * NearestCenters.SIZE];
 
-        long worldSeed = writer.level().getSeed();
         for (int column = 0; column < 16 * 16; column++) {
-            BlockPos center = nearestCenters[column];
+            int x = chunkPos.getMinBlockX() + (column >> 4);
+            int z = chunkPos.getMinBlockZ() + (column & 15);
+            BlockPos center = nearest.center(x, z);
             if (center == null) {
                 continue;
             }
-            int x = chunkPos.getMinBlockX() + (column >> 4);
-            int z = chunkPos.getMinBlockZ() + (column & 15);
             mutable.set(x, groundHeights[column], z);
 
             if (bridgeCenters.contains(center)) {
                 // A bridge's edge is measured from its center line alone, so it doesn't trace the ground far below
-                double dist = Math.sqrt(nearestDistSq[column]);
-                double halfWidth = bridgeHalfWidth(center, x, z, config, settings);
-                if (dist < halfWidth) {
-                    // Decay is likelier toward the edges, and never breaks the center line
-                    double decayChance = settings.landBridgeDecay * dist / halfWidth;
-                    boolean decayed = decayChance > 0 && decayRoll(worldSeed, x, center.getY(), z) < decayChance;
+                if (decks.isDeck(x, z)) {
+                    boolean decayed = decks.isDecayed(x, center.getY(), z);
                     placeBridgeColumn(writer, random, mutable, center.getY(), decayed, roadTypes[column], config, settings);
+                    if (hasRailing[nearest.index(x, z)]) {
+                        placeRailing(writer, random, mutable.setY(center.getY()), nearest, hasRailing, config);
+                    }
                 }
             } else if (isGroundRoad[column]) {
                 placeGroundColumn(writer, random, mutable, center.getY(), roadTypes[column], config, settings);
@@ -280,6 +291,64 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
+     * Places a railing on the bridge block at the given position, connected to the railings beside it at the same
+     * height. Connections are set here rather than by block updates, so they reach railings in neighboring chunks
+     * whichever chunk generates first, and the placed state is final.
+     *
+     * @param deck The deck block the railing stands on. Nothing is placed unless it's a bridge block.
+     */
+    private static void placeRailing(RoadBlockWriter writer, RandomSource random, BlockPos deck, NearestCenters nearest,
+                                     boolean[] hasRailing, RoadFeatureConfiguration config) {
+        if (!isBridgeBlock(writer.getBlockState(deck), config)) {
+            return;
+        }
+        boolean[] connected = new boolean[4];
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            int x = deck.getX() + direction.getStepX();
+            int z = deck.getZ() + direction.getStepZ();
+            BlockPos neighborCenter = nearest.center(x, z);
+            connected[direction.get2DDataValue()] = hasRailing[nearest.index(x, z)]
+                    && neighborCenter != null && neighborCenter.getY() == deck.getY();
+        }
+        BlockState railing = config.bridgeRailingBlockStates.orElseThrow().get(random);
+        writer.setBlock(deck.above(), connectRailing(railing, connected));
+    }
+
+    /**
+     * Sets which sides of a fence, wall, pane, or bars block connect to its neighbors. Other blocks are left as is.
+     *
+     * @param connected Whether each horizontal side connects, indexed by {@link Direction#get2DDataValue}.
+     */
+    private static BlockState connectRailing(BlockState railing, boolean[] connected) {
+        boolean north = connected[Direction.NORTH.get2DDataValue()];
+        boolean east = connected[Direction.EAST.get2DDataValue()];
+        boolean south = connected[Direction.SOUTH.get2DDataValue()];
+        boolean west = connected[Direction.WEST.get2DDataValue()];
+        if (railing.getBlock() instanceof CrossCollisionBlock) {
+            return railing
+                    .setValue(CrossCollisionBlock.NORTH, north)
+                    .setValue(CrossCollisionBlock.EAST, east)
+                    .setValue(CrossCollisionBlock.SOUTH, south)
+                    .setValue(CrossCollisionBlock.WEST, west);
+        }
+        if (railing.getBlock() instanceof WallBlock) {
+            // Like vanilla walls, a post shows everywhere except along a straight run
+            boolean straight = (north && south && !east && !west) || (east && west && !north && !south);
+            return railing
+                    .setValue(WallBlock.NORTH_WALL, wallSide(north))
+                    .setValue(WallBlock.EAST_WALL, wallSide(east))
+                    .setValue(WallBlock.SOUTH_WALL, wallSide(south))
+                    .setValue(WallBlock.WEST_WALL, wallSide(west))
+                    .setValue(WallBlock.UP, !straight);
+        }
+        return railing;
+    }
+
+    private static WallSide wallSide(boolean connected) {
+        return connected ? WallSide.LOW : WallSide.NONE;
+    }
+
+    /**
      * Determines the road type for the given surface block, based on the block and its biome's temperature.
      */
     private RoadTypeConfig getRoadTypeAt(RoadBlockWriter writer, BlockPos surfacePos, RoadFeatureConfiguration config) {
@@ -339,7 +408,9 @@ public abstract class AbstractRoadGenerator {
 
     /**
      * Places the road on solid ground at the given height. Ground above the road is cut away, up to the max cut depth,
-     * beyond which the road rises with the ground instead. Any gap below the road is filled.
+     * beyond which the road rises with the ground instead. Any gap below the road is filled with the road type's fill
+     * blocks, which also replace the ground block the road covers, so a surface layer like grass isn't left buried.
+     * Road types without fill blocks copy the ground's own block instead.
      */
     private static void placeOnGround(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
                                       RoadTypeConfig roadType, ConfigModule.Advanced settings) {
@@ -349,19 +420,26 @@ public abstract class AbstractRoadGenerator {
         for (int cutY = ground.getY(); cutY > y; cutY--) {
             writer.setBlock(ground.atY(cutY), Blocks.AIR.defaultBlockState());
         }
-        BlockState fillState = fillState(writer, ground, groundState);
-        for (int fillY = ground.getY() + 1; fillY < y; fillY++) {
-            writer.setBlock(ground.atY(fillY), fillState);
+        if (roadType.fillBlockStates.isPresent()) {
+            BlockStateRandomizer fill = roadType.fillBlockStates.get();
+            for (int fillY = ground.getY(); fillY < y; fillY++) {
+                writer.setBlock(ground.atY(fillY), fill.get(random));
+            }
+        } else {
+            BlockState fillState = copiedFillState(writer, ground, groundState);
+            for (int fillY = ground.getY() + 1; fillY < y; fillY++) {
+                writer.setBlock(ground.atY(fillY), fillState);
+            }
         }
         writer.setBlock(ground.atY(y), roadType.pathBlockStates.get(random));
     }
 
     /**
-     * The block to fill gaps under a road with: the ground's own block, so a raised road's sides blend in with the
-     * terrain, or dirt if the ground isn't a plain full block. Properties like snow cover are reset, since the fill is
-     * covered by the road.
+     * The block to fill gaps under a road with when its road type has no fill blocks: the ground's own block, so a
+     * raised road's sides blend in with the terrain, or dirt if the ground isn't a plain full block. Properties like
+     * snow cover are reset, since the fill is covered by the road.
      */
-    private static BlockState fillState(RoadBlockWriter writer, BlockPos ground, BlockState groundState) {
+    private static BlockState copiedFillState(RoadBlockWriter writer, BlockPos ground, BlockState groundState) {
         return groundState.isSolidRender(writer.level(), ground) && !groundState.hasBlockEntity()
                 ? groundState.getBlock().defaultBlockState()
                 : Blocks.DIRT.defaultBlockState();
@@ -393,6 +471,199 @@ public abstract class AbstractRoadGenerator {
             if (writer.getBlockState(mutable).isAir()) {
                 writer.setBlock(mutable, markerBlock);
             }
+        }
+    }
+
+    /**
+     * The nearest road center to each column in a chunk and up to {@link #RAILING_REACH} blocks past its edges, out of
+     * the centers within {@link #PLACEMENT_REACH} of the column. A column is placed by its nearest center alone. Ties
+     * go to the lowest position, so every chunk agrees on a column's center, whatever order it gets the centers in.
+     */
+    private static final class NearestCenters {
+        static final int SIZE = 16 + 2 * RAILING_REACH;
+
+        private final int minX;
+        private final int minZ;
+        private final int[] distSq = new int[SIZE * SIZE];
+        private final BlockPos[] centers = new BlockPos[SIZE * SIZE];
+
+        NearestCenters(ChunkPos chunkPos) {
+            this.minX = chunkPos.getMinBlockX() - RAILING_REACH;
+            this.minZ = chunkPos.getMinBlockZ() - RAILING_REACH;
+            Arrays.fill(this.distSq, Integer.MAX_VALUE);
+        }
+
+        /** Records the center as the column's nearest, if it's nearer than the nearest so far. */
+        void offer(int x, int z, BlockPos center, int distSq) {
+            int i = index(x, z);
+            if (i < 0) {
+                return;
+            }
+            if (distSq < this.distSq[i] || (distSq == this.distSq[i] && center.asLong() < this.centers[i].asLong())) {
+                this.distSq[i] = distSq;
+                this.centers[i] = center;
+            }
+        }
+
+        /** The column's nearest center, or null if no center reaches it. */
+        @Nullable
+        BlockPos center(int x, int z) {
+            return this.centers[index(x, z)];
+        }
+
+        /** The squared horizontal distance from the column to its nearest center. */
+        int distSq(int x, int z) {
+            return this.distSq[index(x, z)];
+        }
+
+        /** The column's index in per-column arrays of length SIZE², or -1 if it isn't covered. */
+        int index(int x, int z) {
+            int gridX = x - this.minX;
+            int gridZ = z - this.minZ;
+            if (gridX < 0 || gridX >= SIZE || gridZ < 0 || gridZ >= SIZE) {
+                return -1;
+            }
+            return gridX * SIZE + gridZ;
+        }
+    }
+
+    /**
+     * The shape of the bridge decks in and around a chunk, and where their railings go.
+     * <p>
+     * Railings are decided from the road centers, and from blocks that road placement never changes: the block under a
+     * deck, and the columns beside it. So a chunk decides the railings just past its edges the same way their own chunk
+     * does, whichever generates first, which lets railings connect across chunk borders.
+     */
+    private final class BridgeDecks {
+        private final RoadBlockWriter writer;
+        private final NearestCenters nearest;
+        private final Set<BlockPos> bridgeCenters;
+        private final RoadFeatureConfiguration config;
+        private final ConfigModule.Advanced settings;
+        private final long worldSeed;
+
+        BridgeDecks(RoadBlockWriter writer, NearestCenters nearest, Set<BlockPos> bridgeCenters,
+                    RoadFeatureConfiguration config, ConfigModule.Advanced settings) {
+            this.writer = writer;
+            this.nearest = nearest;
+            this.bridgeCenters = bridgeCenters;
+            this.config = config;
+            this.settings = settings;
+            this.worldSeed = writer.level().getSeed();
+        }
+
+        /** Whether the column is part of a bridge's deck, decayed or not. */
+        boolean isDeck(int x, int z) {
+            BlockPos center = this.nearest.center(x, z);
+            return center != null && this.bridgeCenters.contains(center)
+                    && Math.sqrt(this.nearest.distSq(x, z)) < halfWidth(center, x, z);
+        }
+
+        /**
+         * Whether the column is beside the road rather than on it: past the edge of a bridge's deck, or out of reach of
+         * every center. Columns nearest a center on the ground count as road, so railings don't cross a bridge's ends.
+         */
+        boolean isOffRoad(int x, int z) {
+            BlockPos center = this.nearest.center(x, z);
+            return center == null || (this.bridgeCenters.contains(center)
+                    && Math.sqrt(this.nearest.distSq(x, z)) >= halfWidth(center, x, z));
+        }
+
+        /**
+         * Whether the block at the given height in a deck column has decayed away. Decay is likelier toward the deck's
+         * edges, and never breaks the center line.
+         */
+        boolean isDecayed(int x, int y, int z) {
+            BlockPos center = this.nearest.center(x, z);
+            double decayChance = this.settings.landBridgeDecay * Math.sqrt(this.nearest.distSq(x, z)) / halfWidth(center, x, z);
+            return decayChance > 0 && decayRoll(this.worldSeed, x, y, z) < decayChance;
+        }
+
+        /**
+         * Finds the railings in the chunk and one block past its edges.
+         *
+         * @return Whether each column has a railing, indexed by {@link NearestCenters#index}.
+         */
+        boolean[] findRailings(ChunkPos chunkPos) {
+            boolean[] hasRailing = new boolean[NearestCenters.SIZE * NearestCenters.SIZE];
+            for (int x = chunkPos.getMinBlockX() - 1; x <= chunkPos.getMaxBlockX() + 1; x++) {
+                for (int z = chunkPos.getMinBlockZ() - 1; z <= chunkPos.getMaxBlockZ() + 1; z++) {
+                    hasRailing[this.nearest.index(x, z)] = hasRailing(x, z);
+                }
+            }
+            return hasRailing;
+        }
+
+        /**
+         * Whether the column gets a railing: it's a bridge block on the edge of a deck, beside a drop at least as deep
+         * as the railing drop setting. Railings are never on the center line, and they decay like the deck, so one is
+         * also missing wherever the deck below it is. Of the columns that qualify, only the railing chance setting's
+         * share get one.
+         */
+        private boolean hasRailing(int x, int z) {
+            BlockPos center = this.nearest.center(x, z);
+            if (center == null || this.nearest.distSq(x, z) == 0 || !isDeck(x, z)) {
+                return false;
+            }
+            int y = center.getY();
+            if (isDecayed(x, y, z) || isDecayed(x, y + 1, z)) {
+                return false;
+            }
+            // Rolled separately from decay, which already rolls at the railing's position
+            double chance = this.settings.landBridgeRailingChance / 100.0;
+            if (chance < 1 && decayRoll(this.worldSeed ^ RAILING_CHANCE_SALT, x, y + 1, z) >= chance) {
+                return false;
+            }
+            if (!hasBridgeBlock(x, y, z)) {
+                return false;
+            }
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    // Diagonal neighbors count too, so the railings along a diagonal edge form a connected staircase
+                    if ((dx != 0 || dz != 0) && isOffRoad(x + dx, z + dz) && hasDropBelow(x + dx, y, z + dz)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Whether the undecayed deck column is a bridge block, rather than road resting on the ground, decided the same
+         * way {@link #placeBridgeColumn} does. A bridge block that's already there counts, in case the column's own
+         * chunk has placed its roads, which changes the ground the decision reads.
+         */
+        private boolean hasBridgeBlock(int x, int deckY, int z) {
+            if (!this.writer.level().hasChunk(x >> 4, z >> 4)) {
+                return false;
+            }
+            if (isBridgeBlock(this.writer.getBlockState(new BlockPos(x, deckY, z)), this.config)) {
+                return true;
+            }
+            int groundY = this.writer.surfaceHeight(x, z);
+            boolean overWater = !this.writer.getBlockState(new BlockPos(x, groundY, z)).getFluidState().isEmpty();
+            // Over water, the bridge block is at the deck's height unless the water's surface is higher
+            return overWater ? groundY <= deckY : deckY - groundY - 1 > 0;
+        }
+
+        /** Whether stepping off the deck into the column means falling at least the railing drop setting. */
+        private boolean hasDropBelow(int x, int deckY, int z) {
+            for (int y = deckY; y > deckY - this.settings.landBridgeRailingDrop; y--) {
+                if (!isOpen(x, y, z)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /** Whether the block is above the ground, such as air or plants. Blocks in unloaded chunks count as ground. */
+        private boolean isOpen(int x, int y, int z) {
+            return this.writer.level().hasChunk(x >> 4, z >> 4)
+                    && RoadBlockWriter.isAboveGround(this.writer.getBlockState(new BlockPos(x, y, z)));
+        }
+
+        private double halfWidth(BlockPos center, int x, int z) {
+            return bridgeHalfWidth(center, x, z, this.config, this.settings);
         }
     }
 

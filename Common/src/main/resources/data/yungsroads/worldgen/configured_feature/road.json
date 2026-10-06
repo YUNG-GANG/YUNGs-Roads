@@ -31,6 +31,13 @@
             "Name": "minecraft:dirt_path"
           }
         },
+        "fill_blockstates": {
+          "entries": [
+          ],
+          "defaultBlockState": {
+            "Name": "minecraft:dirt"
+          }
+        },
         "road_size_radius": 1.5,
         "road_size_variation": 1.5,
         "decorations": [] // TODO
@@ -173,6 +180,13 @@
       ],
       "defaultBlockState": {
         "Name": "minecraft:oak_planks"
+      }
+    },
+    "bridge_railing_blockstates": {
+      "entries": [
+      ],
+      "defaultBlockState": {
+        "Name": "minecraft:oak_fence"
       }
     }
   }

@@ -41,4 +41,10 @@ public class ConfigAdvancedFabric {
 
     @ConfigEntry.Gui.Tooltip(count = 3)
     public double landBridgeDecay = 0.0;
+
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public int landBridgeRailingDrop = 4;
+
+    @ConfigEntry.Gui.Tooltip(count = 2)
+    public int landBridgeRailingChance = 100;
 }

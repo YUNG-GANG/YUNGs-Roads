@@ -84,6 +84,8 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.advanced.maxLandBridgeLength = YRConfigNeoForge.advanced.maxLandBridgeLength.get();
         YungsRoadsCommon.CONFIG.advanced.landBridgeEdgeRoughness = YRConfigNeoForge.advanced.landBridgeEdgeRoughness.get();
         YungsRoadsCommon.CONFIG.advanced.landBridgeDecay = YRConfigNeoForge.advanced.landBridgeDecay.get();
+        YungsRoadsCommon.CONFIG.advanced.landBridgeRailingDrop = YRConfigNeoForge.advanced.landBridgeRailingDrop.get();
+        YungsRoadsCommon.CONFIG.advanced.landBridgeRailingChance = YRConfigNeoForge.advanced.landBridgeRailingChance.get();
     }
 
     private static void bakeDebugConfig() {
@@ -114,6 +116,8 @@ public class ConfigModuleNeoForge {
         YRConfigNeoForge.advanced.maxLandBridgeLength.set(advanced.maxLandBridgeLength);
         YRConfigNeoForge.advanced.landBridgeEdgeRoughness.set(advanced.landBridgeEdgeRoughness);
         YRConfigNeoForge.advanced.landBridgeDecay.set(advanced.landBridgeDecay);
+        YRConfigNeoForge.advanced.landBridgeRailingDrop.set(advanced.landBridgeRailingDrop);
+        YRConfigNeoForge.advanced.landBridgeRailingChance.set(advanced.landBridgeRailingChance);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         YRConfigNeoForge.debug.enableExtraDebugF3Info.set(debug.enableExtraDebugF3Info);

@@ -55,6 +55,8 @@ public class ConfigModule {
         public int maxLandBridgeLength = 24;
         public double landBridgeEdgeRoughness = 0;
         public double landBridgeDecay = 0;
+        public int landBridgeRailingDrop = 4;
+        public int landBridgeRailingChance = 100;
 
         public Advanced copy() {
             Advanced copy = new Advanced();
@@ -118,7 +120,13 @@ public class ConfigModule {
                 advanced -> advanced.landBridgeEdgeRoughness, (advanced, value) -> advanced.landBridgeEdgeRoughness = value),
         LAND_BRIDGE_DECAY(Group.SHAPING, "Land Bridge Decay", 0, 1, false, 1,
                 "How much of each land bridge's deck is missing, for a ruined look. Blocks are likelier to be missing toward the edges, and the center line is always kept. 0 keeps the whole deck.",
-                advanced -> advanced.landBridgeDecay, (advanced, value) -> advanced.landBridgeDecay = value);
+                advanced -> advanced.landBridgeDecay, (advanced, value) -> advanced.landBridgeDecay = value),
+        LAND_BRIDGE_RAILING_DROP(Group.SHAPING, "Land Bridge Railing Drop", 1, 64, true, 1,
+                "The shortest drop beside a land bridge that gets a railing along its edge, in blocks, from the deck down to the ground. Lower values put railings along more of each bridge.",
+                advanced -> advanced.landBridgeRailingDrop, (advanced, value) -> advanced.landBridgeRailingDrop = (int) value),
+        LAND_BRIDGE_RAILING_CHANCE(Group.SHAPING, "Land Bridge Railing Chance", 0, 100, true, 1,
+                "The percent chance that each spot where a land bridge railing could go gets one. 100 lines every edge with a drop beside it, and 0 places no railings.",
+                advanced -> advanced.landBridgeRailingChance, (advanced, value) -> advanced.landBridgeRailingChance = (int) value);
 
         /** Which part of road generation a setting tunes. */
         public enum Group {

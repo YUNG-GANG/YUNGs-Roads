@@ -97,7 +97,7 @@ public class RoadBlockWriter {
      * Whether the block stands on the ground rather than being part of it: air, trees, and plants.
      * During worldgen, neighboring chunks' trees may already reach into a chunk when its roads are placed.
      */
-    private static boolean isAboveGround(BlockState state) {
+    public static boolean isAboveGround(BlockState state) {
         return state.is(BlockTags.LOGS) || state.is(BlockTags.LEAVES) || (state.canBeReplaced() && state.getFluidState().isEmpty());
     }
 }

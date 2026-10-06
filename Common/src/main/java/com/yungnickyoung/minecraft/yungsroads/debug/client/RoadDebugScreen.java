@@ -309,7 +309,8 @@ public class RoadDebugScreen extends Screen {
                     formulaLine(settings, "Road height = ground averaged over ", AdvancedSetting.SMOOTHING_RADIUS, " blocks each way"),
                     formulaLine(settings, "Ground up to ", AdvancedSetting.MAX_CUT_DEPTH, " blocks above the road is cut away"),
                     formulaLine(settings, "Gaps up to ", AdvancedSetting.MAX_FILL_DEPTH, " blocks below the road are filled, and deeper holes get a land bridge"),
-                    formulaLine(settings, "Dips up to ", AdvancedSetting.MAX_LAND_BRIDGE_LENGTH, " blocks long get a land bridge")));
+                    formulaLine(settings, "Dips up to ", AdvancedSetting.MAX_LAND_BRIDGE_LENGTH, " blocks long get a land bridge"),
+                    formulaLine(settings, "Land bridge edges with drops of ", AdvancedSetting.LAND_BRIDGE_RAILING_DROP, "+ blocks get railings")));
         }
         renderSettingTooltip(guiGraphics, mouseX, mouseY);
     }
