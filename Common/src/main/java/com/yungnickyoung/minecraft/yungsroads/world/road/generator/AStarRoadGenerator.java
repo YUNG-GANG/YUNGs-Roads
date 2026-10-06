@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.util.BlockLines;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
@@ -9,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Vector3f;
 
 import java.util.BitSet;
@@ -89,40 +91,13 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     }
 
     /**
-     * Adds the block positions along the line from one node toward the next, stopping within a couple of blocks of
-     * the next node, which is added separately.
+     * Adds the block positions strictly between two nodes, along the straight line from one to the other. Each is
+     * jittered like the nodes, unless the segment is a bridge, so the positions stay in order along a single center
+     * line, which the road's height profile is computed along.
      */
     private static void addSegment(Road road, BlockPos nodePos, BlockPos nextNodePos, boolean straight, FastNoise jitter) {
-        int xDistanceToNextNode = nextNodePos.getX() - nodePos.getX();
-        int zDistanceToNextNode = nextNodePos.getZ() - nodePos.getZ();
-        double nodePathSlope = xDistanceToNextNode == 0 ? Integer.MAX_VALUE : zDistanceToNextNode / (double) xDistanceToNextNode;
-        int xStepDir = xDistanceToNextNode >= 0 ? 1 : -1;
-        int zStepDir = zDistanceToNextNode >= 0 ? 1 : -1;
-
-        // Counter used to determine when to move in the z direction vs the x direction
-        double slopeCounter = Math.abs(nodePathSlope);
-
-        BlockPos.MutableBlockPos mutable = nodePos.mutable();
-        while (!isWithinDistance(mutable, nextNodePos, 2)) {
-            // Move in z direction
-            while (slopeCounter >= 1 && !isWithinDistance(mutable, nextNodePos, 2)) {
-                road.positions.add(straight ? mutable.immutable() : jitteredPos(jitter, mutable.immutable(), nodePos, nextNodePos));
-                mutable.move(0, 0, zStepDir);
-                slopeCounter--;
-            }
-
-            // Move in x direction
-            while (slopeCounter < 1 && !isWithinDistance(mutable, nextNodePos, 2)) {
-                road.positions.add(straight ? mutable.immutable() : jitteredPos(jitter, mutable.immutable(), nodePos, nextNodePos));
-                mutable.move(xStepDir, 0, 0);
-                slopeCounter += Math.abs(nodePathSlope);
-            }
-
-            // Place path at current position. Jittered like the rest of the line, so the positions stay in order
-            // along a single center line, which the road's height profile is computed along.
-            if (!mutable.equals(nodePos) && !mutable.equals(nextNodePos)) {
-                road.positions.add(straight ? mutable.immutable() : jitteredPos(jitter, mutable.immutable(), nodePos, nextNodePos));
-            }
+        for (BlockPos pos : BlockLines.betweenXZ(nodePos, nextNodePos)) {
+            road.positions.add(straight ? pos : jitteredPos(jitter, pos, nodePos, nextNodePos));
         }
     }
 
@@ -224,39 +199,11 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
      * Places a straight line of gold blocks between the start and end points of the road.
      */
     private void placeDebugLine(Road road, RoadBlockWriter writer, ChunkPos chunkPos) {
-        // Determine total slope of line from starting point to ending point
-        int totalXDiff = road.getEndPos().getX() - road.getStartPos().getX();
-        int totalZDiff = road.getEndPos().getZ() - road.getStartPos().getZ();
-        double totalSlope = totalXDiff == 0 ? Integer.MAX_VALUE : totalZDiff / (double) totalXDiff;
-        int xDir = totalXDiff >= 0 ? 1 : -1; // x direction multiplier
-        int zDir = totalZDiff >= 0 ? 1 : -1; // z direction multiplier
-
-        double slopeCounter = Math.abs(totalSlope);
-        BlockPos.MutableBlockPos mutable = road.getStartPos().mutable();
-
-        while (!isWithinDistance(mutable, road.getEndPos(), 10)) {
-            // Move in z direction
-            while (slopeCounter >= 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
-                placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
-                mutable.move(0, 0, zDir);
-                slopeCounter--;
-            }
-
-            // Move in x direction
-            while (slopeCounter < 1 && !isWithinDistance(mutable, road.getEndPos(), 10)) {
-                placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
-                mutable.move(xDir, 0, 0);
-                slopeCounter += Math.abs(totalSlope);
-            }
-
-            // Place path at final position
-            placeDebugBlock(writer, chunkPos, mutable, Blocks.GOLD_BLOCK.defaultBlockState());
+        BlockState gold = Blocks.GOLD_BLOCK.defaultBlockState();
+        placeDebugBlock(writer, chunkPos, road.getStartPos(), gold);
+        for (BlockPos pos : BlockLines.betweenXZ(road.getStartPos(), road.getEndPos())) {
+            placeDebugBlock(writer, chunkPos, pos, gold);
         }
-    }
-
-    private static boolean isWithinDistance(BlockPos pos, BlockPos targetPos, int distance) {
-        double xDiff = pos.getX() - targetPos.getX();
-        double zDiff = pos.getZ() - targetPos.getZ();
-        return xDiff * xDiff + zDiff * zDiff < distance * distance;
+        placeDebugBlock(writer, chunkPos, road.getEndPos(), gold);
     }
 }
