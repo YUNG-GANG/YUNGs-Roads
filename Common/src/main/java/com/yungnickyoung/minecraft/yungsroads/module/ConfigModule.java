@@ -87,7 +87,7 @@ public class ConfigModule {
                 "The distance between neighboring nodes, in blocks. Lower values follow the terrain more closely, but are slower to generate.",
                 advanced -> advanced.nodeStepDistance, (advanced, value) -> advanced.nodeStepDistance = (int) value),
         JITTER_AMOUNT(Group.ROUTING, "Jitter Amount", 0, 16, false, 1,
-                "How far jitter may shift each node sideways, in blocks. Higher values make roads wavier.",
+                "How far jitter may shift the road sideways, in blocks. Higher values make roads wavier.",
                 advanced -> advanced.jitterAmount, (advanced, value) -> advanced.jitterAmount = value),
         HEURISTIC_WEIGHT(Group.ROUTING, "Heuristic Weight", 1, 10, false, 2,
                 "How strongly routing is pulled toward the destination, by weighting the distance left in each node's priority. 1 always finds the cheapest road. Higher values generate faster but can give slightly costlier roads.",

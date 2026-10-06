@@ -11,19 +11,22 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import org.joml.Vector3f;
 
 import java.util.BitSet;
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Generates roads routed by {@link LatticePathfinder}. The route's nodes are jittered so the road looks less straight,
- * then joined into a center line of block positions, whose heights are set by {@link RoadProfile}.
+ * Generates roads routed by {@link LatticePathfinder}. The route's nodes are joined into a center line of block
+ * positions, which is jittered so the road looks less straight, and whose heights are set by {@link RoadProfile}.
  * <p>
  * Steps that turn out to cross water too narrow for the lattice to see, such as streams, are made bridges after
  * routing, so that every water crossing is straight.
  */
 public class AStarRoadGenerator extends AbstractRoadGenerator {
+    /** How far apart, in blocks, the jittered center line is sampled between nodes. */
+    private static final double JITTER_SAMPLE_SPACING = 3;
+
     @Override
     public Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, TerrainCache terrain) {
         Road road = new Road(pos1, pos2);
@@ -36,9 +39,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         boolean[] isBridgeSegment = addBridges(road, path.get().bridgeSegments(), terrain);
 
         // The noise is created per road since its seed is mutable state and roads may be generated concurrently
-        FastNoise jitter = createJitterNoise(road.getStartPos());
-        jitterNodes(road, isBridgeSegment, jitter);
-        addCenterLine(road, isBridgeSegment, jitter);
+        addCenterLine(road, isBridgeSegment, createJitterNoise(road.getStartPos()));
 
         RoadProfile.apply(road, terrain, YungsRoadsCommon.CONFIG.advanced);
         return Optional.of(road);
@@ -65,40 +66,115 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     }
 
     /**
-     * Shifts each node sideways by noise, so the road looks less straight and more natural. Bridge ends aren't
-     * jittered, so bridges stay straight and land where routing checked for dry ground.
-     */
-    private static void jitterNodes(Road road, boolean[] isBridgeSegment, FastNoise jitter) {
-        for (int j = 0; j < road.nodes.size(); j++) {
-            Road.DebugNode debugNode = road.nodes.get(j);
-            boolean isBridgeEnd = (j > 0 && isBridgeSegment[j - 1]) || (j < isBridgeSegment.length && isBridgeSegment[j]);
-            debugNode.jitteredPos = isBridgeEnd ? debugNode.rawPos : jitteredPos(jitter, debugNode.rawPos, road, j);
-        }
-    }
-
-    /**
-     * Fills in {@link Road#positions} with the block positions along the lines between consecutive jittered nodes.
-     * The positions between nodes are jittered too, except along bridges, which stay straight.
+     * Fills in {@link Road#positions} with the road's center line, in order: the straight lines between consecutive
+     * nodes, shifted sideways by noise so the road looks less straight and more natural. Each node's shifted position
+     * is recorded as its jittered position.
+     * <p>
+     * The shift varies continuously along the road, so the line has no kinks at nodes. Its direction is blended from
+     * one node's to the next, each node's being perpendicular to the average direction of the segments on either side
+     * of it. It fades out toward bridge ends, so bridges stay straight and land where routing checked for dry ground.
+     * <p>
+     * The shifted line is sampled every {@link #JITTER_SAMPLE_SPACING} blocks, and the samples are joined by straight
+     * lines of blocks. Rounding each block's shift on its own would leave the line stepping back and forth sideways.
      */
     private static void addCenterLine(Road road, boolean[] isBridgeSegment, FastNoise jitter) {
-        for (int i = 0; i < road.nodes.size(); i++) {
-            BlockPos nodePos = road.nodes.get(i).jitteredPos;
-            road.positions.add(nodePos);
-            if (i < road.nodes.size() - 1) {
-                addSegment(road, nodePos, road.nodes.get(i + 1).jitteredPos, isBridgeSegment[i], jitter);
+        int nodeCount = road.nodes.size();
+        double[] normalX = new double[nodeCount];
+        double[] normalZ = new double[nodeCount];
+        double[] weight = new double[nodeCount];
+        for (int n = 0; n < nodeCount; n++) {
+            double[] incoming = directionToNeighbor(road, n, -1);
+            double[] outgoing = directionToNeighbor(road, n, 1);
+            double tangentX = incoming[0] + outgoing[0];
+            double tangentZ = incoming[1] + outgoing[1];
+            double length = Math.sqrt(tangentX * tangentX + tangentZ * tangentZ);
+            if (length < 1e-6) {
+                // The road doubles straight back on itself here, so there's no side to shift toward
+                continue;
+            }
+            normalX[n] = tangentZ / length;
+            normalZ[n] = -tangentX / length;
+            boolean isBridgeEnd = (n > 0 && isBridgeSegment[n - 1]) || (n < nodeCount - 1 && isBridgeSegment[n]);
+            weight[n] = isBridgeEnd ? 0 : 1;
+        }
+
+        for (int n = 0; n < nodeCount; n++) {
+            Road.DebugNode node = road.nodes.get(n);
+            node.jitteredPos = shifted(jitter, node.rawPos, node.rawPos.getX(), node.rawPos.getZ(),
+                    normalX[n], normalZ[n], weight[n]);
+            addConnected(road.positions, node.jitteredPos);
+            if (n == nodeCount - 1 || isBridgeSegment[n]) {
+                // A bridge is the straight line between its unshifted ends, which the next node connects to
+                continue;
+            }
+            BlockPos next = road.nodes.get(n + 1).rawPos;
+            double length = Math.sqrt(horizontalDistSqr(node.rawPos, next));
+            int pieces = Math.max(1, (int) Math.round(length / JITTER_SAMPLE_SPACING));
+            for (int k = 1; k < pieces; k++) {
+                double t = k / (double) pieces;
+                // The blended direction isn't renormalized, so where the nodes' directions differ a lot the shift
+                // shrinks between them instead of swinging abruptly from one side to the other
+                addConnected(road.positions, shifted(jitter, node.rawPos,
+                        Mth.lerp(t, node.rawPos.getX(), next.getX()),
+                        Mth.lerp(t, node.rawPos.getZ(), next.getZ()),
+                        Mth.lerp(t, normalX[n], normalX[n + 1]),
+                        Mth.lerp(t, normalZ[n], normalZ[n + 1]),
+                        Mth.lerp(t, weight[n], weight[n + 1])));
             }
         }
     }
 
     /**
-     * Adds the block positions strictly between two nodes, along the straight line from one to the other. Each is
-     * jittered like the nodes, unless the segment is a bridge, so the positions stay in order along a single center
-     * line, which the road's height profile is computed along.
+     * Shifts a point on the unjittered center line sideways by the noise there, and rounds it to a block position.
+     *
+     * @param base The position whose y the result takes.
      */
-    private static void addSegment(Road road, BlockPos nodePos, BlockPos nextNodePos, boolean straight, FastNoise jitter) {
-        for (BlockPos pos : BlockLines.betweenXZ(nodePos, nextNodePos)) {
-            road.positions.add(straight ? pos : jitteredPos(jitter, pos, nodePos, nextNodePos));
+    private static BlockPos shifted(FastNoise jitter, BlockPos base, double x, double z, double normalX, double normalZ,
+                                    double weight) {
+        double offset = jitter.GetNoise((float) x, (float) z) * YungsRoadsCommon.CONFIG.advanced.jitterAmount * weight;
+        return new BlockPos((int) Math.round(x + normalX * offset), base.getY(), (int) Math.round(z + normalZ * offset));
+    }
+
+    /**
+     * Adds a position to the end of the center line, along with the straight line of positions connecting it to the
+     * previous one. A position the same as the previous one isn't added again.
+     */
+    private static void addConnected(List<BlockPos> positions, BlockPos pos) {
+        if (!positions.isEmpty()) {
+            BlockPos previous = positions.get(positions.size() - 1);
+            if (previous.getX() == pos.getX() && previous.getZ() == pos.getZ()) {
+                return;
+            }
+            positions.addAll(BlockLines.betweenXZ(previous, pos));
         }
+        positions.add(pos);
+    }
+
+    /**
+     * The x-z unit vector along the road at a node, toward or from its nearest neighbor on one side that isn't at the
+     * same x-z position, or zero if there's none. A road's endpoints can coincide with the lattice points next to them.
+     *
+     * @param side -1 for the direction from the previous neighbor, or 1 for the direction to the next.
+     */
+    private static double[] directionToNeighbor(Road road, int n, int side) {
+        BlockPos pos = road.nodes.get(n).rawPos;
+        for (int m = n + side; m >= 0 && m < road.nodes.size(); m += side) {
+            BlockPos neighbor = road.nodes.get(m).rawPos;
+            if (neighbor.getX() != pos.getX() || neighbor.getZ() != pos.getZ()) {
+                return side > 0 ? unitDirection(pos, neighbor) : unitDirection(neighbor, pos);
+            }
+        }
+        return new double[2];
+    }
+
+    /**
+     * The x-z unit vector pointing from one position toward another, which must differ in x or z.
+     */
+    private static double[] unitDirection(BlockPos from, BlockPos to) {
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double length = Math.sqrt(dx * dx + dz * dz);
+        return new double[]{dx / length, dz / length};
     }
 
     /**
@@ -139,41 +215,6 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         jitter.SetFractalOctaves(1);
         jitter.SetSeed(roadStartPos.getX() * 1000 + roadStartPos.getZ());
         return jitter;
-    }
-
-    private static BlockPos jitteredPos(FastNoise jitter, BlockPos pos, Road road, int i) {
-        BlockPos p1, p2;
-        if (i == 0) {
-            p1 = pos;
-            p2 = road.nodes.get(i + 1).rawPos;
-        } else if (i == road.nodes.size() - 1) {
-            p1 = road.nodes.get(i - 1).rawPos;
-            p2 = pos;
-        } else {
-            p1 = road.nodes.get(i - 1).rawPos;
-            p2 = road.nodes.get(i + 1).rawPos;
-        }
-        return jitteredPos(jitter, pos, p1, p2);
-    }
-
-    private static BlockPos jitteredPos(FastNoise jitter, BlockPos pos, BlockPos prevPos, BlockPos nextPos) {
-        Vector3f normal = calculateNormalBetween(prevPos, nextPos);
-        float jitterAmount = (float) (jitter.GetNoise(pos.getX(), pos.getZ()) * YungsRoadsCommon.CONFIG.advanced.jitterAmount);
-        Vector3f jitterOffset = new Vector3f(normal.x() * jitterAmount, 0, normal.z() * jitterAmount);
-        return pos.offset((int) jitterOffset.x(), 0, (int) jitterOffset.z());
-    }
-
-    /**
-     * Calculates the x-z normal vector between two positions.
-     * @param p1 The first position.
-     * @param p2 The second position.
-     * @return The normalized normal vector.
-     */
-    private static Vector3f calculateNormalBetween(BlockPos p1, BlockPos p2) {
-        BlockPos offset = p2.subtract(p1);
-        Vector3f tangent = new Vector3f(offset.getX(), 0, offset.getZ());
-        tangent.normalize();
-        return new Vector3f(tangent.z(), 0, -tangent.x());
     }
 
     @Override
