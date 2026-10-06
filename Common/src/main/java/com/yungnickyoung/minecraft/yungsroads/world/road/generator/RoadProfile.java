@@ -26,6 +26,13 @@ final class RoadProfile {
      */
     private static final int SAMPLE_SPACING = 2;
 
+    /**
+     * How many positions on each side each height is checked against for the max grade. Jitter can fold the center line
+     * back on itself for a few positions, so the grade is measured over straight distances rather than along the line,
+     * and far enough to span a fold. Beyond that the line runs roughly straight, so the grade carries over.
+     */
+    private static final int GRADE_REACH = 8;
+
     private RoadProfile() {
     }
 
@@ -41,8 +48,11 @@ final class RoadProfile {
         List<Road.Span> dips = findDips(heights, settings.maxFillDepth, settings.maxLandBridgeLength);
         LandBridgedRoad bridged = bridgeDips(road.positions, heights, dips);
 
-        double[] smoothed = smooth(bridged.heights.toDoubleArray(), settings.smoothingRadius);
+        double[] unsmoothed = bridged.heights.toDoubleArray();
+        double[] smoothed = smooth(unsmoothed, settings.smoothingRadius);
+        limitCut(smoothed, unsmoothed, settings.maxCutDepth);
         List<BlockPos> positions = bridged.positions;
+        limitGrade(smoothed, positions, settings.maxGrade);
         for (int i = 0; i < positions.size(); i++) {
             positions.set(i, positions.get(i).atY((int) Math.round(smoothed[i])));
         }
@@ -199,6 +209,51 @@ final class RoadProfile {
             smoothed[i] = (prefixSums[to + 1] - prefixSums[from]) / (to - from + 1);
         }
         return smoothed;
+    }
+
+    /**
+     * Raises each height to no more than the max cut depth below the ground, as placement does, so the grade limit
+     * accounts for the road rising with the ground where smoothing would cut too deep.
+     *
+     * @param ground The ground height at each position, or the deck height along land bridges.
+     */
+    private static void limitCut(double[] heights, double[] ground, int maxCutDepth) {
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] = Math.max(heights[i], ground[i] - maxCutDepth);
+        }
+    }
+
+    /**
+     * Raises heights so the road is nowhere steeper than the max grade. Routing only checks the grade between lattice
+     * points, so ground between them, like a cliff above a river or a narrow ridge, can leave the road steeper. Each
+     * pass keeps the road from falling faster than the max grade in its direction, so together they raise every height
+     * to the lowest one within the max grade of all the others. Raised stretches end up above the ground, where
+     * placement fills under them or carries them on a bridge.
+     */
+    private static void limitGrade(double[] heights, List<BlockPos> positions, double maxGrade) {
+        int n = heights.length;
+        for (int i = 0; i < n; i++) {
+            for (int j = Math.max(0, i - GRADE_REACH); j < i; j++) {
+                raiseToGrade(heights, positions, i, j, maxGrade);
+            }
+        }
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = i + 1; j <= Math.min(n - 1, i + GRADE_REACH); j++) {
+                raiseToGrade(heights, positions, i, j, maxGrade);
+            }
+        }
+    }
+
+    /**
+     * Raises the height at the first index so it's no more than the max grade below the height at the second.
+     */
+    private static void raiseToGrade(double[] heights, List<BlockPos> positions, int i, int j, double maxGrade) {
+        double run = horizontalDistance(positions.get(i), positions.get(j));
+        heights[i] = Math.max(heights[i], heights[j] - maxGrade * run);
+    }
+
+    private static double horizontalDistance(BlockPos a, BlockPos b) {
+        return Math.hypot(a.getX() - b.getX(), a.getZ() - b.getZ());
     }
 
     /**

@@ -15,7 +15,7 @@ public class ConfigAdvancedFabric {
     @ConfigEntry.Gui.Tooltip(count = 2)
     public double slopeWeight = 25.0;
 
-    @ConfigEntry.Gui.Tooltip(count = 2)
+    @ConfigEntry.Gui.Tooltip(count = 3)
     public double maxGrade = 1.0;
 
     @ConfigEntry.Gui.Tooltip(count = 2)

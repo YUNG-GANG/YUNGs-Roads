@@ -67,7 +67,8 @@ public class ConfigAdvancedForge {
         maxGrade = BUILDER
                 .comment(
                         """
-                                The steepest rise over run allowed between two nodes. Steeper terrain is never crossed.
+                                The steepest rise over run a road may have. Routing never crosses steeper terrain between
+                                two nodes, and where the ground between nodes is steeper, the road is raised above it.
                                 1.0 is a 45 degree slope.
                                 Default: 1.0""".indent(1))
                 .worldRestart()

@@ -95,7 +95,7 @@ public class ConfigModule {
                 "The extra cost of steep terrain. Each step cost is multiplied by (1 + Slope Weight × grade²). Higher values make roads avoid hills and mountains more.",
                 advanced -> advanced.slopeWeight, (advanced, value) -> advanced.slopeWeight = value),
         MAX_GRADE(Group.ROUTING, "Max Grade", 0.05, 10, false, 2,
-                "The steepest grade a step may have. Steeper terrain is never crossed. 1 is a 45 degree slope.",
+                "The steepest grade a road may have. Routing never crosses steeper terrain, and where the ground between nodes is steeper, the road is raised above it. 1 is a 45 degree slope.",
                 advanced -> advanced.maxGrade, (advanced, value) -> advanced.maxGrade = value),
         WATER_WEIGHT(Group.ROUTING, "Water Weight", 0, 1000, false, 3,
                 "The extra cost of bridging water. Added to the multiplier in each bridge's cost. Higher values make roads detour further to avoid rivers and lakes, or to find a shorter crossing.",
