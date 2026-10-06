@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
+import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
@@ -23,7 +24,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
@@ -190,7 +190,7 @@ public final class RoadOverlayRenderer {
         if (!level.hasChunk(x >> 4, z >> 4)) {
             return Float.NaN;
         }
-        long key = ChunkPos.asLong(x, z);
+        long key = GridKeys.pack(x, z);
         if (GROUND_HEIGHTS.containsKey(key)) {
             return GROUND_HEIGHTS.get(key);
         }

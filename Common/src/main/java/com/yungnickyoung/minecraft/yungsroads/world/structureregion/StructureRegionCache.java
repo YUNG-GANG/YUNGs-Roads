@@ -2,7 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
+import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
 import net.minecraft.core.BlockPos;
@@ -218,7 +218,7 @@ public class StructureRegionCache {
     private static int maxRoadReach() {
         int step = YungsRoadsCommon.CONFIG.advanced.nodeStepDistance;
         return StructureRegionGenerator.MAX_ROAD_LENGTH
-                + AStarRoadGenerator.maxSearchMargin(StructureRegionGenerator.MAX_ROAD_LENGTH, step)
+                + LatticePathfinder.maxSearchMargin(StructureRegionGenerator.MAX_ROAD_LENGTH, step)
                 + (int) Math.ceil(YungsRoadsCommon.CONFIG.advanced.jitterAmount)
                 + StructureRegion.INDEX_PADDING;
     }

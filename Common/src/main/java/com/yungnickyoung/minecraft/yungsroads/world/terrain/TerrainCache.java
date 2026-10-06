@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.terrain;
 
+import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
-import net.minecraft.world.level.ChunkPos;
 
 /**
  * Caches {@link TerrainSampler} results on a world-aligned lattice with the given step size.
@@ -49,7 +49,7 @@ public class TerrainCache {
      * lies in an ocean.
      */
     public double heightAt(int i, int j) {
-        long key = ChunkPos.asLong(i, j);
+        long key = GridKeys.pack(i, j);
         double height = this.heights.get(key);
         if (height == NOT_SAMPLED) {
             int x = i * this.step;

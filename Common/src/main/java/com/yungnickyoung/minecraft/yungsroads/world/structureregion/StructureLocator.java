@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
+import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
@@ -70,7 +71,7 @@ public class StructureLocator {
     }
 
     private List<ChunkPos> getCell(int cellX, int cellZ) {
-        long key = ChunkPos.asLong(cellX, cellZ);
+        long key = GridKeys.pack(cellX, cellZ);
         CompletableFuture<List<ChunkPos>> future = new CompletableFuture<>();
         CompletableFuture<List<ChunkPos>> existing = this.cells.putIfAbsent(key, future);
         if (existing != null) {

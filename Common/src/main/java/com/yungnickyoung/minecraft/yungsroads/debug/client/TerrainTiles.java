@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
+import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
@@ -12,7 +13,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.ChunkPos;
 
 import javax.annotation.Nullable;
 import java.util.LinkedHashMap;
@@ -102,7 +102,7 @@ public final class TerrainTiles {
      */
     @Nullable
     ResourceLocation texture(int tileX, int tileZ, Layer layer, ConfigModule.Advanced settings) {
-        Tile tile = this.tiles.computeIfAbsent(ChunkPos.asLong(tileX, tileZ), key -> new Tile(tileX, tileZ));
+        Tile tile = this.tiles.computeIfAbsent(GridKeys.pack(tileX, tileZ), key -> new Tile(tileX, tileZ));
         if (tile.heights == null) {
             if (!tile.requested && this.inFlight.get() < MAX_IN_FLIGHT) {
                 tile.requested = true;
@@ -127,7 +127,7 @@ public final class TerrainTiles {
     Double heightAt(int x, int z) {
         int i = Math.floorDiv(x + this.step / 2, this.step);
         int j = Math.floorDiv(z + this.step / 2, this.step);
-        Tile tile = this.tiles.get(ChunkPos.asLong(Math.floorDiv(i, TILE_SIZE), Math.floorDiv(j, TILE_SIZE)));
+        Tile tile = this.tiles.get(GridKeys.pack(Math.floorDiv(i, TILE_SIZE), Math.floorDiv(j, TILE_SIZE)));
         if (tile == null || tile.heights == null) {
             return null;
         }
@@ -142,7 +142,7 @@ public final class TerrainTiles {
     Double gradeAt(int x, int z) {
         int i = Math.floorDiv(x + this.step / 2, this.step);
         int j = Math.floorDiv(z + this.step / 2, this.step);
-        Tile tile = this.tiles.get(ChunkPos.asLong(Math.floorDiv(i, TILE_SIZE), Math.floorDiv(j, TILE_SIZE)));
+        Tile tile = this.tiles.get(GridKeys.pack(Math.floorDiv(i, TILE_SIZE), Math.floorDiv(j, TILE_SIZE)));
         if (tile == null || tile.heights == null) {
             return null;
         }
@@ -150,7 +150,7 @@ public final class TerrainTiles {
     }
 
     /**
-     * The cost multiplier routing applies to a step on land with the given grade, matching {@code AStarRoadGenerator}.
+     * The cost multiplier routing applies to a step on land with the given grade, matching {@code LatticePathfinder}.
      */
     double stepCost(double grade, ConfigModule.Advanced settings) {
         return 1 + settings.slopeWeight * grade * grade;

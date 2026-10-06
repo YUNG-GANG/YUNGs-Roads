@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.terrain;
 
+import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -8,7 +9,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.KeyDispatchDataCodec;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -345,7 +345,7 @@ public class TerrainSampler {
 
             double value = Double.NaN;
             if (this.values != null) {
-                value = this.values.get(ChunkPos.asLong(x, z));
+                value = this.values.get(GridKeys.pack(x, z));
             }
             if (Double.isNaN(value)) {
                 value = this.wrapped.compute(context);
@@ -353,7 +353,7 @@ public class TerrainSampler {
                     if (this.values.size() >= this.maxColumns) {
                         this.values.clear();
                     }
-                    this.values.put(ChunkPos.asLong(x, z), value);
+                    this.values.put(GridKeys.pack(x, z), value);
                 }
             }
             this.lastX = x;
