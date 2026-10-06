@@ -67,6 +67,7 @@ public class ConfigModuleFabric {
         advanced.maxLandBridgeLength = (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.clamp(configFabric.advanced.maxLandBridgeLength);
         advanced.landBridgeEdgeRoughness = AdvancedSetting.LAND_BRIDGE_EDGE_ROUGHNESS.clamp(configFabric.advanced.landBridgeEdgeRoughness);
         advanced.landBridgeDecay = AdvancedSetting.LAND_BRIDGE_DECAY.clamp(configFabric.advanced.landBridgeDecay);
+        advanced.landBridgeSag = AdvancedSetting.LAND_BRIDGE_SAG.clamp(configFabric.advanced.landBridgeSag);
         advanced.landBridgeRailingDrop = (int) AdvancedSetting.LAND_BRIDGE_RAILING_DROP.clamp(configFabric.advanced.landBridgeRailingDrop);
         advanced.landBridgeRailingChance = (int) AdvancedSetting.LAND_BRIDGE_RAILING_CHANCE.clamp(configFabric.advanced.landBridgeRailingChance);
 
@@ -101,6 +102,7 @@ public class ConfigModuleFabric {
         configFabric.advanced.maxLandBridgeLength = advanced.maxLandBridgeLength;
         configFabric.advanced.landBridgeEdgeRoughness = advanced.landBridgeEdgeRoughness;
         configFabric.advanced.landBridgeDecay = advanced.landBridgeDecay;
+        configFabric.advanced.landBridgeSag = advanced.landBridgeSag;
         configFabric.advanced.landBridgeRailingDrop = advanced.landBridgeRailingDrop;
         configFabric.advanced.landBridgeRailingChance = advanced.landBridgeRailingChance;
 

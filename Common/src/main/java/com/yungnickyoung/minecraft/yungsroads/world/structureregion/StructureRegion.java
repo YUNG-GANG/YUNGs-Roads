@@ -21,7 +21,7 @@ public class StructureRegion {
      * Version of the saved region format. Bump this whenever the stored data or the road generation algorithm changes,
      * so that existing region files are regenerated instead of loaded.
      */
-    public static final int FORMAT_VERSION = 8;
+    public static final int FORMAT_VERSION = 9;
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.
@@ -42,6 +42,9 @@ public class StructureRegion {
 
     /** The road center positions that are part of a land bridge, as {@link BlockPos#asLong}. */
     private final LongSet landBridgePositions = new LongOpenHashSet();
+
+    /** The road center positions that are part of a tunnel, as {@link BlockPos#asLong}. */
+    private final LongSet tunnelPositions = new LongOpenHashSet();
 
     public StructureRegion(long regionKey) {
         this(regionKey, new ArrayList<>(), new ArrayList<>());
@@ -118,6 +121,11 @@ public class StructureRegion {
                     this.landBridgePositions.add(road.positions.get(i).asLong());
                 }
             }
+            for (Road.Span tunnel : road.tunnels) {
+                for (int i = tunnel.first(); i <= tunnel.last(); i++) {
+                    this.tunnelPositions.add(road.positions.get(i).asLong());
+                }
+            }
         }
     }
 
@@ -126,6 +134,13 @@ public class StructureRegion {
      */
     public boolean isLandBridge(BlockPos roadPos) {
         return this.landBridgePositions.contains(roadPos.asLong());
+    }
+
+    /**
+     * Whether the road center position, including its y, is part of one of this region's tunnels.
+     */
+    public boolean isTunnel(BlockPos roadPos) {
+        return this.tunnelPositions.contains(roadPos.asLong());
     }
 
     /**

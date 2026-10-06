@@ -7,6 +7,7 @@ import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ import java.util.List;
  * <p>
  * The profile is computed from sampled terrain while routing, rather than from the world while placing, so it doesn't
  * depend on which chunks have generated, or on the order roads were placed in them. Placement then levels the ground
- * to it, or bridges over the ground where it falls away.
+ * to it, bridges over the ground where it falls away, or tunnels through the ground where it rises too steeply.
  */
 final class RoadProfile {
     /**
@@ -33,50 +34,85 @@ final class RoadProfile {
      */
     private static final int GRADE_REACH = 8;
 
+    /** Heights lowered by less than this aren't counted as lowered, so rounding error doesn't straighten the road. */
+    private static final double LOWERED_EPSILON = 1e-6;
+
     private RoadProfile() {
     }
 
     /**
      * Sets the y of each of the road's center positions to its surface height: the y of the block the road is placed
      * at. Over water this is the water's surface, where the road becomes a bridge. Also records the dips the road
-     * bridges across in {@link Road#landBridges}, and straightens the road across each of them.
+     * bridges across in {@link Road#landBridges}, straightening the road across each of them, and the stretches it
+     * tunnels through in {@link Road#tunnels}.
      *
      * @param road A road whose center positions are set, in order. Their y is ignored.
      */
     static void apply(Road road, TerrainCache terrain, ConfigModule.Advanced settings) {
-        double[] heights = sampleGround(road.positions, terrain);
-        List<Road.Span> dips = findDips(heights, settings.maxFillDepth, settings.maxLandBridgeLength);
-        LandBridgedRoad bridged = bridgeDips(road.positions, heights, dips);
+        double[] ground = sampleGround(road.positions, terrain);
+        List<Road.Span> dips = findDips(ground, settings.maxFillDepth, settings.maxLandBridgeLength);
+        LandBridgedRoad bridged = bridgeDips(road.positions, ground, dips, settings);
 
-        double[] unsmoothed = bridged.heights.toDoubleArray();
-        double[] smoothed = smooth(unsmoothed, settings.smoothingRadius);
-        limitCut(smoothed, unsmoothed, settings.maxCutDepth);
         List<BlockPos> positions = bridged.positions;
-        limitGrade(smoothed, positions, settings.maxGrade);
+        double[] unsmoothed = bridged.heights.toDoubleArray();
+        double[] heights = smooth(unsmoothed, settings.smoothingRadius);
+        limitCut(heights, unsmoothed, settings.maxCutDepth);
+        limitGrade(heights, positions, settings.maxGrade);
         for (int i = 0; i < positions.size(); i++) {
-            positions.set(i, positions.get(i).atY((int) Math.round(smoothed[i])));
+            positions.set(i, positions.get(i).atY((int) Math.round(heights[i])));
         }
         road.positions = positions;
         road.landBridges = bridged.landBridges;
+        road.tunnels = findTunnels(positions, unsmoothed, settings.maxCutDepth);
     }
 
     /**
-     * Rebuilds the road's center line with each dip replaced by a straight land bridge between its rims, at heights
-     * rising or falling evenly between them. Positions outside the dips are kept as they are.
+     * Rebuilds the road's center line with each dip replaced by a straight land bridge between its rims, whose deck
+     * sags between them. Positions outside the dips are kept as they are.
+     * <p>
+     * A dip's rims are where the ground comes within the max fill depth of its lower bank, which on a cliff is partway
+     * down the face. Each rim is moved out to the top of any face too steep to drive, so the bridge spans from cliff top
+     * to cliff top instead of leaving the road to drop down the face.
      */
-    private static LandBridgedRoad bridgeDips(List<BlockPos> positions, double[] heights, List<Road.Span> dips) {
+    private static LandBridgedRoad bridgeDips(List<BlockPos> positions, double[] ground, List<Road.Span> dips,
+                                              ConfigModule.Advanced settings) {
         LandBridgedRoad bridged = new LandBridgedRoad(positions.size(), dips.size());
         int next = 0;
-        for (Road.Span dip : dips) {
-            // A dip always has a rim on each side, since its banks are outside it
-            int fromRim = dip.first() - 1;
-            int toRim = dip.last() + 1;
-            bridged.addOriginal(positions, heights, next, dip.first());
-            bridged.addLandBridge(positions.get(fromRim), heights[fromRim], positions.get(toRim), heights[toRim]);
+        for (int d = 0; d < dips.size(); d++) {
+            Road.Span dip = dips.get(d);
+            // A dip always has a rim on each side, since its banks are outside it. Rims may move out as far as the
+            // neighboring dips' rims, and no further than the max land bridge length.
+            int nextDipRim = d + 1 < dips.size() ? dips.get(d + 1).first() - 1 : positions.size() - 1;
+            int fromRim = climbFace(positions, ground, dip.first() - 1, -1,
+                    Math.max(next, dip.first() - 1 - settings.maxLandBridgeLength), settings.maxGrade);
+            int toRim = climbFace(positions, ground, dip.last() + 1, 1,
+                    Math.min(nextDipRim, dip.last() + 1 + settings.maxLandBridgeLength), settings.maxGrade);
+            bridged.addOriginal(positions, ground, next, fromRim + 1);
+            bridged.addLandBridge(positions.get(fromRim), ground[fromRim], positions.get(toRim), ground[toRim],
+                    settings.landBridgeSag, settings.maxGrade);
             next = toRim;
         }
-        bridged.addOriginal(positions, heights, next, positions.size());
+        bridged.addOriginal(positions, ground, next, positions.size());
         return bridged;
+    }
+
+    /**
+     * Moves a rim away from its dip while the ground beyond it rises more steeply than the max grade, so it ends up at
+     * the top of the face it's on.
+     *
+     * @param step -1 to move toward the road's start, or 1 toward its end.
+     * @param limit The furthest index the rim may move to.
+     * @return The rim's new index.
+     */
+    private static int climbFace(List<BlockPos> positions, double[] ground, int rim, int step, int limit, double maxGrade) {
+        while (rim != limit) {
+            int beyond = rim + step;
+            if (ground[beyond] - ground[rim] <= maxGrade * horizontalDistance(positions.get(rim), positions.get(beyond))) {
+                break;
+            }
+            rim = beyond;
+        }
+        return rim;
     }
 
     /**
@@ -104,10 +140,13 @@ final class RoadProfile {
         }
 
         /**
-         * Adds a land bridge along the straight line strictly between two rims, at heights changing evenly from one
-         * rim's to the other's. The rims themselves aren't added.
+         * Adds a land bridge along the straight line strictly between two rims. The rims themselves aren't added.
+         * <p>
+         * The deck hangs between the rims in a parabola, sagging below the straight line between them by up to the sag
+         * ratio of its length, but never so far that either end is steeper than the max grade.
          */
-        void addLandBridge(BlockPos fromRim, double fromHeight, BlockPos toRim, double toHeight) {
+        void addLandBridge(BlockPos fromRim, double fromHeight, BlockPos toRim, double toHeight, double sagRatio,
+                           double maxGrade) {
             List<BlockPos> line = BlockLines.betweenXZ(fromRim, toRim);
             if (line.isEmpty()) {
                 // The rims are adjacent, so there's nothing between them to bridge
@@ -119,12 +158,16 @@ final class RoadProfile {
             int lastIndex = firstIndex + line.size() - 1;
             this.landBridges.add(new Road.Span(firstIndex, lastIndex));
 
-            // The line divides the rise from one rim to the other into equal steps, one per position plus one to
-            // reach the far rim
-            double heightStep = (toHeight - fromHeight) / (line.size() + 1);
+            // A parabola sagging by s has slope (rise ± 4s) / length at its ends
+            double length = horizontalDistance(fromRim, toRim);
+            double rise = toHeight - fromHeight;
+            double sag = Math.max(0, Math.min(sagRatio * length, (maxGrade * length - Math.abs(rise)) / 4));
+
+            // The line divides the bridge into equal steps, one per position plus one to reach the far rim
             for (int i = 0; i < line.size(); i++) {
+                double t = (i + 1) / (double) (line.size() + 1);
                 this.positions.add(line.get(i));
-                this.heights.add(fromHeight + heightStep * (i + 1));
+                this.heights.add(fromHeight + rise * t - 4 * sag * t * (1 - t));
             }
         }
     }
@@ -177,20 +220,7 @@ final class RoadProfile {
             double gap = Math.min(leftBank, rightBank) - heights[i] - 1;
             isDip[i] = gap > maxFillDepth;
         }
-
-        // Group consecutive dips into spans, which are the dips the road bridges over
-        List<Road.Span> dips = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            if (!isDip[i]) {
-                continue;
-            }
-            int first = i;
-            while (i + 1 < n && isDip[i + 1]) {
-                i++;
-            }
-            dips.add(new Road.Span(first, i));
-        }
-        return dips;
+        return spans(isDip);
     }
 
     /**
@@ -212,8 +242,8 @@ final class RoadProfile {
     }
 
     /**
-     * Raises each height to no more than the max cut depth below the ground, as placement does, so the grade limit
-     * accounts for the road rising with the ground where smoothing would cut too deep.
+     * Raises each height to no more than the max cut depth below the ground, as placement does on its own where the
+     * ground rises gently.
      *
      * @param ground The ground height at each position, or the deck height along land bridges.
      */
@@ -224,32 +254,98 @@ final class RoadProfile {
     }
 
     /**
-     * Raises heights so the road is nowhere steeper than the max grade. Routing only checks the grade between lattice
-     * points, so ground between them, like a cliff above a river or a narrow ridge, can leave the road steeper. Each
-     * pass keeps the road from falling faster than the max grade in its direction, so together they raise every height
-     * to the lowest one within the max grade of all the others. Raised stretches end up above the ground, where
-     * placement fills under them or carries them on a bridge.
+     * Lowers heights so the road is nowhere steeper than the max grade. Routing only checks the grade between lattice
+     * points, so ground between them, like a narrow ridge or the top of a cliff, can leave the road steeper.
+     * <p>
+     * Each pass keeps the road from rising faster than the max grade in its direction, so together they lower every
+     * height to the highest one within the max grade of all the others. Lowering alone would leave a peak where the
+     * slopes up from either side meet, so each lowered stretch is then straightened between the heights at its ends,
+     * which are within the max grade of each other. Where that runs deeper than the max cut depth, placement tunnels.
+     * Straightening follows the center line, which jitter can fold back on itself, so a final pass lowers the few
+     * heights around a fold that it leaves too steep.
      */
     private static void limitGrade(double[] heights, List<BlockPos> positions, double maxGrade) {
         int n = heights.length;
+        double[] limited = heights.clone();
+        lowerToGrade(limited, positions, maxGrade);
+
+        int i = 0;
+        while (i < n) {
+            if (heights[i] - limited[i] <= LOWERED_EPSILON) {
+                i++;
+                continue;
+            }
+            int first = i;
+            while (i < n && heights[i] - limited[i] > LOWERED_EPSILON) {
+                i++;
+            }
+            // The unlowered heights on either side, unless the stretch runs off an end of the road
+            int from = first - 1;
+            int to = i;
+            for (int k = first; k < to; k++) {
+                heights[k] = from < 0 || to >= n
+                        ? limited[k]
+                        : Mth.lerp((k - from) / (double) (to - from), heights[from], heights[to]);
+            }
+        }
+        lowerToGrade(heights, positions, maxGrade);
+    }
+
+    /**
+     * Lowers each height to no more than the max grade above any height within {@link #GRADE_REACH} positions of it.
+     */
+    private static void lowerToGrade(double[] heights, List<BlockPos> positions, double maxGrade) {
+        int n = heights.length;
         for (int i = 0; i < n; i++) {
             for (int j = Math.max(0, i - GRADE_REACH); j < i; j++) {
-                raiseToGrade(heights, positions, i, j, maxGrade);
+                lowerToGrade(heights, positions, i, j, maxGrade);
             }
         }
         for (int i = n - 1; i >= 0; i--) {
             for (int j = i + 1; j <= Math.min(n - 1, i + GRADE_REACH); j++) {
-                raiseToGrade(heights, positions, i, j, maxGrade);
+                lowerToGrade(heights, positions, i, j, maxGrade);
             }
         }
     }
 
     /**
-     * Raises the height at the first index so it's no more than the max grade below the height at the second.
+     * Lowers the height at the first index so it's no more than the max grade above the height at the second.
      */
-    private static void raiseToGrade(double[] heights, List<BlockPos> positions, int i, int j, double maxGrade) {
+    private static void lowerToGrade(double[] heights, List<BlockPos> positions, int i, int j, double maxGrade) {
         double run = horizontalDistance(positions.get(i), positions.get(j));
-        heights[i] = Math.max(heights[i], heights[j] - maxGrade * run);
+        heights[i] = Math.min(heights[i], heights[j] + maxGrade * run);
+    }
+
+    /**
+     * Finds the stretches where the road runs further below the sampled ground than the max cut depth, which placement
+     * tunnels through.
+     *
+     * @param ground The ground height at each position, or the deck height along land bridges.
+     */
+    private static List<Road.Span> findTunnels(List<BlockPos> positions, double[] ground, int maxCutDepth) {
+        boolean[] isTunnel = new boolean[positions.size()];
+        for (int i = 0; i < isTunnel.length; i++) {
+            isTunnel[i] = ground[i] - positions.get(i).getY() > maxCutDepth;
+        }
+        return spans(isTunnel);
+    }
+
+    /**
+     * Groups the indices that are set into spans of consecutive indices, in order.
+     */
+    private static List<Road.Span> spans(boolean[] isSet) {
+        List<Road.Span> spans = new ArrayList<>();
+        for (int i = 0; i < isSet.length; i++) {
+            if (!isSet[i]) {
+                continue;
+            }
+            int first = i;
+            while (i + 1 < isSet.length && isSet[i + 1]) {
+                i++;
+            }
+            spans.add(new Road.Span(first, i));
+        }
+        return spans;
     }
 
     private static double horizontalDistance(BlockPos a, BlockPos b) {

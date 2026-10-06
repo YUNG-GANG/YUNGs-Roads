@@ -17,6 +17,7 @@ public class ConfigAdvancedForge {
     public final ModConfigSpec.ConfigValue<Integer> maxLandBridgeLength;
     public final ModConfigSpec.ConfigValue<Double> landBridgeEdgeRoughness;
     public final ModConfigSpec.ConfigValue<Double> landBridgeDecay;
+    public final ModConfigSpec.ConfigValue<Double> landBridgeSag;
     public final ModConfigSpec.ConfigValue<Integer> landBridgeRailingDrop;
     public final ModConfigSpec.ConfigValue<Integer> landBridgeRailingChance;
 
@@ -68,7 +69,7 @@ public class ConfigAdvancedForge {
                 .comment(
                         """
                                 The steepest rise over run a road may have. Routing never crosses steeper terrain between
-                                two nodes, and where the ground between nodes is steeper, the road is raised above it.
+                                two nodes, and where the ground between nodes is steeper, the road cuts or tunnels through it.
                                 1.0 is a 45 degree slope.
                                 Default: 1.0""".indent(1))
                 .worldRestart()
@@ -105,7 +106,8 @@ public class ConfigAdvancedForge {
                 .comment(
                         """
                                 The deepest a road may cut into the ground above it to stay level, in blocks.
-                                Where the ground rises higher, the road rises too.
+                                Where the ground rises higher, the road rises too, unless that would be steeper than
+                                Max Grade, where it tunnels through instead.
                                 Default: 4""".indent(1))
                 .worldRestart()
                 .defineInRange("Max Cut Depth", 4, (int) AdvancedSetting.MAX_CUT_DEPTH.min, (int) AdvancedSetting.MAX_CUT_DEPTH.max);
@@ -147,6 +149,15 @@ public class ConfigAdvancedForge {
                                 Default: 0.0""".indent(1))
                 .worldRestart()
                 .defineInRange("Land Bridge Decay", 0.0, AdvancedSetting.LAND_BRIDGE_DECAY.min, AdvancedSetting.LAND_BRIDGE_DECAY.max);
+
+        landBridgeSag = BUILDER
+                .comment(
+                        """
+                                How far each land bridge's deck sags between its ends, as a fraction of its length, from 0 to 0.25.
+                                The sag is limited so the deck is never steeper than Max Grade. 0 gives straight decks.
+                                Default: 0.1""".indent(1))
+                .worldRestart()
+                .defineInRange("Land Bridge Sag", 0.1, AdvancedSetting.LAND_BRIDGE_SAG.min, AdvancedSetting.LAND_BRIDGE_SAG.max);
 
         landBridgeRailingDrop = BUILDER
                 .comment(

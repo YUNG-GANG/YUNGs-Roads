@@ -15,7 +15,8 @@ public class Road {
             DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
             BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
             Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges),
-            Span.CODEC.listOf().fieldOf("land_bridges").forGetter(road -> road.landBridges))
+            Span.CODEC.listOf().fieldOf("land_bridges").forGetter(road -> road.landBridges),
+            Span.CODEC.listOf().fieldOf("tunnels").forGetter(road -> road.tunnels))
         .apply(builder, Road::new));
 
     private final BlockPos startPos;
@@ -39,18 +40,25 @@ public class Road {
      */
     public List<Span> landBridges;
 
+    /**
+     * The stretches where the road runs too far below the ground to cut down to it, which are bored through as tunnels,
+     * as ranges of {@link #positions}, in order from start to end.
+     */
+    public List<Span> tunnels;
+
     public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges,
-                List<Span> landBridges) {
+                List<Span> landBridges, List<Span> tunnels) {
         this.startPos = endpoint1.getX() <= endpoint2.getX() ? endpoint1 : endpoint2;
         this.endPos = this.startPos == endpoint1 ? endpoint2 : endpoint1;
         this.nodes = nodes;
         this.positions = positions;
         this.bridges = bridges;
         this.landBridges = landBridges;
+        this.tunnels = tunnels;
     }
 
     public Road(BlockPos startPos, BlockPos endPos) {
-        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     public BlockPos getStartPos() {

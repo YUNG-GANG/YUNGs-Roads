@@ -13,7 +13,8 @@ public class RoadFeatureConfiguration implements FeatureConfiguration {
             .group(
                     RoadTypeConfig.CODEC.listOf().fieldOf("road_types").forGetter((config) -> config.roadTypes),
                     BlockStateRandomizer.CODEC.fieldOf("bridge_blockstates").forGetter((config) -> config.bridgeBlockStates),
-                    BlockStateRandomizer.CODEC.optionalFieldOf("bridge_railing_blockstates").forGetter((config) -> config.bridgeRailingBlockStates))
+                    BlockStateRandomizer.CODEC.optionalFieldOf("bridge_railing_blockstates").forGetter((config) -> config.bridgeRailingBlockStates),
+                    BlockStateRandomizer.CODEC.optionalFieldOf("tunnel_lining_blockstates").forGetter((config) -> config.tunnelLiningBlockStates))
             .apply(instance, RoadFeatureConfiguration::new));
 
     public final List<RoadTypeConfig> roadTypes;
@@ -25,10 +26,18 @@ public class RoadFeatureConfiguration implements FeatureConfiguration {
      */
     public final Optional<BlockStateRandomizer> bridgeRailingBlockStates;
 
+    /**
+     * The blocks lining the walls and ceilings of tunnels, which also close off any caves the tunnels pass through.
+     * Without it, tunnels are bare, with only unstable blocks and fluids in their walls replaced by solid ones.
+     */
+    public final Optional<BlockStateRandomizer> tunnelLiningBlockStates;
+
     public RoadFeatureConfiguration(List<RoadTypeConfig> roadTypes, BlockStateRandomizer bridgeBlockStates,
-                                    Optional<BlockStateRandomizer> bridgeRailingBlockStates) {
+                                    Optional<BlockStateRandomizer> bridgeRailingBlockStates,
+                                    Optional<BlockStateRandomizer> tunnelLiningBlockStates) {
         this.roadTypes = roadTypes;
         this.bridgeBlockStates = bridgeBlockStates;
         this.bridgeRailingBlockStates = bridgeRailingBlockStates;
+        this.tunnelLiningBlockStates = tunnelLiningBlockStates;
     }
 }

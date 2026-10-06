@@ -55,6 +55,7 @@ public class ConfigModule {
         public int maxLandBridgeLength = 24;
         public double landBridgeEdgeRoughness = 0;
         public double landBridgeDecay = 0;
+        public double landBridgeSag = 0.1;
         public int landBridgeRailingDrop = 4;
         public int landBridgeRailingChance = 100;
 
@@ -95,7 +96,7 @@ public class ConfigModule {
                 "The extra cost of steep terrain. Each step cost is multiplied by (1 + Slope Weight × grade²). Higher values make roads avoid hills and mountains more.",
                 advanced -> advanced.slopeWeight, (advanced, value) -> advanced.slopeWeight = value),
         MAX_GRADE(Group.ROUTING, "Max Grade", 0.05, 10, false, 2,
-                "The steepest grade a road may have. Routing never crosses steeper terrain, and where the ground between nodes is steeper, the road is raised above it. 1 is a 45 degree slope.",
+                "The steepest grade a road may have. Routing never crosses steeper terrain, and where the ground between nodes is steeper, the road cuts or tunnels through it. 1 is a 45 degree slope.",
                 advanced -> advanced.maxGrade, (advanced, value) -> advanced.maxGrade = value),
         WATER_WEIGHT(Group.ROUTING, "Water Weight", 0, 1000, false, 3,
                 "The extra cost of bridging water. Added to the multiplier in each bridge's cost. Higher values make roads detour further to avoid rivers and lakes, or to find a shorter crossing.",
@@ -107,7 +108,7 @@ public class ConfigModule {
                 "How far along the road its height is averaged, in blocks. Higher values give gentler slopes, with more cutting and filling to level the ground. 0 follows the terrain.",
                 advanced -> advanced.smoothingRadius, (advanced, value) -> advanced.smoothingRadius = (int) value),
         MAX_CUT_DEPTH(Group.SHAPING, "Max Cut Depth", 0, 16, true, 1,
-                "The deepest a road may cut into the ground above it to stay level, in blocks. Where the ground rises higher, the road rises too.",
+                "The deepest a road may cut into the ground above it to stay level, in blocks. Where the ground rises higher, the road rises too, unless that would be steeper than Max Grade, where it tunnels through instead.",
                 advanced -> advanced.maxCutDepth, (advanced, value) -> advanced.maxCutDepth = (int) value),
         MAX_FILL_DEPTH(Group.SHAPING, "Max Fill Depth", 0, 16, true, 1,
                 "The deepest gap under a road that's filled with ground, in blocks. Deeper gaps, such as ravines and cave openings, are crossed on a land bridge instead.",
@@ -121,6 +122,9 @@ public class ConfigModule {
         LAND_BRIDGE_DECAY(Group.SHAPING, "Land Bridge Decay", 0, 1, false, 1,
                 "How much of each land bridge's deck is missing, for a ruined look. Blocks are likelier to be missing toward the edges, and the center line is always kept. 0 keeps the whole deck.",
                 advanced -> advanced.landBridgeDecay, (advanced, value) -> advanced.landBridgeDecay = value),
+        LAND_BRIDGE_SAG(Group.SHAPING, "Land Bridge Sag", 0, 0.25, false, 2,
+                "How far each land bridge's deck sags between its ends, as a fraction of its length. The sag is limited so the deck is never steeper than Max Grade. 0 gives straight decks.",
+                advanced -> advanced.landBridgeSag, (advanced, value) -> advanced.landBridgeSag = value),
         LAND_BRIDGE_RAILING_DROP(Group.SHAPING, "Land Bridge Railing Drop", 1, 64, true, 1,
                 "The shortest drop beside a land bridge that gets a railing along its edge, in blocks, from the deck down to the ground. Lower values put railings along more of each bridge.",
                 advanced -> advanced.landBridgeRailingDrop, (advanced, value) -> advanced.landBridgeRailingDrop = (int) value),

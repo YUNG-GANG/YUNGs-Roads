@@ -64,7 +64,8 @@ public class RoadFeature extends Feature<RoadFeatureConfiguration> {
         if (YungsRoadsCommon.CONFIG.debug.placeRoads) {
             List<StructureRegion> regions = structureRegionCache.getRegionsNearChunk(chunkPos);
             roadGenerator.placeRoadInChunk(writer, random, chunkPos, structureRegionCache.getRoadPositionsNearChunk(chunkPos),
-                    roadPos -> regions.stream().anyMatch(region -> region.isLandBridge(roadPos)), config);
+                    roadPos -> regions.stream().anyMatch(region -> region.isLandBridge(roadPos)),
+                    roadPos -> regions.stream().anyMatch(region -> region.isTunnel(roadPos)), config);
         }
 
         // Debug markers aren't indexed by chunk, so check every road that could reach this chunk
