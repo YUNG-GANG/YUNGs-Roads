@@ -1,11 +1,13 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderSet;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -28,11 +30,15 @@ public class StructureRegionGenerator {
     private final StructureLocator structureLocator;
     private final TerrainSampler terrainSampler;
     private final AbstractRoadGenerator roadGenerator;
+    private final RoadTypes roadTypes;
+    private final long worldSeed;
 
     public StructureRegionGenerator(ServerLevel serverLevel) {
         this.terrainSampler = new TerrainSampler(serverLevel);
         this.structureLocator = new StructureLocator(serverLevel, this.terrainSampler, YungsRoadsCommon.CONFIG.general.structures);
         this.roadGenerator = new AStarRoadGenerator();
+        this.roadTypes = new RoadTypes(serverLevel.registryAccess());
+        this.worldSeed = serverLevel.getSeed();
     }
 
     /**
@@ -68,7 +74,10 @@ public class StructureRegionGenerator {
             for (ChunkPos end : structures) {
                 if (isOwner(start, end) && isGraphEdge(start, end, structures)) {
                     edgeCount++;
-                    this.roadGenerator.generateRoad(start.getWorldPosition(), end.getWorldPosition(), terrain).ifPresent(roads::add);
+                    BlockPos startPos = start.getWorldPosition();
+                    BlockPos endPos = end.getWorldPosition();
+                    RoadTypes.Choice roadType = chooseRoadType(startPos, endPos, terrain);
+                    this.roadGenerator.generateRoad(startPos, endPos, roadType, terrain).ifPresent(roads::add);
                 }
             }
         }
@@ -78,6 +87,15 @@ public class StructureRegionGenerator {
 
         List<Long> ownStructureLongs = ownStructures.stream().map(ChunkPos::toLong).toList();
         return new StructureRegion(regionKey, new ArrayList<>(ownStructureLongs), roads);
+    }
+
+    /**
+     * Chooses the road type for a road between two positions from the biomes at the surface along it.
+     * See {@link RoadTypes#choose}.
+     */
+    public RoadTypes.Choice chooseRoadType(BlockPos a, BlockPos b, TerrainCache terrain) {
+        return this.roadTypes.choose(a, b, this.worldSeed, (x, z) ->
+                this.terrainSampler.biomeAt(x, (int) Math.round(terrain.surfaceHeightAtBlock(x, z)), z));
     }
 
     /**
@@ -127,6 +145,10 @@ public class StructureRegionGenerator {
 
     public AbstractRoadGenerator getRoadGenerator() {
         return this.roadGenerator;
+    }
+
+    public RoadTypes getRoadTypes() {
+        return this.roadTypes;
     }
 
     public void setEndpointStructures(HolderSet<Structure> endpointStructures) {

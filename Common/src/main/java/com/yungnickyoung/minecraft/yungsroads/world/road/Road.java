@@ -2,25 +2,28 @@ package com.yungnickyoung.minecraft.yungsroads.world.road;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class Road {
-    public static final Codec<Road> CODEC = RecordCodecBuilder.create(builder -> builder
-        .group(
-            BlockPos.CODEC.fieldOf("start_pos").forGetter(Road::getStartPos),
-            BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
-            DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
-            BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
-            Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges),
-            Span.CODEC.listOf().fieldOf("land_bridges").forGetter(road -> road.landBridges),
-            Span.CODEC.listOf().fieldOf("tunnels").forGetter(road -> road.tunnels))
-        .apply(builder, Road::new));
-
     private final BlockPos startPos;
     private final BlockPos endPos;
+
+    /** The id of the road type the road was generated with. */
+    public final ResourceLocation roadType;
+
+    /** The index of the road type's variant the road was generated with. */
+    public final int variant;
+
+    /** The settings of the road's type and variant, which it's routed, shaped, and placed with. Not saved. */
+    public final RoadSettings settings;
 
     /** The pathfinding nodes making up this road, in order from start to end. */
     public List<DebugNode> nodes;
@@ -46,10 +49,13 @@ public class Road {
      */
     public List<Span> tunnels;
 
-    public Road(BlockPos endpoint1, BlockPos endpoint2, List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges,
-                List<Span> landBridges, List<Span> tunnels) {
+    public Road(BlockPos endpoint1, BlockPos endpoint2, ResourceLocation roadType, int variant, RoadSettings settings,
+                List<DebugNode> nodes, List<BlockPos> positions, List<Bridge> bridges, List<Span> landBridges, List<Span> tunnels) {
         this.startPos = endpoint1.getX() <= endpoint2.getX() ? endpoint1 : endpoint2;
         this.endPos = this.startPos == endpoint1 ? endpoint2 : endpoint1;
+        this.roadType = roadType;
+        this.variant = variant;
+        this.settings = settings;
         this.nodes = nodes;
         this.positions = positions;
         this.bridges = bridges;
@@ -57,8 +63,41 @@ public class Road {
         this.tunnels = tunnels;
     }
 
-    public Road(BlockPos startPos, BlockPos endPos) {
-        this(startPos, endPos, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    /** A road of the chosen type with no route yet. */
+    public Road(BlockPos startPos, BlockPos endPos, RoadTypes.Choice roadType) {
+        this(startPos, endPos, roadType.typeId(), roadType.variant(), roadType.settings(),
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    }
+
+    /**
+     * The codec for saving roads. Loaded roads get the settings of their type and variant from the given road types.
+     *
+     * @param roadTypes May be null if the codec is only used for encoding.
+     */
+    public static Codec<Road> codec(@Nullable RoadTypes roadTypes) {
+        return RecordCodecBuilder.create(builder -> builder
+                .group(
+                        BlockPos.CODEC.fieldOf("start_pos").forGetter(Road::getStartPos),
+                        BlockPos.CODEC.fieldOf("end_pos").forGetter(Road::getEndPos),
+                        ResourceLocation.CODEC.fieldOf("road_type").forGetter(road -> road.roadType),
+                        Codec.INT.fieldOf("variant").forGetter(road -> road.variant),
+                        DebugNode.CODEC.listOf().fieldOf("nodes").forGetter(road -> road.nodes),
+                        BlockPos.CODEC.listOf().fieldOf("positions").forGetter(road -> road.positions),
+                        Bridge.CODEC.listOf().fieldOf("bridges").forGetter(road -> road.bridges),
+                        Span.CODEC.listOf().fieldOf("land_bridges").forGetter(road -> road.landBridges),
+                        Span.CODEC.listOf().fieldOf("tunnels").forGetter(road -> road.tunnels))
+                .apply(builder, (startPos, endPos, roadType, variant, nodes, positions, bridges, landBridges, tunnels) ->
+                        new Road(startPos, endPos, roadType, variant, roadTypes.settings(roadType, variant),
+                                nodes, positions, bridges, landBridges, tunnels)));
+    }
+
+    /**
+     * Orders roads by their endpoints. Decides which road a position belongs to where roads overlap, so every chunk
+     * agrees.
+     */
+    public static int compare(Road a, Road b) {
+        int byStart = Long.compare(a.startPos.asLong(), b.startPos.asLong());
+        return byStart != 0 ? byStart : Long.compare(a.endPos.asLong(), b.endPos.asLong());
     }
 
     public BlockPos getStartPos() {

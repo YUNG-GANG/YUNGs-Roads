@@ -2,8 +2,13 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.AdvancedSetting;
+import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeExport;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
+import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.GlobalSetting;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
+import com.yungnickyoung.minecraft.yungsroads.world.config.ITunableSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import net.minecraft.ChatFormatting;
@@ -14,17 +19,21 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.MultiLineTextWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import org.joml.Vector2i;
+import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
 import java.math.BigDecimal;
@@ -32,17 +41,28 @@ import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Screen for tuning road generation in a running world. Settings are edited in a side panel and applied to the roads
  * around the player, and a map shows the result next to the terrain that routing sees.
+ * <p>
+ * Routing and shaping settings belong to a road type, picked at the top of their tabs, and are saved to a datapack.
+ * Global settings are saved to the config file, and apply to every road type. Every road type's edits are kept until
+ * they're applied, so several can be changed at once.
  */
 public class RoadDebugScreen extends Screen {
+    /** The lang entry of the global tab's Place roads option. Also listed in the help page. */
+    static final String PLACE_ROADS_KEY = "yungsroads.screen.global.place_roads";
+    /** The view options with a checkbox, by the id of their lang entries. Also listed in the help page. */
+    static final List<String> VIEW_OPTIONS = List.of("world_overlay", "previous_roads", "nodes", "region_borders", "f3_info");
+
     private static final int PANEL_WIDTH = 200;
     private static final int MARGIN = 6;
     /** The top of each tab's content, below the tab buttons. */
@@ -50,47 +70,74 @@ public class RoadDebugScreen extends Screen {
     private static final int ROW_HEIGHT = 18;
     private static final int CHECKBOX_ROW_HEIGHT = 20;
     private static final int VALUE_BOX_WIDTH = 40;
+    private static final int HELP_BUTTON_SIZE = 16;
     private static final int PANEL_COLOR = 0xE0101010;
     private static final int INVALID_TEXT_COLOR = 0xFFFF5050;
     private static final int VALID_TEXT_COLOR = 0xFFE0E0E0;
 
     private enum Tab {
-        ROUTING("Routing"),
-        SHAPING("Shaping"),
-        PLACEMENT("Placement"),
-        VIEW("View");
+        ROUTING("routing", HelpDrawer.Section.ROUTING),
+        SHAPING("shaping", HelpDrawer.Section.SHAPING),
+        GLOBAL("global", HelpDrawer.Section.GLOBAL),
+        VIEW("view", HelpDrawer.Section.VIEW);
 
-        final String displayName;
+        final Component displayName;
+        /** The help page's section about the tab. */
+        final HelpDrawer.Section helpSection;
 
-        Tab(String displayName) {
-            this.displayName = displayName;
+        Tab(String id, HelpDrawer.Section helpSection) {
+            this.displayName = Component.translatable("yungsroads.screen.tab." + id);
+            this.helpSection = helpSection;
         }
 
         /** Whether the tab's content scrolls, since its settings and formulas can be taller than the panel. */
         boolean scrolls() {
-            return this == ROUTING || this == SHAPING;
+            return this != VIEW;
         }
 
         /** The tab a setting is edited on. */
-        static Tab of(AdvancedSetting setting) {
-            return switch (setting.group) {
+        static Tab of(ITunableSetting setting) {
+            if (setting instanceof GlobalSetting) {
+                return GLOBAL;
+            }
+            return switch (setting.group()) {
                 case ROUTING -> ROUTING;
                 case SHAPING -> SHAPING;
             };
         }
     }
 
+    /** One variant of a road type, whose settings are edited together. */
+    private record VariantKey(ResourceLocation typeId, int variant) {
+    }
+
+    /** The road type variant last edited, so it's still selected when the screen is opened again. */
+    @Nullable
+    private static VariantKey lastSelected;
+
     private Tab tab = Tab.ROUTING;
     private final Map<Tab, List<AbstractWidget>> tabWidgets = new EnumMap<>(Tab.class);
 
     /**
-     * Values as edited on the settings tabs. Kept outside the widgets so they survive the widgets being rebuilt, such
-     * as when the window is resized. Not applied until the Apply button is pressed.
+     * The road types whose settings are being edited, as they were when the fields were loaded. The edited numeric
+     * settings are applied to copies of them.
      */
-    private final Map<AdvancedSetting, String> pendingText = new EnumMap<>(AdvancedSetting.class);
+    private SortedMap<ResourceLocation, RoadType> baseTypes = new TreeMap<>();
+
+    /**
+     * Values as edited on the settings tabs, for every road type variant and for the global settings. Kept outside the
+     * widgets so they survive the widgets being rebuilt, such as when the window is resized or another road type is
+     * picked. Not applied until the Apply button is pressed.
+     */
+    private final Map<VariantKey, Map<RoadSetting, String>> pendingTypeText = new LinkedHashMap<>();
+    private final Map<GlobalSetting, String> pendingGlobalText = new EnumMap<>(GlobalSetting.class);
+    private ConfigModule.Debug pendingDebug = new ConfigModule.Debug();
+
+    /** The road type variant whose settings are shown. */
+    private VariantKey selected;
+
     /** Each setting's slider and text box, for showing its tooltip when either is hovered. */
-    private final Map<AdvancedSetting, List<AbstractWidget>> settingRows = new EnumMap<>(AdvancedSetting.class);
-    private ConfigModule.Debug pendingDebug;
+    private final Map<ITunableSetting, List<AbstractWidget>> settingRows = new HashMap<>();
 
     /** Where each settings tab's formulas start, below its settings. */
     private final Map<Tab, Integer> formulaY = new EnumMap<>(Tab.class);
@@ -102,16 +149,32 @@ public class RoadDebugScreen extends Screen {
     private final Map<AbstractWidget, Integer> unscrolledY = new HashMap<>();
     private Button applyButton;
     private Button revertButton;
+    private Button helpButton;
     /** Kept across rebuilds, so the map's position and zoom aren't reset. */
-    private final RoadMapWidget map = new RoadMapWidget(0, 0, 0, 0, this::previewSettings);
+    private final RoadMapWidget map = new RoadMapWidget(0, 0, 0, 0, this::mapPreview);
+    private HelpDrawer help;
+
+    /** A message about something done on this screen, shown until the server's status next changes. */
+    @Nullable
+    private Component localStatus;
+    private Component serverStatusAtLocal;
+
+    /** Set when the widgets need rebuilding, which is done on the next tick rather than inside a widget's callback. */
+    private boolean rebuildPending = false;
 
     public RoadDebugScreen() {
-        super(Component.literal("Road Debug"));
-        loadPendingFromConfig();
+        super(Component.translatable("yungsroads.screen.title"));
+        ServerLevel level = RoadDebugClient.serverLevel();
+        if (level != null) {
+            loadPendingFromLevel(level);
+        }
     }
 
     @Override
     protected void init() {
+        if (this.help == null) {
+            this.help = new HelpDrawer(this.font);
+        }
         this.tabWidgets.clear();
         this.settingRows.clear();
         this.unscrolledY.clear();
@@ -128,144 +191,164 @@ public class RoadDebugScreen extends Screen {
         for (Tab t : Tab.values()) {
             // The last tab takes any width left over from rounding
             int tabWidth = t.ordinal() == Tab.values().length - 1 ? x + contentWidth - tabX : this.font.width(t.displayName) + spareWidth;
-            addRenderableWidget(Button.builder(Component.literal(t.displayName), button -> selectTab(t))
+            addRenderableWidget(Button.builder(t.displayName, button -> selectTab(t))
                     .bounds(tabX, MARGIN, tabWidth - 2, 16)
                     .build());
             tabX += tabWidth;
         }
-        int contentY = CONTENT_Y;
 
-        // Routing and shaping settings, each a slider for quick changes with a text box for exact values, or a checkbox
+        // Road type and global settings, each a slider for quick changes with a text box for exact values, or a checkbox
         // for a toggle. Routing changes are previewed on the map's terrain right away, but only applied to roads on Apply.
         Map<Tab, Integer> rowY = new EnumMap<>(Tab.class);
-        int sliderWidth = contentWidth - VALUE_BOX_WIDTH - 4;
-        for (AdvancedSetting setting : AdvancedSetting.values()) {
-            Tab settingTab = Tab.of(setting);
-            int y = rowY.getOrDefault(settingTab, contentY);
-            rowY.put(settingTab, y + ROW_HEIGHT);
-            this.formulaY.put(settingTab, y + ROW_HEIGHT + 6);
-            if (setting.isToggle) {
-                Double value = parse(setting, this.pendingText.get(setting));
-                Checkbox checkbox = Checkbox.builder(Component.literal(setting.displayName), this.font)
-                        .pos(x, y)
-                        .maxWidth(contentWidth)
-                        .selected(value != null && value != 0)
-                        .onValueChange((box, selected) -> this.pendingText.put(setting, selected ? "1" : "0"))
-                        .build();
-                this.settingRows.put(setting, List.of(checkbox));
-                addScrollingWidget(settingTab, checkbox, y);
-                continue;
+        if (this.selected != null) {
+            for (Tab settingsTab : List.of(Tab.ROUTING, Tab.SHAPING)) {
+                addScrollingWidget(settingsTab, roadTypeButton(x, CONTENT_Y, contentWidth), CONTENT_Y);
+                rowY.put(settingsTab, CONTENT_Y + ROW_HEIGHT + 4);
             }
-            EditBox box = new EditBox(this.font, x + sliderWidth + 4, y + 1, VALUE_BOX_WIDTH, 14, Component.literal(setting.displayName));
-            SettingSlider slider = new SettingSlider(x, y, sliderWidth, 16, setting, box);
-            box.setMaxLength(12);
-            box.setResponder(value -> {
-                this.pendingText.put(setting, value);
-                Double parsed = parse(setting, value);
-                box.setTextColor(parsed == null ? INVALID_TEXT_COLOR : VALID_TEXT_COLOR);
-                if (parsed != null) {
-                    slider.show(parsed);
-                }
-            });
-            box.setValue(this.pendingText.get(setting));
-            this.settingRows.put(setting, List.of(slider, box));
-            addScrollingWidget(settingTab, slider, y);
-            addScrollingWidget(settingTab, box, y + 1);
+            for (RoadSetting setting : RoadSetting.values()) {
+                addSettingRow(setting, x, contentWidth, rowY);
+            }
         }
-
-        // Placement options
-        int y = contentY;
-        y = addDebugCheckbox(x, y, contentWidth, "Place roads", "Place road blocks. Turn off to see routes on the overlay without changing terrain.",
-                debug -> debug.placeRoads, (debug, value) -> debug.placeRoads = value);
-        y = addDebugCheckbox(x, y, contentWidth, "Debug paths", "Place single-block diamond paths along each road's center line instead of normal roads.",
-                debug -> debug.placeDebugPaths, (debug, value) -> debug.placeDebugPaths = value);
-        y = addDebugCheckbox(x, y, contentWidth, "Raw node markers", "Place purple wool towers at each node's position before jitter.",
-                debug -> debug.placeUnjitteredPosDebugMarkers, (debug, value) -> debug.placeUnjitteredPosDebugMarkers = value);
-        y = addDebugCheckbox(x, y, contentWidth, "Jittered markers", "Place redstone block towers at each node's final position.",
-                debug -> debug.placeJitteredPosDebugMarkers, (debug, value) -> debug.placeJitteredPosDebugMarkers = value);
-        y = addDebugCheckbox(x, y, contentWidth, "Endpoint markers", "Place emerald block towers at each road's endpoints.",
-                debug -> debug.placeRoadEndpointDebugMarkers, (debug, value) -> debug.placeRoadEndpointDebugMarkers = value);
-        addDebugCheckbox(x, y, contentWidth, "Straight lines", "Place gold block lines straight between each road's endpoints.",
-                debug -> debug.placeStraightDebugLine, (debug, value) -> debug.placeStraightDebugLine = value);
+        // The global tab says where its settings are saved, since unlike the other settings tabs, it isn't for a road type
+        MultiLineTextWidget globalNote = new MultiLineTextWidget(x, CONTENT_Y, Component.translatable("yungsroads.screen.global.note"), this.font)
+                .setMaxWidth(contentWidth)
+                .setColor(0xFFA0A0A0);
+        addScrollingWidget(Tab.GLOBAL, globalNote, CONTENT_Y);
+        rowY.put(Tab.GLOBAL, CONTENT_Y + globalNote.getHeight() + 6);
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            addSettingRow(setting, x, contentWidth, rowY);
+        }
+        int placeRoadsY = rowY.get(Tab.GLOBAL) + 2;
+        addScrollingWidget(Tab.GLOBAL, Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
+                .pos(x, placeRoadsY)
+                .maxWidth(contentWidth)
+                .selected(this.pendingDebug.placeRoads)
+                .tooltip(Tooltip.create(Component.translatable(PLACE_ROADS_KEY + ".description").append("\n")
+                        .append(Component.translatable("yungsroads.screen.applied_with_apply"))))
+                .onValueChange((box, value) -> this.pendingDebug.placeRoads = value)
+                .build(), placeRoadsY);
+        rowY.put(Tab.GLOBAL, placeRoadsY + CHECKBOX_ROW_HEIGHT);
+        rowY.forEach((settingsTab, y) -> this.formulaY.put(settingsTab, y + 6));
 
         // View options. These only affect what's drawn, so they take effect immediately.
-        y = contentY;
-        y = addViewCheckbox(x, y, contentWidth, "World overlay", "Draw routes as lines in the world. Hidden parts are drawn faintly through terrain.",
-                RoadDebugClient.showWorldOverlay, value -> RoadDebugClient.showWorldOverlay = value);
-        y = addViewCheckbox(x, y, contentWidth, "Previous roads", "Draw the roads replaced by the last change in red, on the map and overlay.",
-                RoadDebugClient.showPreviousRoads, value -> RoadDebugClient.showPreviousRoads = value);
-        y = addViewCheckbox(x, y, contentWidth, "Nodes", "Mark each pathfinding node, on the map and overlay.",
-                RoadDebugClient.showNodes, value -> RoadDebugClient.showNodes = value);
-        y = addViewCheckbox(x, y, contentWidth, "Region borders", "Draw structure region borders on the map.",
-                RoadDebugClient.showRegionBorders, value -> RoadDebugClient.showRegionBorders = value);
-        y = addViewCheckbox(x, y, contentWidth, "Extra F3 info", "Show the structure region and road node at your position on the F3 screen.",
-                YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info, value -> {
-                    YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = value;
-                    this.pendingDebug.enableExtraDebugF3Info = value;
-                });
-        CycleButton<TerrainTiles.Layer> terrainButton = CycleButton.<TerrainTiles.Layer>builder(layer -> Component.literal(layer.displayName))
+        int y = CONTENT_Y;
+        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(0), RoadDebugClient.showWorldOverlay, value -> RoadDebugClient.showWorldOverlay = value);
+        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(1), RoadDebugClient.showPreviousRoads, value -> RoadDebugClient.showPreviousRoads = value);
+        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(2), RoadDebugClient.showNodes, value -> RoadDebugClient.showNodes = value);
+        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(3), RoadDebugClient.showRegionBorders, value -> RoadDebugClient.showRegionBorders = value);
+        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(4), YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info, value -> {
+            YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = value;
+            this.pendingDebug.enableExtraDebugF3Info = value;
+        });
+        CycleButton<TerrainTiles.Layer> terrainButton = CycleButton.<TerrainTiles.Layer>builder(layer -> layer.displayName)
                 .withValues(TerrainTiles.Layer.values())
                 .withInitialValue(RoadDebugClient.terrainLayer)
-                .withTooltip(layer -> Tooltip.create(Component.literal(
-                        "Terrain shown on the map, one pixel per pathfinding node.\n"
-                                + "Height: surface height, shaded.\n"
-                                + "Slope: grade relative to Max Grade.\n"
-                                + "Cost: routing's cost multiplier, log scale up to 50x.\n"
-                                + "Purple can't be crossed. Slope and Cost preview unapplied settings.")))
-                .create(x, y, contentWidth, 16, Component.literal("Terrain"), (button, layer) -> RoadDebugClient.terrainLayer = layer);
+                .withTooltip(layer -> Tooltip.create(Component.translatable("yungsroads.screen.view.terrain.tooltip")))
+                .create(x, y, contentWidth, 16, Component.translatable("yungsroads.screen.view.terrain"),
+                        (button, layer) -> RoadDebugClient.terrainLayer = layer);
         addTabWidget(Tab.VIEW, terrainButton);
         y += ROW_HEIGHT;
-        addTabWidget(Tab.VIEW, Button.builder(Component.literal("Center map on player"), button -> this.map.recenter())
+        addTabWidget(Tab.VIEW, Button.builder(Component.translatable("yungsroads.screen.view.center_map"), button -> this.map.recenter())
                 .bounds(x, y, contentWidth, 16)
                 .build());
 
         // Actions
         int buttonWidth = (contentWidth - 4) / 2;
-        int actionsY = this.height - MARGIN - 36;
-        this.applyButton = addRenderableWidget(Button.builder(Component.literal("Apply"), button -> apply())
+        int actionsY = this.height - MARGIN - 56;
+        this.applyButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.apply"), button -> apply())
                 .bounds(x, actionsY, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.literal("Regenerate roads within " + RoadTuning.REGENERATE_RADIUS
-                        + " blocks with these settings, then place them in loaded chunks. Only re-places roads if only placement options changed.")))
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.apply.tooltip", RoadTuning.REGENERATE_RADIUS)))
                 .build());
-        this.revertButton = addRenderableWidget(Button.builder(Component.literal("Revert"), button -> revert())
+        this.revertButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.revert"), button -> revert())
                 .bounds(x + buttonWidth + 4, actionsY, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.literal("Restore the settings and roads from before the last change. Press again to redo it.")))
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.revert.tooltip")))
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Defaults"), button -> resetToDefaults())
+        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.reset"), button -> reset())
                 .bounds(x, actionsY + 20, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.literal("Reset the fields to their default values. Press Apply to use them.")))
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.reset.tooltip")))
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Save"), button -> save())
+        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.save"), button -> save())
                 .bounds(x + buttonWidth + 4, actionsY + 20, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.literal("Save the applied settings to the config file.")))
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.save.tooltip")))
+                .build());
+        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.copy_json"), button -> copyJson())
+                .bounds(x, actionsY + 40, contentWidth, 16)
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.copy_json.tooltip")))
                 .build());
 
-        this.map.setRectangle(this.width - PANEL_WIDTH - MARGIN * 2, this.height - MARGIN * 2, PANEL_WIDTH + MARGIN, MARGIN);
+        // The help button sits over the map, so it takes clicks before the map does, but is drawn after it. Moved to the
+        // help page's edge as the page slides out.
+        this.helpButton = addWidget(Button.builder(Component.literal("?"), button -> this.help.toggle(this.tab.helpSection))
+                .bounds(helpButtonX(), MARGIN + 2, HELP_BUTTON_SIZE, HELP_BUTTON_SIZE)
+                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.help.tooltip")))
+                .build());
+        this.map.setRectangle(mapWidth(), this.height - MARGIN * 2, PANEL_WIDTH + MARGIN, MARGIN);
         addRenderableWidget(this.map);
+        addRenderableOnly(this.helpButton);
 
         selectTab(this.tab);
     }
 
-    private int addDebugCheckbox(int x, int y, int width, String label, String description,
-                                 Predicate<ConfigModule.Debug> getter, BiConsumer<ConfigModule.Debug, Boolean> setter) {
-        Checkbox checkbox = Checkbox.builder(Component.literal(label), this.font)
-                .pos(x, y)
-                .maxWidth(width)
-                .selected(getter.test(this.pendingDebug))
-                .tooltip(Tooltip.create(Component.literal(description + "\nApplied with the Apply button.")))
-                .onValueChange((box, value) -> setter.accept(this.pendingDebug, value))
-                .build();
-        addTabWidget(Tab.PLACEMENT, checkbox);
-        return y + CHECKBOX_ROW_HEIGHT;
+    /** The picker for which road type variant's settings are shown. */
+    private CycleButton<VariantKey> roadTypeButton(int x, int y, int width) {
+        return CycleButton.<VariantKey>builder(key -> {
+                    RoadType type = this.baseTypes.get(key.typeId);
+                    Component name = RoadTypeNames.shortName(key.typeId, key.variant, type == null ? 1 : type.variants().size());
+                    return Component.translatable("yungsroads.screen.road_type", name);
+                })
+                .withValues(List.copyOf(this.pendingTypeText.keySet()))
+                .withInitialValue(this.selected)
+                .displayOnlyValue()
+                .withTooltip(key -> Tooltip.create(Component.translatable("yungsroads.screen.road_type.tooltip")))
+                .create(x, y, width, 16, Component.translatable("yungsroads.glossary.road_type"), (button, key) -> {
+                    this.selected = key;
+                    lastSelected = key;
+                    this.rebuildPending = true;
+                });
     }
 
-    private int addViewCheckbox(int x, int y, int width, String label, String description, boolean selected,
-                                Consumer<Boolean> onChange) {
-        Checkbox checkbox = Checkbox.builder(Component.literal(label), this.font)
+    private void addSettingRow(ITunableSetting setting, int x, int contentWidth, Map<Tab, Integer> rowY) {
+        Tab settingTab = Tab.of(setting);
+        int y = rowY.getOrDefault(settingTab, CONTENT_Y);
+        rowY.put(settingTab, y + ROW_HEIGHT);
+        Component name = Component.translatable(setting.nameKey());
+        if (setting.isToggle()) {
+            Double value = parse(setting, pendingText(setting));
+            Checkbox checkbox = Checkbox.builder(name, this.font)
+                    .pos(x, y)
+                    .maxWidth(contentWidth)
+                    .selected(value != null && value != 0)
+                    .onValueChange((box, selected) -> setPendingText(setting, selected ? "1" : "0"))
+                    .build();
+            this.settingRows.put(setting, List.of(checkbox));
+            addScrollingWidget(settingTab, checkbox, y);
+            return;
+        }
+        int sliderWidth = contentWidth - VALUE_BOX_WIDTH - 4;
+        EditBox box = new EditBox(this.font, x + sliderWidth + 4, y + 1, VALUE_BOX_WIDTH, 14, name);
+        SettingSlider slider = new SettingSlider(x, y, sliderWidth, 16, setting, name, box);
+        box.setMaxLength(12);
+        box.setResponder(value -> {
+            setPendingText(setting, value);
+            Double parsed = parse(setting, value);
+            box.setTextColor(parsed == null ? INVALID_TEXT_COLOR : VALID_TEXT_COLOR);
+            if (parsed != null) {
+                slider.show(parsed);
+            }
+        });
+        box.setValue(pendingText(setting));
+        this.settingRows.put(setting, List.of(slider, box));
+        addScrollingWidget(settingTab, slider, y);
+        addScrollingWidget(settingTab, box, y + 1);
+    }
+
+    private int addViewCheckbox(int x, int y, int width, String option, boolean selected, Consumer<Boolean> onChange) {
+        String key = "yungsroads.screen.view." + option;
+        Checkbox checkbox = Checkbox.builder(Component.translatable(key), this.font)
                 .pos(x, y)
                 .maxWidth(width)
                 .selected(selected)
-                .tooltip(Tooltip.create(Component.literal(description)))
+                .tooltip(Tooltip.create(Component.translatable(key + ".description")))
                 .onValueChange((box, value) -> onChange.accept(value))
                 .build();
         addTabWidget(Tab.VIEW, checkbox);
@@ -292,14 +375,21 @@ public class RoadDebugScreen extends Screen {
         this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == tab));
         // A hidden text box must not keep receiving key presses
         setFocused(null);
+        if (this.help.isOpen()) {
+            this.help.showSection(tab.helpSection);
+        }
     }
 
     @Override
     public void tick() {
         ServerLevel level = RoadDebugClient.serverLevel();
-        if (level == null) {
+        if (level == null || this.selected == null) {
             onClose();
             return;
+        }
+        if (this.rebuildPending) {
+            this.rebuildPending = false;
+            rebuildWidgets();
         }
         this.applyButton.active = !RoadTuning.isBusy();
         this.revertButton.active = RoadTuning.canRevert(level);
@@ -308,27 +398,34 @@ public class RoadDebugScreen extends Screen {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         // Status, wrapped above the action buttons
-        List<String> statusLines = new ArrayList<>();
-        statusLines.add(RoadTuning.status());
+        List<Component> statusLines = new ArrayList<>();
+        statusLines.add(status());
         ServerLevel level = RoadDebugClient.serverLevel();
         LiveRoadPlacer placer = level == null ? null : ((IStructureRegionCacheProvider) level).getLiveRoadPlacer();
         if (placer != null && placer.pendingChunkCount() > 0) {
-            statusLines.add("Refreshing " + placer.pendingChunkCount() + " chunks...");
+            statusLines.add(Component.translatable("yungsroads.screen.refreshing", placer.pendingChunkCount()));
         }
         List<FormattedCharSequence> wrapped = new ArrayList<>();
-        for (String line : statusLines) {
-            if (!line.isEmpty()) {
-                wrapped.addAll(this.font.split(Component.literal(line), PANEL_WIDTH - MARGIN * 2));
+        for (Component line : statusLines) {
+            if (!line.getString().isEmpty()) {
+                wrapped.addAll(this.font.split(line, PANEL_WIDTH - MARGIN * 2));
             }
         }
         int statusTop = this.applyButton.getY() - 4 - wrapped.size() * 10;
 
-        List<Component> formulas = formulas(this.tab, previewSettings());
+        List<Component> formulas = this.selected == null ? List.of() : formulas(this.tab, previewSettings(), previewGlobal());
         if (this.tab.scrolls()) {
             layOutScrollingTab(statusTop, formulas);
         }
 
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        // Nothing under the help page reacts to the mouse
+        boolean overHelp = this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth());
+        int widgetMouseX = overHelp ? -1 : mouseX;
+        int widgetMouseY = overHelp ? -1 : mouseY;
+        this.helpButton.setX(helpButtonX());
+        // The help button's tooltip shows instead of the map's
+        this.map.setHoverInfoHidden(this.helpButton.isMouseOver(widgetMouseX, widgetMouseY));
+        super.render(guiGraphics, widgetMouseX, widgetMouseY, partialTick);
 
         int y = statusTop;
         for (FormattedCharSequence line : wrapped) {
@@ -338,30 +435,67 @@ public class RoadDebugScreen extends Screen {
 
         if (this.tab.scrolls()) {
             int formulaTop = this.formulaY.get(this.tab) - this.scroll.getOrDefault(this.tab, 0);
-            renderFormula(guiGraphics, mouseX, mouseY, formulaTop, statusTop, formulas);
+            renderFormula(guiGraphics, widgetMouseX, widgetMouseY, formulaTop, statusTop, formulas);
             renderScrollbar(guiGraphics, statusTop);
         }
-        renderSettingTooltip(guiGraphics, mouseX, mouseY);
+        renderSettingTooltip(guiGraphics, widgetMouseX, widgetMouseY);
+        this.help.render(guiGraphics, this.width, this.height, mapWidth(), mouseX, mouseY);
     }
 
-    /** The formulas explaining how a tab's settings are used, with the given settings' values filled in. */
-    private static List<Component> formulas(Tab tab, ConfigModule.Advanced settings) {
+    /** The message shown above the action buttons: the latest of this screen's and the server's. */
+    private Component status() {
+        Component serverStatus = RoadTuning.status();
+        if (this.localStatus != null && serverStatus == this.serverStatusAtLocal) {
+            return this.localStatus;
+        }
+        this.localStatus = null;
+        return serverStatus;
+    }
+
+    private void showLocalStatus(Component status) {
+        this.localStatus = status;
+        this.serverStatusAtLocal = RoadTuning.status();
+    }
+
+    /** The width of the map, which fills the screen right of the settings panel. The help page slides over it. */
+    private int mapWidth() {
+        return this.width - PANEL_WIDTH - MARGIN * 2;
+    }
+
+    /** The help button sits in the map's top right corner, or beside the help page's edge while it's out. */
+    private int helpButtonX() {
+        int closedX = this.width - MARGIN - HELP_BUTTON_SIZE - 2;
+        if (this.help == null || !this.help.isVisible()) {
+            return closedX;
+        }
+        return Math.min(closedX, this.help.left(this.width, mapWidth()) - HELP_BUTTON_SIZE - 4);
+    }
+
+    /**
+     * The formulas explaining how a tab's settings are used, with the given settings' values filled in.
+     */
+    private static List<Component> formulas(Tab tab, RoadSettings settings, ConfigModule.Advanced global) {
+        ToDoubleFunction<ITunableSetting> valueOf = setting -> setting instanceof RoadSetting roadSetting
+                ? roadSetting.get(settings)
+                : ((GlobalSetting) setting).get(global);
         return switch (tab) {
             case ROUTING -> List.of(
-                    formulaTitle("Routing formulas"),
-                    formulaLine(settings, "Step cost = run × (1 + ", AdvancedSetting.SLOPE_WEIGHT, " × max(0, grade² - ", AdvancedSetting.FREE_GRADE, "²))"),
-                    formulaLine(settings, "Steps above grade ", AdvancedSetting.MAX_GRADE, " are never taken"),
-                    formulaLine(settings, "Bridge cost = step cost + ", AdvancedSetting.WATER_WEIGHT, " × run"),
-                    formulaLine(settings, "Bridges are at most ", AdvancedSetting.MAX_BRIDGE_LENGTH, " blocks long"),
-                    formulaLine(settings, "Priority = cost so far + ", AdvancedSetting.HEURISTIC_WEIGHT, " × distance left"));
+                    formulaTitle("yungsroads.formula.routing.title"),
+                    formulaLine(valueOf, "yungsroads.formula.step_cost", RoadSetting.SLOPE_WEIGHT, RoadSetting.FREE_GRADE),
+                    formulaLine(valueOf, "yungsroads.formula.max_grade", RoadSetting.MAX_GRADE),
+                    formulaLine(valueOf, "yungsroads.formula.bridge_cost", RoadSetting.WATER_WEIGHT),
+                    formulaLine(valueOf, "yungsroads.formula.max_bridge_length", RoadSetting.MAX_BRIDGE_LENGTH));
             case SHAPING -> List.of(
-                    formulaTitle("Shaping rules"),
-                    formulaLine(settings, "Road height = ground averaged over ", AdvancedSetting.SMOOTHING_RADIUS, " blocks each way"),
-                    formulaLine(settings, "Ground up to ", AdvancedSetting.MAX_CUT_DEPTH, " blocks above the road is cut away"),
-                    formulaLine(settings, "Gaps up to ", AdvancedSetting.MAX_FILL_DEPTH, " blocks below the road are filled, and deeper holes get a land bridge"),
-                    formulaLine(settings, "Dips up to ", AdvancedSetting.MAX_LAND_BRIDGE_LENGTH, " blocks long get a land bridge"),
-                    formulaLine(settings, "Land bridge edges with drops of ", AdvancedSetting.LAND_BRIDGE_RAILING_DROP, "+ blocks get railings"));
-            case PLACEMENT, VIEW -> List.of();
+                    formulaTitle("yungsroads.formula.shaping.title"),
+                    formulaLine(valueOf, "yungsroads.formula.smoothing", RoadSetting.SMOOTHING_RADIUS),
+                    formulaLine(valueOf, "yungsroads.formula.cut", RoadSetting.MAX_CUT_DEPTH),
+                    formulaLine(valueOf, "yungsroads.formula.fill", RoadSetting.MAX_FILL_DEPTH),
+                    formulaLine(valueOf, "yungsroads.formula.land_bridge", RoadSetting.MAX_LAND_BRIDGE_LENGTH),
+                    formulaLine(valueOf, "yungsroads.formula.railing", RoadSetting.LAND_BRIDGE_RAILING_DROP));
+            case GLOBAL -> List.of(
+                    formulaTitle("yungsroads.formula.global.title"),
+                    formulaLine(valueOf, "yungsroads.formula.search_priority", GlobalSetting.HEURISTIC_WEIGHT));
+            case VIEW -> List.of();
         };
     }
 
@@ -370,7 +504,7 @@ public class RoadDebugScreen extends Screen {
      * widgets that fit between the tab buttons and the given bottom, so none are shown cut off.
      */
     private void layOutScrollingTab(int bottom, List<Component> formulas) {
-        int contentBottom = this.formulaY.get(this.tab) + formulasHeight(formulas);
+        int contentBottom = this.formulaY.getOrDefault(this.tab, CONTENT_Y) + formulasHeight(formulas);
         // Scrolling is by whole rows, so the top row always sits right below the tab buttons instead of being hidden
         int max = Mth.positiveCeilDiv(Math.max(0, contentBottom - bottom), ROW_HEIGHT) * ROW_HEIGHT;
         int offset = Mth.clamp(this.scroll.getOrDefault(this.tab, 0), 0, max);
@@ -402,7 +536,20 @@ public class RoadDebugScreen extends Screen {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
+            // The help page has nothing to click, but nothing under it may be clicked either
+            setFocused(null);
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
+            return this.help.mouseScrolled(scrollY);
+        }
         if (mouseX < PANEL_WIDTH && this.tab.scrolls()) {
             int offset = this.scroll.getOrDefault(this.tab, 0) - (int) Math.round(scrollY * ROW_HEIGHT);
             this.scroll.put(this.tab, Mth.clamp(offset, 0, this.maxScroll.getOrDefault(this.tab, 0)));
@@ -413,23 +560,25 @@ public class RoadDebugScreen extends Screen {
 
     /**
      * Shows the hovered setting's description and the definitions of its terms. Hidden while dragging, so the map's
-     * preview stays visible.
+     * preview stays visible, and while the help page is open, since it describes every setting.
      */
     private void renderSettingTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.minecraft == null || this.minecraft.mouseHandler.isLeftPressed()) {
+        if (this.minecraft == null || this.minecraft.mouseHandler.isLeftPressed() || this.help.isOpen()) {
             return;
         }
-        for (Map.Entry<AdvancedSetting, List<AbstractWidget>> row : this.settingRows.entrySet()) {
+        for (Map.Entry<ITunableSetting, List<AbstractWidget>> row : this.settingRows.entrySet()) {
             // Hidden widgets keep the hover state they had when last rendered
             if (row.getValue().stream().noneMatch(widget -> widget.visible && widget.isHovered())) {
                 continue;
             }
-            AdvancedSetting setting = row.getKey();
-            String details = setting.isToggle
-                    ? "\nDefault: " + (setting.defaultValue() != 0 ? "on" : "off")
-                    : "\nRange: " + setting.format(setting.min) + " to " + setting.format(setting.max)
-                    + "\nDefault: " + setting.format(setting.defaultValue());
-            Component text = RoutingGlossary.withDefinitions(setting.description + details);
+            ITunableSetting setting = row.getKey();
+            Language language = Language.getInstance();
+            String details = setting.isToggle()
+                    ? "\n" + language.getOrDefault("yungsroads.screen.default").formatted(
+                            language.getOrDefault(setting.defaultValue() != 0 ? "yungsroads.screen.on" : "yungsroads.screen.off"))
+                    : "\n" + language.getOrDefault("yungsroads.screen.range").formatted(setting.format(setting.min()), setting.format(setting.max()))
+                    + "\n" + language.getOrDefault("yungsroads.screen.default").formatted(setting.format(setting.defaultValue()));
+            Component text = RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details);
             renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
             return;
         }
@@ -448,8 +597,8 @@ public class RoadDebugScreen extends Screen {
 
     /**
      * Explains how a tab's settings are used, with the entered values filled in. Highlighted words and values show
-     * their definitions when hovered. Formulas scrolled above the content area or that don't fit above the status text
-     * are left out whole, so none are shown cut off.
+     * their definitions when hovered, unless the help page is open. Formulas scrolled above the content area or that
+     * don't fit above the status text are left out whole, so none are shown cut off.
      *
      * @param top Where the first formula starts, which is above the content area when the tab is scrolled.
      */
@@ -475,7 +624,7 @@ public class RoadDebugScreen extends Screen {
             }
             y += 2;
         }
-        if (hovered != null && hovered.getHoverEvent() != null) {
+        if (hovered != null && hovered.getHoverEvent() != null && !this.help.isOpen()) {
             Component text = hovered.getHoverEvent().getValue(HoverEvent.Action.SHOW_TEXT);
             if (text != null) {
                 renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
@@ -492,22 +641,22 @@ public class RoadDebugScreen extends Screen {
         return height;
     }
 
-    private static Component formulaTitle(String title) {
-        return Component.literal(title).withStyle(ChatFormatting.UNDERLINE)
-                .append(Component.literal(" (hover for details)").withStyle(style -> style.withUnderlined(false).withColor(0xA0A0A0)));
+    private static Component formulaTitle(String key) {
+        return Component.translatable(key).withStyle(ChatFormatting.UNDERLINE)
+                .append(Component.translatable("yungsroads.formula.hover").withStyle(style -> style.withUnderlined(false).withColor(0xA0A0A0)));
     }
 
     /**
-     * Builds a line of a formula from strings, with their glossary words highlighted, and settings, shown as their
-     * value in the given instance.
+     * Builds a line of a formula from its lang entry, with its glossary words highlighted, and each {@code %s} replaced
+     * by the next setting's value.
      */
-    private static Component formulaLine(ConfigModule.Advanced settings, Object... parts) {
+    private static Component formulaLine(ToDoubleFunction<ITunableSetting> valueOf, String key, ITunableSetting... settings) {
+        String[] parts = Language.getInstance().getOrDefault(key).split("%s", -1);
         MutableComponent line = Component.empty();
-        for (Object part : parts) {
-            if (part instanceof AdvancedSetting setting) {
-                line.append(RoutingGlossary.value(setting, setting.get(settings)));
-            } else {
-                line.append(RoutingGlossary.highlight((String) part));
+        for (int i = 0; i < parts.length; i++) {
+            line.append(RoutingGlossary.highlight(parts[i]));
+            if (i < parts.length - 1 && i < settings.length) {
+                line.append(RoutingGlossary.value(settings[i], valueOf.applyAsDouble(settings[i])));
             }
         }
         return line;
@@ -521,6 +670,11 @@ public class RoadDebugScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Escape closes the help page before the screen
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.help.isOpen()) {
+            this.help.close();
+            return true;
+        }
         // The open key also closes the screen, unless it's being typed into a text box
         if (RoadDebugClient.OPEN_SCREEN_KEY.matches(keyCode, scanCode) && !(getFocused() instanceof EditBox)) {
             onClose();
@@ -536,12 +690,16 @@ public class RoadDebugScreen extends Screen {
     }
 
     private void apply() {
-        ConfigModule.Advanced advanced = parseSettings();
         ServerLevel level = RoadDebugClient.serverLevel();
-        if (advanced == null || level == null || this.minecraft == null || this.minecraft.player == null) {
+        if (level == null || this.minecraft == null || this.minecraft.player == null) {
             return;
         }
-        RoadTuning.Settings settings = new RoadTuning.Settings(advanced, this.pendingDebug.copy());
+        ConfigModule.Advanced global = parseGlobal();
+        SortedMap<ResourceLocation, RoadType> types = parseTypes();
+        if (global == null || types == null) {
+            return;
+        }
+        RoadTuning.Settings settings = new RoadTuning.Settings(global, types, this.pendingDebug.copy());
         BlockPos center = this.minecraft.player.blockPosition();
         level.getServer().execute(() -> RoadTuning.apply(level, settings, center));
     }
@@ -553,20 +711,31 @@ public class RoadDebugScreen extends Screen {
         }
         // Show the restored settings once the server has reverted
         level.getServer().submit(() -> RoadTuning.revert(level))
-                .thenRun(() -> this.minecraft.execute(this::loadFieldsFromConfig));
+                .thenRun(() -> this.minecraft.execute(() -> {
+                    loadPendingFromLevel(level);
+                    rebuildWidgets();
+                }));
     }
 
     private void save() {
         ServerLevel level = RoadDebugClient.serverLevel();
         if (level != null) {
-            level.getServer().execute(RoadTuning::saveToConfig);
+            level.getServer().execute(() -> RoadTuning.save(level));
         }
     }
 
-    private void resetToDefaults() {
+    /**
+     * Resets the road types to the settings the level loaded with, and the global settings to their defaults.
+     */
+    private void reset() {
+        ServerLevel level = RoadDebugClient.serverLevel();
+        if (level == null) {
+            return;
+        }
+        loadTypes(RoadTuning.roadTypesOf(level).loaded());
         ConfigModule.Advanced defaults = new ConfigModule.Advanced();
-        for (AdvancedSetting setting : AdvancedSetting.values()) {
-            this.pendingText.put(setting, setting.format(setting.get(defaults)));
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            this.pendingGlobalText.put(setting, setting.format(setting.get(defaults)));
         }
         boolean f3Info = this.pendingDebug.enableExtraDebugF3Info;
         this.pendingDebug = new ConfigModule.Debug();
@@ -574,29 +743,78 @@ public class RoadDebugScreen extends Screen {
         rebuildWidgets();
     }
 
-    private void loadFieldsFromConfig() {
-        loadPendingFromConfig();
-        rebuildWidgets();
+    /** Copies the selected road type, with any unapplied changes, to the clipboard as a datapack file. */
+    private void copyJson() {
+        ServerLevel level = RoadDebugClient.serverLevel();
+        SortedMap<ResourceLocation, RoadType> types = parseTypes();
+        if (level == null || types == null || this.minecraft == null) {
+            return;
+        }
+        this.minecraft.keyboardHandler.setClipboard(RoadTypeExport.toJson(types.get(this.selected.typeId), level.registryAccess()));
+        showLocalStatus(Component.translatable("yungsroads.screen.copied", this.selected.typeId.toString()));
     }
 
-    private void loadPendingFromConfig() {
-        for (AdvancedSetting setting : AdvancedSetting.values()) {
-            this.pendingText.put(setting, setting.format(setting.get(YungsRoadsCommon.CONFIG.advanced)));
+    private void loadPendingFromLevel(ServerLevel level) {
+        loadTypes(RoadTuning.roadTypesOf(level).current());
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            this.pendingGlobalText.put(setting, setting.format(setting.get(YungsRoadsCommon.CONFIG.advanced)));
         }
         this.pendingDebug = YungsRoadsCommon.CONFIG.debug.copy();
     }
 
+    /** Loads the fields of every road type variant from the given types, keeping the selected variant if it exists. */
+    private void loadTypes(Map<ResourceLocation, RoadType> types) {
+        this.baseTypes = new TreeMap<>();
+        types.forEach((id, type) -> this.baseTypes.put(id, type.copy()));
+        this.pendingTypeText.clear();
+        this.baseTypes.forEach((id, type) -> {
+            for (int variant = 0; variant < type.variants().size(); variant++) {
+                RoadSettings settings = type.variants().get(variant).settings();
+                Map<RoadSetting, String> text = new EnumMap<>(RoadSetting.class);
+                for (RoadSetting setting : RoadSetting.values()) {
+                    text.put(setting, setting.format(setting.get(settings)));
+                }
+                this.pendingTypeText.put(new VariantKey(id, variant), text);
+            }
+        });
+        VariantKey preferred = this.selected != null ? this.selected : lastSelected;
+        this.selected = this.pendingTypeText.containsKey(preferred)
+                ? preferred
+                : this.pendingTypeText.keySet().stream().findFirst().orElse(null);
+    }
+
+    private String pendingText(ITunableSetting setting) {
+        return setting instanceof RoadSetting roadSetting
+                ? this.pendingTypeText.get(this.selected).get(roadSetting)
+                : this.pendingGlobalText.get((GlobalSetting) setting);
+    }
+
+    private void setPendingText(ITunableSetting setting, String text) {
+        if (setting instanceof RoadSetting roadSetting) {
+            this.pendingTypeText.get(this.selected).put(roadSetting, text);
+        } else {
+            this.pendingGlobalText.put((GlobalSetting) setting, text);
+        }
+    }
+
+    /** The name of a road type variant, as shown in the picker and on the map. */
+    private Component variantName(VariantKey key) {
+        RoadType type = this.baseTypes.get(key.typeId);
+        return RoadTypeNames.name(key.typeId, key.variant, type == null ? 1 : type.variants().size());
+    }
+
     /**
-     * Parses the settings entered on the settings tabs.
+     * Parses the global settings entered on the global tab.
      *
-     * @return The settings, or null if any value is invalid.
+     * @return The settings, or null if any value is invalid, which is reported in the status.
      */
     @Nullable
-    private ConfigModule.Advanced parseSettings() {
+    private ConfigModule.Advanced parseGlobal() {
         ConfigModule.Advanced advanced = new ConfigModule.Advanced();
-        for (AdvancedSetting setting : AdvancedSetting.values()) {
-            Double value = parse(setting, this.pendingText.get(setting));
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            Double value = parse(setting, this.pendingGlobalText.get(setting));
             if (value == null) {
+                reportInvalid(Component.translatable(setting.nameKey()));
                 return null;
             }
             setting.set(advanced, value);
@@ -604,14 +822,71 @@ public class RoadDebugScreen extends Screen {
         return advanced;
     }
 
-    /** The entered settings if they're all valid, otherwise the applied ones. Used to preview terrain costs. */
-    private ConfigModule.Advanced previewSettings() {
-        ConfigModule.Advanced parsed = parseSettings();
-        return parsed != null ? parsed : YungsRoadsCommon.CONFIG.advanced;
+    /**
+     * Parses the settings entered for every road type variant, applied to copies of the road types.
+     *
+     * @return The road types, or null if any value is invalid, which is reported in the status.
+     */
+    @Nullable
+    private SortedMap<ResourceLocation, RoadType> parseTypes() {
+        SortedMap<ResourceLocation, RoadType> types = new TreeMap<>();
+        this.baseTypes.forEach((id, type) -> types.put(id, type.copy()));
+        for (Map.Entry<VariantKey, Map<RoadSetting, String>> entry : this.pendingTypeText.entrySet()) {
+            VariantKey key = entry.getKey();
+            RoadSettings settings = types.get(key.typeId).variants().get(key.variant).settings();
+            for (RoadSetting setting : RoadSetting.values()) {
+                Double value = parse(setting, entry.getValue().get(setting));
+                if (value == null) {
+                    reportInvalid(Component.empty().append(variantName(key)).append(": ").append(Component.translatable(setting.nameKey())));
+                    return null;
+                }
+                setting.set(settings, value);
+            }
+        }
+        return types;
+    }
+
+    private void reportInvalid(Component setting) {
+        showLocalStatus(Component.translatable("yungsroads.screen.invalid", setting).withStyle(style -> style.withColor(INVALID_TEXT_COLOR)));
+    }
+
+    /**
+     * The selected variant's settings as entered, or as applied if any entered value is invalid. Used to preview
+     * terrain costs and to fill in the formulas.
+     */
+    private RoadSettings previewSettings() {
+        RoadType type = this.baseTypes.get(this.selected.typeId);
+        RoadSettings settings = type.variants().get(this.selected.variant).settings().copy();
+        Map<RoadSetting, String> text = this.pendingTypeText.get(this.selected);
+        for (RoadSetting setting : RoadSetting.values()) {
+            Double value = parse(setting, text.get(setting));
+            if (value == null) {
+                return type.variants().get(this.selected.variant).settings();
+            }
+            setting.set(settings, value);
+        }
+        return settings;
+    }
+
+    /** The global settings as entered, or as applied if any entered value is invalid. */
+    private ConfigModule.Advanced previewGlobal() {
+        ConfigModule.Advanced advanced = new ConfigModule.Advanced();
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            Double value = parse(setting, this.pendingGlobalText.get(setting));
+            if (value == null) {
+                return YungsRoadsCommon.CONFIG.advanced;
+            }
+            setting.set(advanced, value);
+        }
+        return advanced;
+    }
+
+    private RoadMapWidget.Preview mapPreview() {
+        return new RoadMapWidget.Preview(variantName(this.selected), previewSettings());
     }
 
     @Nullable
-    private static Double parse(AdvancedSetting setting, String text) {
+    private static Double parse(ITunableSetting setting, String text) {
         try {
             double value = Double.parseDouble(text.trim());
             return setting.isValid(value) ? value : null;
@@ -625,11 +900,11 @@ public class RoadDebugScreen extends Screen {
      * setting's text box, which in turn records it as pending.
      */
     private static class SettingSlider extends AbstractSliderButton {
-        private final AdvancedSetting setting;
+        private final ITunableSetting setting;
         private final EditBox box;
 
-        SettingSlider(int x, int y, int width, int height, AdvancedSetting setting, EditBox box) {
-            super(x, y, width, height, Component.literal(setting.displayName), 0);
+        SettingSlider(int x, int y, int width, int height, ITunableSetting setting, Component name, EditBox box) {
+            super(x, y, width, height, name, 0);
             this.setting = setting;
             this.box = box;
         }
@@ -637,15 +912,15 @@ public class RoadDebugScreen extends Screen {
         /** Moves the slider to the given value, unless its position already rounds to that value. */
         void show(double value) {
             if (sliderValue() != value) {
-                double t = (value - this.setting.min) / (this.setting.max - this.setting.min);
-                this.value = Math.pow(Math.max(0, Math.min(1, t)), 1 / this.setting.sliderExponent);
+                double t = (value - this.setting.min()) / (this.setting.max() - this.setting.min());
+                this.value = Math.pow(Math.max(0, Math.min(1, t)), 1 / this.setting.sliderExponent());
             }
         }
 
         /** The value at the slider's position, rounded so it's easy to read and type. */
         private double sliderValue() {
-            double raw = this.setting.min + (this.setting.max - this.setting.min) * Math.pow(this.value, this.setting.sliderExponent);
-            double rounded = this.setting.isInteger || raw == 0 ? Math.rint(raw) : new BigDecimal(raw).round(new MathContext(2)).doubleValue();
+            double raw = this.setting.min() + (this.setting.max() - this.setting.min()) * Math.pow(this.value, this.setting.sliderExponent());
+            double rounded = this.setting.isInteger() || raw == 0 ? Math.rint(raw) : new BigDecimal(raw).round(new MathContext(2)).doubleValue();
             return this.setting.clamp(rounded);
         }
 

@@ -1,7 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.util.BlockLines;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
@@ -48,7 +48,7 @@ final class RoadProfile {
      *
      * @param road A road whose center positions are set, in order. Their y is ignored.
      */
-    static void apply(Road road, TerrainCache terrain, ConfigModule.Advanced settings) {
+    static void apply(Road road, TerrainCache terrain, RoadSettings settings) {
         double[] ground = sampleGround(road.positions, terrain);
         List<Road.Span> dips = findDips(ground, settings.maxFillDepth, settings.maxLandBridgeLength);
         LandBridgedRoad bridged = bridgeDips(road.positions, ground, dips, settings);
@@ -75,7 +75,7 @@ final class RoadProfile {
      * to cliff top instead of leaving the road to drop down the face.
      */
     private static LandBridgedRoad bridgeDips(List<BlockPos> positions, double[] ground, List<Road.Span> dips,
-                                              ConfigModule.Advanced settings) {
+                                              RoadSettings settings) {
         LandBridgedRoad bridged = new LandBridgedRoad(positions.size(), dips.size());
         int next = 0;
         for (int d = 0; d < dips.size(); d++) {

@@ -72,33 +72,12 @@ public class ConfigModuleNeoForge {
         YungsRoadsCommon.CONFIG.general.structuresString = YRConfigNeoForge.general.structures.get();
 
         YungsRoadsCommon.CONFIG.advanced.nodeStepDistance = YRConfigNeoForge.advanced.nodeStepDistance.get();
-        YungsRoadsCommon.CONFIG.advanced.jitterAmount = YRConfigNeoForge.advanced.jitterAmount.get();
         YungsRoadsCommon.CONFIG.advanced.heuristicWeight = YRConfigNeoForge.advanced.heuristicWeight.get();
-        YungsRoadsCommon.CONFIG.advanced.slopeWeight = YRConfigNeoForge.advanced.slopeWeight.get();
-        YungsRoadsCommon.CONFIG.advanced.freeGrade = YRConfigNeoForge.advanced.freeGrade.get();
-        YungsRoadsCommon.CONFIG.advanced.straightenRoutes = YRConfigNeoForge.advanced.straightenRoutes.get();
-        YungsRoadsCommon.CONFIG.advanced.maxGrade = YRConfigNeoForge.advanced.maxGrade.get();
-        YungsRoadsCommon.CONFIG.advanced.waterWeight = YRConfigNeoForge.advanced.waterWeight.get();
-        YungsRoadsCommon.CONFIG.advanced.maxBridgeLength = YRConfigNeoForge.advanced.maxBridgeLength.get();
-        YungsRoadsCommon.CONFIG.advanced.smoothingRadius = YRConfigNeoForge.advanced.smoothingRadius.get();
-        YungsRoadsCommon.CONFIG.advanced.maxCutDepth = YRConfigNeoForge.advanced.maxCutDepth.get();
-        YungsRoadsCommon.CONFIG.advanced.maxFillDepth = YRConfigNeoForge.advanced.maxFillDepth.get();
-        YungsRoadsCommon.CONFIG.advanced.maxLandBridgeLength = YRConfigNeoForge.advanced.maxLandBridgeLength.get();
-        YungsRoadsCommon.CONFIG.advanced.landBridgeEdgeRoughness = YRConfigNeoForge.advanced.landBridgeEdgeRoughness.get();
-        YungsRoadsCommon.CONFIG.advanced.landBridgeDecay = YRConfigNeoForge.advanced.landBridgeDecay.get();
-        YungsRoadsCommon.CONFIG.advanced.landBridgeSag = YRConfigNeoForge.advanced.landBridgeSag.get();
-        YungsRoadsCommon.CONFIG.advanced.landBridgeRailingDrop = YRConfigNeoForge.advanced.landBridgeRailingDrop.get();
-        YungsRoadsCommon.CONFIG.advanced.landBridgeRailingChance = YRConfigNeoForge.advanced.landBridgeRailingChance.get();
     }
 
     private static void bakeDebugConfig() {
         YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
         YungsRoadsCommon.CONFIG.debug.placeRoads = YRConfigNeoForge.debug.placeRoads.get();
-        YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers = YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.get();
-        YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers = YRConfigNeoForge.debug.placeJitteredPosDebugMarkers.get();
-        YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers = YRConfigNeoForge.debug.placeRoadEndpointDebugMarkers.get();
-        YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine = YRConfigNeoForge.debug.placeStraightDebugLine.get();
-        YungsRoadsCommon.CONFIG.debug.placeDebugPaths = YRConfigNeoForge.debug.placeDebugPaths.get();
     }
 
     /**
@@ -107,32 +86,11 @@ public class ConfigModuleNeoForge {
     public static void saveRoadSettings() {
         ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
         YRConfigNeoForge.advanced.nodeStepDistance.set(advanced.nodeStepDistance);
-        YRConfigNeoForge.advanced.jitterAmount.set(advanced.jitterAmount);
         YRConfigNeoForge.advanced.heuristicWeight.set(advanced.heuristicWeight);
-        YRConfigNeoForge.advanced.slopeWeight.set(advanced.slopeWeight);
-        YRConfigNeoForge.advanced.freeGrade.set(advanced.freeGrade);
-        YRConfigNeoForge.advanced.straightenRoutes.set(advanced.straightenRoutes);
-        YRConfigNeoForge.advanced.maxGrade.set(advanced.maxGrade);
-        YRConfigNeoForge.advanced.waterWeight.set(advanced.waterWeight);
-        YRConfigNeoForge.advanced.maxBridgeLength.set(advanced.maxBridgeLength);
-        YRConfigNeoForge.advanced.smoothingRadius.set(advanced.smoothingRadius);
-        YRConfigNeoForge.advanced.maxCutDepth.set(advanced.maxCutDepth);
-        YRConfigNeoForge.advanced.maxFillDepth.set(advanced.maxFillDepth);
-        YRConfigNeoForge.advanced.maxLandBridgeLength.set(advanced.maxLandBridgeLength);
-        YRConfigNeoForge.advanced.landBridgeEdgeRoughness.set(advanced.landBridgeEdgeRoughness);
-        YRConfigNeoForge.advanced.landBridgeDecay.set(advanced.landBridgeDecay);
-        YRConfigNeoForge.advanced.landBridgeSag.set(advanced.landBridgeSag);
-        YRConfigNeoForge.advanced.landBridgeRailingDrop.set(advanced.landBridgeRailingDrop);
-        YRConfigNeoForge.advanced.landBridgeRailingChance.set(advanced.landBridgeRailingChance);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         YRConfigNeoForge.debug.enableExtraDebugF3Info.set(debug.enableExtraDebugF3Info);
         YRConfigNeoForge.debug.placeRoads.set(debug.placeRoads);
-        YRConfigNeoForge.debug.placeUnjitteredPosDebugMarkers.set(debug.placeUnjitteredPosDebugMarkers);
-        YRConfigNeoForge.debug.placeJitteredPosDebugMarkers.set(debug.placeJitteredPosDebugMarkers);
-        YRConfigNeoForge.debug.placeRoadEndpointDebugMarkers.set(debug.placeRoadEndpointDebugMarkers);
-        YRConfigNeoForge.debug.placeStraightDebugLine.set(debug.placeStraightDebugLine);
-        YRConfigNeoForge.debug.placeDebugPaths.set(debug.placeDebugPaths);
 
         YRConfigNeoForge.SPEC.save();
     }

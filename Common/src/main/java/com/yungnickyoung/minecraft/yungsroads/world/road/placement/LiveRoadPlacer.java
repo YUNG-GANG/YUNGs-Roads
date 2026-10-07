@@ -1,7 +1,5 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.placement;
 
-import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -15,9 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 
-import javax.annotation.Nullable;
 import java.nio.file.Path;
 import java.util.Comparator;
 
@@ -40,7 +36,6 @@ public class LiveRoadPlacer {
     private final RoadBlockLog blockLog;
     /** Chunks waiting to be refreshed, in the order they'll be refreshed. Each chunk is queued at most once. */
     private final LongLinkedOpenHashSet pendingChunks = new LongLinkedOpenHashSet();
-    private RoadFeatureConfiguration roadConfig;
 
     public LiveRoadPlacer(ServerLevel level, StructureRegionCache structureRegionCache, Path saveDirectory) {
         this.level = level;
@@ -116,10 +111,6 @@ public class LiveRoadPlacer {
         if (!isLoaded(chunkKey) || !this.blockLog.isStale(chunkKey)) {
             return;
         }
-        RoadFeatureConfiguration config = getRoadConfig();
-        if (config == null) {
-            return;
-        }
 
         int epoch = this.blockLog.epoch();
         RoadBlockLog.Entry previous = this.blockLog.get(chunkKey);
@@ -129,7 +120,7 @@ public class LiveRoadPlacer {
 
         RoadBlockWriter writer = RoadBlockWriter.forLiveWorld(this.level);
         RandomSource random = RandomSource.create(this.level.getSeed() ^ chunkKey);
-        RoadFeature.placeRoadsInChunk(writer, random, new ChunkPos(chunkKey), this.structureRegionCache, config);
+        RoadFeature.placeRoadsInChunk(writer, random, new ChunkPos(chunkKey), this.structureRegionCache);
         this.blockLog.record(chunkKey, epoch, writer);
     }
 
@@ -145,25 +136,5 @@ public class LiveRoadPlacer {
             closest = Math.min(closest, dx * dx + dz * dz);
         }
         return closest;
-    }
-
-    /**
-     * The road feature's configuration, which holds the road and bridge block types.
-     * Read from the registry, since there's no feature context outside of worldgen.
-     */
-    @Nullable
-    private RoadFeatureConfiguration getRoadConfig() {
-        if (this.roadConfig == null) {
-            this.roadConfig = this.level.registryAccess().registryOrThrow(Registries.CONFIGURED_FEATURE)
-                    .getOptional(YungsRoadsCommon.id("road"))
-                    .map(ConfiguredFeature::config)
-                    .filter(RoadFeatureConfiguration.class::isInstance)
-                    .map(RoadFeatureConfiguration.class::cast)
-                    .orElse(null);
-            if (this.roadConfig == null) {
-                YungsRoadsCommon.LOGGER.error("Unable to find the road feature configuration. Roads can't be refreshed.");
-            }
-        }
-        return this.roadConfig;
     }
 }

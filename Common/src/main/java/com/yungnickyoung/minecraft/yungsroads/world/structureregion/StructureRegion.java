@@ -1,7 +1,10 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
+import com.mojang.serialization.Codec;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadCenter;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadGenerator;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -21,7 +24,7 @@ public class StructureRegion {
      * Version of the saved region format. Bump this whenever the stored data or the road generation algorithm changes,
      * so that existing region files are regenerated instead of loaded.
      */
-    public static final int FORMAT_VERSION = 11;
+    public static final int FORMAT_VERSION = 12;
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.
@@ -38,7 +41,7 @@ public class StructureRegion {
     private final List<Road> roads;
 
     /** Road center positions, keyed by every chunk within {@link #INDEX_PADDING} blocks of them. */
-    private final Long2ObjectMap<List<BlockPos>> roadPositionsByChunk = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectMap<List<RoadCenter>> roadCentersByChunk = new Long2ObjectOpenHashMap<>();
 
     /** The road center positions that are part of a land bridge, as {@link BlockPos#asLong}. */
     private final LongSet landBridgePositions = new LongOpenHashSet();
@@ -58,11 +61,11 @@ public class StructureRegion {
     }
 
     /**
-     * Loads a region from NBT.
+     * Loads a region from NBT. Its roads get the settings of their road types from the given road types.
      *
      * @throws IllegalStateException if the data is from a different format version or can't be decoded.
      */
-    public static StructureRegion fromNbt(long regionKey, CompoundTag compoundTag) {
+    public static StructureRegion fromNbt(long regionKey, CompoundTag compoundTag, RoadTypes roadTypes) {
         int version = compoundTag.getInt(VERSION_KEY);
         if (version != FORMAT_VERSION) {
             throw new IllegalStateException("Unsupported region format version " + version + ", expected " + FORMAT_VERSION);
@@ -76,9 +79,10 @@ public class StructureRegion {
 
         // Roads
         List<Road> roads = new ArrayList<>();
+        Codec<Road> roadCodec = Road.codec(roadTypes);
         CompoundTag roadsNbt = compoundTag.getCompound(ROADS_KEY);
         for (String key : roadsNbt.getAllKeys()) {
-            roads.add(Road.CODEC.parse(NbtOps.INSTANCE, roadsNbt.get(key)).getOrThrow(IllegalStateException::new));
+            roads.add(roadCodec.parse(NbtOps.INSTANCE, roadsNbt.get(key)).getOrThrow(IllegalStateException::new));
         }
 
         return new StructureRegion(regionKey, endpointChunks, roads);
@@ -93,8 +97,9 @@ public class StructureRegion {
 
         // Roads. Keyed by both endpoints, since a structure may start more than one road.
         CompoundTag roadsNbt = new CompoundTag();
+        Codec<Road> roadCodec = Road.codec(null);
         for (Road road : this.roads) {
-            Road.CODEC.encodeStart(NbtOps.INSTANCE, road).resultOrPartial(error ->
+            roadCodec.encodeStart(NbtOps.INSTANCE, road).resultOrPartial(error ->
                     YungsRoadsCommon.LOGGER.error("Unable to save road {}: {}", road, error)
             ).ifPresent(roadNbt -> roadsNbt.put(road.getStartPos().toShortString() + " - " + road.getEndPos().toShortString(), roadNbt));
         }
@@ -110,9 +115,10 @@ public class StructureRegion {
                 int maxChunkX = (roadPos.getX() + INDEX_PADDING) >> 4;
                 int minChunkZ = (roadPos.getZ() - INDEX_PADDING) >> 4;
                 int maxChunkZ = (roadPos.getZ() + INDEX_PADDING) >> 4;
+                RoadCenter center = new RoadCenter(roadPos, road);
                 for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
                     for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                        this.roadPositionsByChunk.computeIfAbsent(ChunkPos.asLong(chunkX, chunkZ), k -> new ArrayList<>()).add(roadPos);
+                        this.roadCentersByChunk.computeIfAbsent(ChunkPos.asLong(chunkX, chunkZ), k -> new ArrayList<>()).add(center);
                     }
                 }
             }
@@ -146,8 +152,8 @@ public class StructureRegion {
     /**
      * Returns the center positions of this region's roads that are within {@link #INDEX_PADDING} blocks of the chunk.
      */
-    public List<BlockPos> getRoadPositionsNearChunk(long chunkKey) {
-        return this.roadPositionsByChunk.getOrDefault(chunkKey, List.of());
+    public List<RoadCenter> getRoadCentersNearChunk(long chunkKey) {
+        return this.roadCentersByChunk.getOrDefault(chunkKey, List.of());
     }
 
     public String getFileName() {

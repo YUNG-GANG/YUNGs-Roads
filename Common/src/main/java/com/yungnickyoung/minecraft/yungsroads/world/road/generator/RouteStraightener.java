@@ -1,6 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.core.BlockPos;
@@ -33,7 +33,7 @@ final class RouteStraightener {
      * is the furthest one a shortcut reaches. Bridges are kept as they are.
      */
     static LatticePathfinder.Path straighten(LatticePathfinder.Path path, TerrainCache terrain,
-                                             ConfigModule.Advanced settings) {
+                                             RoadSettings settings) {
         List<Road.DebugNode> nodes = path.nodes();
         BitSet bridgeSegments = path.bridgeSegments();
         List<Road.DebugNode> kept = new ArrayList<>(nodes.size());
@@ -70,7 +70,7 @@ final class RouteStraightener {
      * around them, like the moves routing measures.
      */
     private static boolean isShortcut(Road.DebugNode from, Road.DebugNode to, TerrainCache terrain,
-                                      ConfigModule.Advanced settings) {
+                                      RoadSettings settings) {
         BlockPos start = from.rawPos;
         BlockPos end = to.rawPos;
         double dx = end.getX() - start.getX();

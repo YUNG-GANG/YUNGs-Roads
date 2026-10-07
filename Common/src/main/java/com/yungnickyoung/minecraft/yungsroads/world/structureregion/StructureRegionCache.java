@@ -1,7 +1,9 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadCenter;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
@@ -96,14 +98,14 @@ public class StructureRegionCache {
 
     /**
      * Returns the road center positions from all regions that are within {@link StructureRegion#INDEX_PADDING}
-     * blocks of the chunk.
+     * blocks of the chunk, in a deterministic order.
      */
-    public List<BlockPos> getRoadPositionsNearChunk(ChunkPos chunkPos) {
-        List<BlockPos> positions = new ArrayList<>();
+    public List<RoadCenter> getRoadCentersNearChunk(ChunkPos chunkPos) {
+        List<RoadCenter> centers = new ArrayList<>();
         for (StructureRegion region : getRegionsNearChunk(chunkPos)) {
-            positions.addAll(region.getRoadPositionsNearChunk(chunkPos.toLong()));
+            centers.addAll(region.getRoadCentersNearChunk(chunkPos.toLong()));
         }
-        return positions;
+        return centers;
     }
 
     /**
@@ -111,9 +113,9 @@ public class StructureRegionCache {
      * The range must not exceed {@link StructureRegion#INDEX_PADDING}.
      */
     public boolean hasRoadNear(BlockPos pos, int range) {
-        for (BlockPos roadPos : getRoadPositionsNearChunk(new ChunkPos(pos))) {
-            int dx = roadPos.getX() - pos.getX();
-            int dz = roadPos.getZ() - pos.getZ();
+        for (RoadCenter center : getRoadCentersNearChunk(new ChunkPos(pos))) {
+            int dx = center.pos().getX() - pos.getX();
+            int dz = center.pos().getZ() - pos.getZ();
             if (dx * dx + dz * dz <= range * range) {
                 return true;
             }
@@ -213,13 +215,13 @@ public class StructureRegionCache {
     /**
      * The furthest a road's indexed positions can extend outside the region that owns it, in blocks.
      * Roads start inside their owning region, and stay within the search margin of their endpoints' bounding box,
-     * plus jitter and index padding.
+     * plus jitter and index padding. Each road type has its own jitter, so the most any type could have is assumed.
      */
     private static int maxRoadReach() {
         int step = YungsRoadsCommon.CONFIG.advanced.nodeStepDistance;
         return StructureRegionGenerator.MAX_ROAD_LENGTH
                 + LatticePathfinder.maxSearchMargin(StructureRegionGenerator.MAX_ROAD_LENGTH, step)
-                + (int) Math.ceil(YungsRoadsCommon.CONFIG.advanced.jitterAmount)
+                + (int) Math.ceil(RoadSetting.JITTER_AMOUNT.max())
                 + StructureRegion.INDEX_PADDING;
     }
 
@@ -231,7 +233,7 @@ public class StructureRegionCache {
             try {
                 CompoundTag structureRegionNbt = NbtIo.read(file);
                 if (structureRegionNbt != null) {
-                    return StructureRegion.fromNbt(regionKey, structureRegionNbt);
+                    return StructureRegion.fromNbt(regionKey, structureRegionNbt, this.structureRegionGenerator.getRoadTypes());
                 }
             } catch (IOException | RuntimeException e) {
                 YungsRoadsCommon.LOGGER.warn("Unable to load roads file {}. Regenerating structure region from scratch. Reason: {}", file, e.toString());

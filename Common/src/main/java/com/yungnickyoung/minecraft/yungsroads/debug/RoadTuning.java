@@ -3,6 +3,8 @@ package com.yungnickyoung.minecraft.yungsroads.debug;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.services.Services;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
@@ -12,14 +14,21 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongList;
 import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Applies road settings to a running world for tuning: regenerates the roads near the player with the new settings,
@@ -36,15 +45,39 @@ public final class RoadTuning {
      */
     public static final int REGENERATE_RADIUS = 1024;
 
-    /** The road settings that can be tuned. */
-    public record Settings(ConfigModule.Advanced advanced, ConfigModule.Debug debug) {
-        public static Settings current() {
-            return new Settings(YungsRoadsCommon.CONFIG.advanced.copy(), YungsRoadsCommon.CONFIG.debug.copy());
+    /**
+     * The road settings that can be tuned: the global settings in the config file, which apply to every road type, and
+     * each road type's settings.
+     */
+    public record Settings(ConfigModule.Advanced advanced, SortedMap<ResourceLocation, RoadType> roadTypes, ConfigModule.Debug debug) {
+        /** A copy of the settings in use in the level, which can be changed without affecting it. */
+        public static Settings current(ServerLevel level) {
+            return new Settings(YungsRoadsCommon.CONFIG.advanced.copy(), copy(roadTypesOf(level).current()), YungsRoadsCommon.CONFIG.debug.copy());
         }
 
-        void applyToConfig() {
+        void applyTo(ServerLevel level) {
             YungsRoadsCommon.CONFIG.advanced = this.advanced.copy();
+            roadTypesOf(level).set(this.roadTypes);
             YungsRoadsCommon.CONFIG.debug = this.debug.copy();
+        }
+
+        /** Whether roads would be generated the same with the other settings, which may differ in whether roads are placed. */
+        boolean generatesSameAs(Settings other) {
+            if (!this.advanced.sameAs(other.advanced) || !this.roadTypes.keySet().equals(other.roadTypes.keySet())) {
+                return false;
+            }
+            for (Map.Entry<ResourceLocation, RoadType> entry : this.roadTypes.entrySet()) {
+                if (!entry.getValue().sameAs(other.roadTypes.get(entry.getKey()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static SortedMap<ResourceLocation, RoadType> copy(Map<ResourceLocation, RoadType> roadTypes) {
+            SortedMap<ResourceLocation, RoadType> copy = new TreeMap<>();
+            roadTypes.forEach((id, type) -> copy.put(id, type.copy()));
+            return copy;
         }
     }
 
@@ -59,7 +92,7 @@ public final class RoadTuning {
     @Nullable
     private static volatile Snapshot previous;
     private static volatile boolean busy = false;
-    private static volatile String status = "";
+    private static volatile Component status = Component.empty();
 
     private RoadTuning() {
     }
@@ -70,7 +103,7 @@ public final class RoadTuning {
     }
 
     /** A short description of the most recent change, or of the one in progress. */
-    public static String status() {
+    public static Component status() {
         return status;
     }
 
@@ -91,17 +124,22 @@ public final class RoadTuning {
         return snapshot.regions.values().stream().filter(Objects::nonNull).toList();
     }
 
+    /** The road types used in the level. */
+    public static RoadTypes roadTypesOf(ServerLevel level) {
+        return cacheOf(level).getStructureRegionGenerator().getRoadTypes();
+    }
+
     /**
-     * Applies the settings, regenerating the roads near the given position unless only debug options changed.
+     * Applies the settings, regenerating the roads near the given position unless only whether roads are placed changed.
      * Regeneration runs on worker threads, and the results are swapped in on the server thread when all are done.
      */
     public static void apply(ServerLevel level, Settings settings, BlockPos center) {
         if (busy) {
             return;
         }
-        Settings oldSettings = Settings.current();
-        boolean onlyDebugChanged = settings.advanced.sameAs(oldSettings.advanced) && !sameDebug(settings.debug, oldSettings.debug);
-        settings.applyToConfig();
+        Settings oldSettings = Settings.current(level);
+        boolean onlyDebugChanged = settings.generatesSameAs(oldSettings) && !sameDebug(settings.debug, oldSettings.debug);
+        settings.applyTo(level);
 
         StructureRegionCache cache = cacheOf(level);
         LongList regionKeys = StructureRegionCache.regionKeysNearArea(
@@ -113,12 +151,12 @@ public final class RoadTuning {
         if (onlyDebugChanged) {
             previous = new Snapshot(level, oldSettings, oldRegions);
             refreshPlacedRoads(level);
-            status = "Applied debug options";
+            status = Component.translatable("yungsroads.status.replaced");
             return;
         }
 
         busy = true;
-        status = "Regenerating " + regionKeys.size() + " regions...";
+        status = Component.translatable("yungsroads.status.regenerating", regionKeys.size());
         long startTime = System.nanoTime();
         List<CompletableFuture<StructureRegion>> futures = new ArrayList<>();
         for (long regionKey : regionKeys) {
@@ -131,8 +169,8 @@ public final class RoadTuning {
             busy = false;
             if (error != null) {
                 // Leave the world as it was
-                oldSettings.applyToConfig();
-                status = "Failed: " + error.getMessage();
+                oldSettings.applyTo(level);
+                status = Component.translatable("yungsroads.status.failed", String.valueOf(error.getMessage()));
                 YungsRoadsCommon.LOGGER.error("Unable to regenerate roads", error);
                 return;
             }
@@ -145,8 +183,8 @@ public final class RoadTuning {
             }
             previous = new Snapshot(level, oldSettings, oldRegions);
             refreshPlacedRoads(level);
-            status = String.format("Regenerated %d regions (%d roads) in %.1f s",
-                    regionKeys.size(), roadCount, (System.nanoTime() - startTime) / 1e9);
+            status = Component.translatable("yungsroads.status.regenerated",
+                    regionKeys.size(), roadCount, String.format("%.1f", (System.nanoTime() - startTime) / 1e9));
         }));
     }
 
@@ -162,9 +200,9 @@ public final class RoadTuning {
         StructureRegionCache cache = cacheOf(level);
         Long2ObjectMap<StructureRegion> currentRegions = new Long2ObjectOpenHashMap<>();
         snapshot.regions.keySet().forEach(regionKey -> currentRegions.put(regionKey, cache.getRegionIfLoaded(regionKey)));
-        Settings currentSettings = Settings.current();
+        Settings currentSettings = Settings.current(level);
 
-        snapshot.settings.applyToConfig();
+        snapshot.settings.applyTo(level);
         for (Long2ObjectMap.Entry<StructureRegion> entry : snapshot.regions.long2ObjectEntrySet()) {
             if (entry.getValue() != null) {
                 cache.replaceRegion(entry.getValue());
@@ -176,13 +214,26 @@ public final class RoadTuning {
 
         previous = new Snapshot(level, currentSettings, currentRegions);
         refreshPlacedRoads(level);
-        status = "Reverted to previous settings";
+        status = Component.translatable("yungsroads.status.reverted");
     }
 
-    /** Saves the current settings to the config file. */
-    public static void saveToConfig() {
+    /**
+     * Saves the applied settings: the global settings to the config file, and the road types
+     * that differ from the ones the level loaded with to the world's tuned road type datapack.
+     * See {@link RoadTypeExport#writeWorldDatapack}.
+     */
+    public static void save(ServerLevel level) {
         Services.PLATFORM.saveRoadSettings();
-        status = "Saved settings to config";
+        try {
+            List<ResourceLocation> saved = RoadTypeExport.writeWorldDatapack(level.getServer(), roadTypesOf(level));
+            status = saved.isEmpty()
+                    ? Component.translatable("yungsroads.status.saved_no_types")
+                    : Component.translatable("yungsroads.status.saved",
+                            saved.stream().map(ResourceLocation::toString).collect(Collectors.joining(", ")), RoadTypeExport.DATAPACK_NAME);
+        } catch (IOException | RuntimeException e) {
+            YungsRoadsCommon.LOGGER.error("Unable to save road types", e);
+            status = Component.translatable("yungsroads.status.save_failed", String.valueOf(e.getMessage()));
+        }
     }
 
     private static void refreshPlacedRoads(ServerLevel level) {
@@ -198,11 +249,6 @@ public final class RoadTuning {
 
     /** Whether the options affecting placed blocks are the same. The F3 option is applied as soon as it's changed. */
     private static boolean sameDebug(ConfigModule.Debug a, ConfigModule.Debug b) {
-        return a.placeRoads == b.placeRoads
-                && a.placeDebugPaths == b.placeDebugPaths
-                && a.placeUnjitteredPosDebugMarkers == b.placeUnjitteredPosDebugMarkers
-                && a.placeJitteredPosDebugMarkers == b.placeJitteredPosDebugMarkers
-                && a.placeRoadEndpointDebugMarkers == b.placeRoadEndpointDebugMarkers
-                && a.placeStraightDebugLine == b.placeStraightDebugLine;
+        return a.placeRoads == b.placeRoads;
     }
 }

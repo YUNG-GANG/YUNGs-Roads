@@ -288,9 +288,17 @@ public class TerrainSampler {
      * Returns the biome at sea level for the given column, queried directly from the biome source.
      */
     public Holder<Biome> biomeAt(int x, int z) {
+        return biomeAt(x, seaLevel(), z);
+    }
+
+    /**
+     * Returns the biome at the given block, queried directly from the biome source. Biomes vary with height, so the
+     * biome at the surface is the one seen there.
+     */
+    public Holder<Biome> biomeAt(int x, int y, int z) {
         return this.serverLevel.getChunkSource().getGenerator().getBiomeSource().getNoiseBiome(
                 QuartPos.fromBlock(x),
-                QuartPos.fromBlock(seaLevel()),
+                QuartPos.fromBlock(y),
                 QuartPos.fromBlock(z),
                 this.serverLevel.getChunkSource().randomState().sampler());
     }

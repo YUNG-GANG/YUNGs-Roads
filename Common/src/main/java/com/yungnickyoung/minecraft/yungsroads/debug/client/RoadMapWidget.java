@@ -3,13 +3,17 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.AdvancedSetting;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
+import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
+import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -24,12 +28,14 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * A top-down map of the roads and terrain around the player. Drag to pan, scroll to zoom, and right-click to teleport.
@@ -52,17 +58,32 @@ public class RoadMapWidget extends AbstractWidget {
     private static final int ENDPOINT_COLOR = 0xFF40FF40;
     private static final int PLAYER_COLOR = 0xFFFF2020;
 
-    /** The settings used to color terrain, so pending changes can be previewed before they're applied. */
-    private final Supplier<ConfigModule.Advanced> previewSettings;
+    /**
+     * The road type whose costs color the terrain, so pending changes can be previewed before they're applied.
+     *
+     * @param typeName The road type's name, for labeling its costs.
+     */
+    public record Preview(Component typeName, RoadSettings settings) {
+    }
+
+    private final Supplier<Preview> preview;
+
+    /**
+     * The road type each road would be chosen now, with the votes that chose it, for explaining a hovered road's type.
+     * Found when a road is first hovered.
+     */
+    private final Map<Road, RoadTypes.Choice> roadTypeChoices = new WeakHashMap<>();
 
     private double centerX, centerZ;
     private double blocksPerPixel = 4;
     private boolean followPlayer = true;
     private boolean dragging = false;
+    /** Whether the hover info is hidden, such as while a widget drawn over the map is hovered. */
+    private boolean hoverInfoHidden = false;
 
-    public RoadMapWidget(int x, int y, int width, int height, Supplier<ConfigModule.Advanced> previewSettings) {
-        super(x, y, width, height, Component.literal("Road map"));
-        this.previewSettings = previewSettings;
+    public RoadMapWidget(int x, int y, int width, int height, Supplier<Preview> preview) {
+        super(x, y, width, height, Component.translatable("yungsroads.screen.title"));
+        this.preview = preview;
     }
 
     @Override
@@ -116,14 +137,14 @@ public class RoadMapWidget extends AbstractWidget {
         guiGraphics.flush();
 
         Font font = minecraft.font;
-        String scale = String.format("%.2f blocks/px", this.blocksPerPixel);
+        Component scale = Component.translatable("yungsroads.map.scale", String.format("%.2f", this.blocksPerPixel));
         if (RoadDebugClient.terrainLayer != TerrainTiles.Layer.NONE && !terrainShown) {
-            scale += " - zoom in to see terrain";
+            scale = Component.translatable("yungsroads.map.zoom_in", scale);
         }
         guiGraphics.drawString(font, scale, getX() + 4, getBottom() - 12, 0xFFFFFFFF);
         guiGraphics.disableScissor();
 
-        if (isMouseOver(mouseX, mouseY) && !this.dragging) {
+        if (isMouseOver(mouseX, mouseY) && !this.dragging && !this.hoverInfoHidden) {
             renderHoverInfo(guiGraphics, font, level, regions, mouseX, mouseY);
         }
     }
@@ -164,7 +185,7 @@ public class RoadMapWidget extends AbstractWidget {
                 Math.max(Math.abs(a[0] - centerTileX), Math.abs(a[1] - centerTileZ)),
                 Math.max(Math.abs(b[0] - centerTileX), Math.abs(b[1] - centerTileZ))));
 
-        ConfigModule.Advanced settings = this.previewSettings.get();
+        RoadSettings settings = this.preview.get().settings();
         float pixelScale = (float) (step / this.blocksPerPixel);
         for (int[] tile : visible) {
             var texture = tiles.texture(tile[0], tile[1], RoadDebugClient.terrainLayer, settings);
@@ -229,29 +250,31 @@ public class RoadMapWidget extends AbstractWidget {
         int x = Mth.floor(toWorldX(mouseX));
         int z = Mth.floor(toWorldZ(mouseY));
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal(String.format("x: %d, z: %d", x, z)));
+        lines.add(Component.translatable("yungsroads.map.coordinates", x, z));
 
         TerrainTiles tiles = RoadDebugClient.terrainTiles(level, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
         Double height = tiles.heightAt(x, z);
         Double grade = tiles.gradeAt(x, z);
         if (height != null && grade != null) {
             if (height.isNaN()) {
-                lines.add(Component.literal("Ocean (impassable)"));
+                lines.add(Component.translatable("yungsroads.map.ocean"));
             } else {
-                ConfigModule.Advanced settings = this.previewSettings.get();
-                lines.add(Component.literal(String.format("Height: %.1f%s, steepest grade: %.2f", height, tiles.isWater(height) ? " (water)" : "", grade)));
+                Preview preview = this.preview.get();
+                RoadSettings settings = preview.settings();
+                lines.add(Component.translatable(tiles.isWater(height) ? "yungsroads.map.height_water" : "yungsroads.map.height",
+                        String.format("%.1f", height), String.format("%.2f", grade)));
+                lines.add(Component.translatable("yungsroads.map.costs_for", preview.typeName()).withStyle(style -> style.withColor(0xA0A0A0)));
                 if (tiles.isWater(height)) {
-                    lines.add(Component.literal(String.format("Only crossed by straight bridges, up to %s blocks long",
-                            AdvancedSetting.MAX_BRIDGE_LENGTH.format(settings.maxBridgeLength))));
-                    lines.add(Component.literal(String.format("Flat bridge cost: run × (1 + %s) = run × %s",
-                            AdvancedSetting.WATER_WEIGHT.format(settings.waterWeight), AdvancedSetting.WATER_WEIGHT.format(1 + settings.waterWeight))));
+                    lines.add(Component.translatable("yungsroads.map.bridge_only",
+                            RoadSetting.MAX_BRIDGE_LENGTH.format(settings.maxBridgeLength)));
+                    lines.add(Component.translatable("yungsroads.map.bridge_cost",
+                            RoadSetting.WATER_WEIGHT.format(settings.waterWeight), RoadSetting.WATER_WEIGHT.format(1 + settings.waterWeight)));
                 } else if (grade > settings.maxGrade) {
-                    lines.add(Component.literal(String.format("Too steep to cross (max grade %s)",
-                            AdvancedSetting.MAX_GRADE.format(settings.maxGrade))));
+                    lines.add(Component.translatable("yungsroads.map.too_steep", RoadSetting.MAX_GRADE.format(settings.maxGrade)));
                 } else {
-                    lines.add(Component.literal(String.format("Steepest step cost: run × (1 + %s × max(0, %.2f² - %s²)) = run × %.1f",
-                            AdvancedSetting.SLOPE_WEIGHT.format(settings.slopeWeight), grade,
-                            AdvancedSetting.FREE_GRADE.format(settings.freeGrade), tiles.stepCost(grade, settings))));
+                    lines.add(Component.translatable("yungsroads.map.step_cost",
+                            RoadSetting.SLOPE_WEIGHT.format(settings.slopeWeight), String.format("%.2f", grade),
+                            RoadSetting.FREE_GRADE.format(settings.freeGrade), String.format("%.1f", tiles.stepCost(grade, settings))));
                 }
             }
         }
@@ -274,13 +297,35 @@ public class RoadMapWidget extends AbstractWidget {
             }
         }
         if (hoveredNode != null) {
-            lines.add(Component.literal(String.format("Node cost so far: %.0f, weighted distance left: %.0f, priority: %.0f",
-                    hoveredNode.g, hoveredNode.h, hoveredNode.g + hoveredNode.h)));
-            lines.add(Component.literal(String.format("Road %s to %s, %d nodes",
-                    hoveredRoad.getStartPos().toShortString(), hoveredRoad.getEndPos().toShortString(), hoveredRoad.nodes.size())));
+            lines.add(Component.translatable("yungsroads.map.node", String.format("%.0f", hoveredNode.g),
+                    String.format("%.0f", hoveredNode.h), String.format("%.0f", hoveredNode.g + hoveredNode.h)));
+            lines.add(Component.translatable("yungsroads.map.road",
+                    hoveredRoad.getStartPos().toShortString(), hoveredRoad.getEndPos().toShortString(), hoveredRoad.nodes.size()));
+            addRoadTypeLines(lines, level, hoveredRoad);
         }
-        lines.add(Component.literal("Right-click to teleport").withStyle(style -> style.withColor(0xA0A0A0)));
+        lines.add(Component.translatable("yungsroads.map.teleport").withStyle(style -> style.withColor(0xA0A0A0)));
         guiGraphics.renderComponentTooltip(font, lines, mouseX, mouseY);
+    }
+
+    /**
+     * Describes the road's type and variant, and the biome votes that choose its type, as counted with the road types
+     * in use now.
+     */
+    private void addRoadTypeLines(List<Component> lines, ServerLevel level, Road road) {
+        RoadTypes roadTypes = RoadTuning.roadTypesOf(level);
+        RoadType type = roadTypes.current().get(road.roadType);
+        int variantCount = type == null ? 1 : type.variants().size();
+        lines.add(Component.translatable("yungsroads.map.road_type", RoadTypeNames.name(road.roadType, road.variant, variantCount)));
+
+        RoadTypes.Choice choice = this.roadTypeChoices.computeIfAbsent(road, r -> {
+            StructureRegionGenerator generator = ((IStructureRegionCacheProvider) level).getStructureRegionCache().getStructureRegionGenerator();
+            TerrainCache terrain = new TerrainCache(generator.getTerrainSampler(), YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
+            return generator.chooseRoadType(r.getStartPos(), r.getEndPos(), terrain);
+        });
+        String votes = choice.votes().stream()
+                .map(vote -> RoadTypeNames.name(vote.typeId()) + " " + vote.votes())
+                .collect(Collectors.joining(", "));
+        lines.add(Component.translatable("yungsroads.map.votes", votes));
     }
 
     /** Loaded regions with roads that could be on the map. Doesn't load or generate any. */
@@ -347,6 +392,11 @@ public class RoadMapWidget extends AbstractWidget {
             this.centerZ = worldZ - (mouseY - centerScreenY()) * this.blocksPerPixel;
         }
         return true;
+    }
+
+    /** Hides the hover info, such as while a widget drawn over the map is hovered, so their tooltips don't overlap. */
+    public void setHoverInfoHidden(boolean hidden) {
+        this.hoverInfoHidden = hidden;
     }
 
     /** Centers the map on the player again, following them as they move. */

@@ -1,8 +1,8 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
@@ -82,11 +82,11 @@ public final class LatticePathfinder {
     /**
      * Finds the cheapest route between two positions, then straightens it with {@link RouteStraightener} if enabled.
      *
+     * @param settings The road type's settings, which set the costs and limits of moves and bridges.
      * @return The route, whose nodes run from start to end and include the exact start and end positions,
      * or empty if no route was found.
      */
-    static Optional<Path> findPath(BlockPos startPos, BlockPos endPos, TerrainCache terrain) {
-        ConfigModule.Advanced settings = YungsRoadsCommon.CONFIG.advanced;
+    static Optional<Path> findPath(BlockPos startPos, BlockPos endPos, TerrainCache terrain, RoadSettings settings) {
         int step = terrain.step();
         int seaLevel = terrain.seaLevel();
 
@@ -98,7 +98,7 @@ public final class LatticePathfinder {
 
         // Confine the search to the endpoints' bounding box plus a margin
         int margin = Math.ceilDiv(maxSearchMargin(Math.sqrt(startPos.distSqr(endPos)), step), step);
-        Search search = new Search(step, settings.heuristicWeight, goalX, goalZ,
+        Search search = new Search(step, YungsRoadsCommon.CONFIG.advanced.heuristicWeight, goalX, goalZ,
                 Math.min(startX, goalX) - margin, Math.max(startX, goalX) + margin,
                 Math.min(startZ, goalZ) - margin, Math.max(startZ, goalZ) + margin);
 
@@ -205,7 +205,7 @@ public final class LatticePathfinder {
      * @param move The index of the move in {@link #MOVES} whose heading the bridge follows.
      */
     private static void tryBridge(Search search, TerrainCache terrain, FrontierEntry from, long fromKey, double fromHeight,
-                                  int move, ConfigModule.Advanced settings) {
+                                  int move, RoadSettings settings) {
         int moveX = MOVES[move][0];
         int moveZ = MOVES[move][1];
         double moveLength = MOVE_LENGTHS[move] * search.step;
@@ -297,7 +297,7 @@ public final class LatticePathfinder {
      * square of the grade, less that of the free grade, so it starts at zero there and is nearly unchanged on steep
      * slopes, where it makes roads wind up hillsides in switchbacks.
      */
-    public static double slopeCostFactor(double grade, ConfigModule.Advanced settings) {
+    public static double slopeCostFactor(double grade, RoadSettings settings) {
         double freeGrade = settings.freeGrade;
         return 1 + settings.slopeWeight * Math.max(0, grade * grade - freeGrade * freeGrade);
     }

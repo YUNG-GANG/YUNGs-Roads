@@ -2,14 +2,15 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.util.GridKeys;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.FastColor;
@@ -52,17 +53,17 @@ public final class TerrainTiles {
     private static final int WATER_COLOR = 0xFF3C6EC8;
 
     public enum Layer {
-        NONE("Off"),
-        HEIGHT("Height"),
+        NONE("none"),
+        HEIGHT("height"),
         /** Grade relative to the max grade. */
-        SLOPE("Slope"),
+        SLOPE("slope"),
         /** The cost multiplier routing applies to each step. */
-        COST("Cost");
+        COST("cost");
 
-        public final String displayName;
+        public final Component displayName;
 
-        Layer(String displayName) {
-            this.displayName = displayName;
+        Layer(String id) {
+            this.displayName = Component.translatable("yungsroads.terrain." + id);
         }
     }
 
@@ -102,7 +103,7 @@ public final class TerrainTiles {
      * Requests sampling if needed and there's capacity.
      */
     @Nullable
-    ResourceLocation texture(int tileX, int tileZ, Layer layer, ConfigModule.Advanced settings) {
+    ResourceLocation texture(int tileX, int tileZ, Layer layer, RoadSettings settings) {
         Tile tile = this.tiles.computeIfAbsent(GridKeys.pack(tileX, tileZ), key -> new Tile(tileX, tileZ));
         if (tile.heights == null) {
             if (!tile.requested && this.inFlight.get() < MAX_IN_FLIGHT) {
@@ -153,7 +154,7 @@ public final class TerrainTiles {
     /**
      * The cost multiplier routing applies to a step on land with the given grade, matching {@code LatticePathfinder}.
      */
-    double stepCost(double grade, ConfigModule.Advanced settings) {
+    double stepCost(double grade, RoadSettings settings) {
         return LatticePathfinder.slopeCostFactor(grade, settings);
     }
 
@@ -230,7 +231,7 @@ public final class TerrainTiles {
             return max;
         }
 
-        ResourceLocation texture(Layer layer, ConfigModule.Advanced settings) {
+        ResourceLocation texture(Layer layer, RoadSettings settings) {
             if (this.texture == null) {
                 this.texture = new DynamicTexture(TILE_SIZE, TILE_SIZE, false);
                 this.textureId = YungsRoadsCommon.id("map_tile_" + TEXTURE_COUNTER.incrementAndGet());
@@ -253,7 +254,7 @@ public final class TerrainTiles {
             return this.textureId;
         }
 
-        private int color(int i, int j, Layer layer, ConfigModule.Advanced settings) {
+        private int color(int i, int j, Layer layer, RoadSettings settings) {
             double height = heightAtLattice(i, j);
             if (Double.isNaN(height)) {
                 return OCEAN_COLOR;

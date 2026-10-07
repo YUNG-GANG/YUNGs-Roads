@@ -38,7 +38,7 @@ public final class RoadDebugClient {
             Minecraft minecraft = Minecraft.getInstance();
             if (serverLevel() == null) {
                 if (minecraft.player != null) {
-                    minecraft.player.displayClientMessage(Component.literal("The road debug screen only works in singleplayer."), true);
+                    minecraft.player.displayClientMessage(Component.translatable("yungsroads.screen.singleplayer_only"), true);
                 }
             } else {
                 minecraft.setScreen(new RoadDebugScreen());

@@ -3,7 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.module;
 import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.config.YRConfigFabric;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.AdvancedSetting;
+import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.GlobalSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.ConfigHolder;
@@ -54,33 +54,12 @@ public class ConfigModuleFabric {
 
         // AutoConfig doesn't enforce ranges on decimal values, so clamp them to the valid ranges here
         ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
-        advanced.nodeStepDistance = (int) AdvancedSetting.NODE_STEP_DISTANCE.clamp(configFabric.advanced.nodeStepDistance);
-        advanced.jitterAmount = AdvancedSetting.JITTER_AMOUNT.clamp(configFabric.advanced.jitterAmount);
-        advanced.heuristicWeight = AdvancedSetting.HEURISTIC_WEIGHT.clamp(configFabric.advanced.heuristicWeight);
-        advanced.slopeWeight = AdvancedSetting.SLOPE_WEIGHT.clamp(configFabric.advanced.slopeWeight);
-        advanced.freeGrade = AdvancedSetting.FREE_GRADE.clamp(configFabric.advanced.freeGrade);
-        advanced.straightenRoutes = configFabric.advanced.straightenRoutes;
-        advanced.maxGrade = AdvancedSetting.MAX_GRADE.clamp(configFabric.advanced.maxGrade);
-        advanced.waterWeight = AdvancedSetting.WATER_WEIGHT.clamp(configFabric.advanced.waterWeight);
-        advanced.maxBridgeLength = (int) AdvancedSetting.MAX_BRIDGE_LENGTH.clamp(configFabric.advanced.maxBridgeLength);
-        advanced.smoothingRadius = (int) AdvancedSetting.SMOOTHING_RADIUS.clamp(configFabric.advanced.smoothingRadius);
-        advanced.maxCutDepth = (int) AdvancedSetting.MAX_CUT_DEPTH.clamp(configFabric.advanced.maxCutDepth);
-        advanced.maxFillDepth = (int) AdvancedSetting.MAX_FILL_DEPTH.clamp(configFabric.advanced.maxFillDepth);
-        advanced.maxLandBridgeLength = (int) AdvancedSetting.MAX_LAND_BRIDGE_LENGTH.clamp(configFabric.advanced.maxLandBridgeLength);
-        advanced.landBridgeEdgeRoughness = AdvancedSetting.LAND_BRIDGE_EDGE_ROUGHNESS.clamp(configFabric.advanced.landBridgeEdgeRoughness);
-        advanced.landBridgeDecay = AdvancedSetting.LAND_BRIDGE_DECAY.clamp(configFabric.advanced.landBridgeDecay);
-        advanced.landBridgeSag = AdvancedSetting.LAND_BRIDGE_SAG.clamp(configFabric.advanced.landBridgeSag);
-        advanced.landBridgeRailingDrop = (int) AdvancedSetting.LAND_BRIDGE_RAILING_DROP.clamp(configFabric.advanced.landBridgeRailingDrop);
-        advanced.landBridgeRailingChance = (int) AdvancedSetting.LAND_BRIDGE_RAILING_CHANCE.clamp(configFabric.advanced.landBridgeRailingChance);
+        advanced.nodeStepDistance = (int) GlobalSetting.NODE_STEP_DISTANCE.clamp(configFabric.advanced.nodeStepDistance);
+        advanced.heuristicWeight = GlobalSetting.HEURISTIC_WEIGHT.clamp(configFabric.advanced.heuristicWeight);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
         debug.placeRoads = configFabric.debug.placeRoads;
-        debug.placeUnjitteredPosDebugMarkers = configFabric.debug.placeUnjitteredPosDebugMarkers;
-        debug.placeJitteredPosDebugMarkers = configFabric.debug.placeJitteredPosDebugMarkers;
-        debug.placeRoadEndpointDebugMarkers = configFabric.debug.placeRoadEndpointDebugMarkers;
-        debug.placeStraightDebugLine = configFabric.debug.placeStraightDebugLine;
-        debug.placeDebugPaths = configFabric.debug.placeDebugPaths;
     }
 
     /**
@@ -92,32 +71,11 @@ public class ConfigModuleFabric {
 
         ConfigModule.Advanced advanced = YungsRoadsCommon.CONFIG.advanced;
         configFabric.advanced.nodeStepDistance = advanced.nodeStepDistance;
-        configFabric.advanced.jitterAmount = advanced.jitterAmount;
         configFabric.advanced.heuristicWeight = advanced.heuristicWeight;
-        configFabric.advanced.slopeWeight = advanced.slopeWeight;
-        configFabric.advanced.freeGrade = advanced.freeGrade;
-        configFabric.advanced.straightenRoutes = advanced.straightenRoutes;
-        configFabric.advanced.maxGrade = advanced.maxGrade;
-        configFabric.advanced.waterWeight = advanced.waterWeight;
-        configFabric.advanced.maxBridgeLength = advanced.maxBridgeLength;
-        configFabric.advanced.smoothingRadius = advanced.smoothingRadius;
-        configFabric.advanced.maxCutDepth = advanced.maxCutDepth;
-        configFabric.advanced.maxFillDepth = advanced.maxFillDepth;
-        configFabric.advanced.maxLandBridgeLength = advanced.maxLandBridgeLength;
-        configFabric.advanced.landBridgeEdgeRoughness = advanced.landBridgeEdgeRoughness;
-        configFabric.advanced.landBridgeDecay = advanced.landBridgeDecay;
-        configFabric.advanced.landBridgeSag = advanced.landBridgeSag;
-        configFabric.advanced.landBridgeRailingDrop = advanced.landBridgeRailingDrop;
-        configFabric.advanced.landBridgeRailingChance = advanced.landBridgeRailingChance;
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
         configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;
         configFabric.debug.placeRoads = debug.placeRoads;
-        configFabric.debug.placeUnjitteredPosDebugMarkers = debug.placeUnjitteredPosDebugMarkers;
-        configFabric.debug.placeJitteredPosDebugMarkers = debug.placeJitteredPosDebugMarkers;
-        configFabric.debug.placeRoadEndpointDebugMarkers = debug.placeRoadEndpointDebugMarkers;
-        configFabric.debug.placeStraightDebugLine = debug.placeStraightDebugLine;
-        configFabric.debug.placeDebugPaths = debug.placeDebugPaths;
 
         holder.save();
     }

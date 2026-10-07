@@ -5,11 +5,6 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public class ConfigDebugForge {
     public final ModConfigSpec.ConfigValue<Boolean> enableExtraDebugF3Info;
     public final ModConfigSpec.ConfigValue<Boolean> placeRoads;
-    public final ModConfigSpec.ConfigValue<Boolean> placeUnjitteredPosDebugMarkers;
-    public final ModConfigSpec.ConfigValue<Boolean> placeJitteredPosDebugMarkers;
-    public final ModConfigSpec.ConfigValue<Boolean> placeRoadEndpointDebugMarkers;
-    public final ModConfigSpec.ConfigValue<Boolean> placeStraightDebugLine;
-    public final ModConfigSpec.ConfigValue<Boolean> placeDebugPaths;
 
     public ConfigDebugForge(final ModConfigSpec.Builder BUILDER) {
         BUILDER
@@ -33,40 +28,6 @@ public class ConfigDebugForge {
                             in-game road debug screen's overlay, without changing the terrain.
                             Default: true""".indent(1))
                 .define("placeRoads", true);
-
-        placeUnjitteredPosDebugMarkers = BUILDER
-                .comment("""
-                            Whether to place debug markers at the unjittered positions of Road nodes.
-                            Markers will be towers of purple wool.
-                            Default: false""".indent(1))
-                .define("placeUnjitteredPosDebugMarkers", false);
-
-        placeJitteredPosDebugMarkers = BUILDER
-                .comment("""
-                            Whether to place debug markers at the jittered (final) positions of Road nodes.
-                            Markers will be towers of redstone blocks.
-                            Default: false""".indent(1))
-                .define("placeJitteredPosDebugMarkers", false);
-
-        placeRoadEndpointDebugMarkers = BUILDER
-                .comment("""
-                            Whether to place debug markers at the endpoints of Roads.
-                            Markers will be towers of emerald blocks.
-                            Default: false""".indent(1))
-                .define("placeRoadEndpointDebugMarkers", false);
-
-        placeStraightDebugLine = BUILDER
-                .comment("""
-                            Whether to place a straight line of gold blocks between the start and end of each Road.
-                            Default: false""".indent(1))
-                .define("placeStraightDebugLine", false);
-
-        placeDebugPaths = BUILDER
-                .comment("""
-                            Whether to place debug paths instead of normal paths.
-                            Debug paths are only a single block wide and are made of diamond blocks.
-                            Default: false""".indent(1))
-                .define("placeDebugPaths", false);
 
         BUILDER.pop();
     }

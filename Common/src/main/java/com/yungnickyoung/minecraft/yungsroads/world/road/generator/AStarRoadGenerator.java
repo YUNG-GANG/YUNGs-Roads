@@ -1,16 +1,12 @@
 package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
-import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.util.BlockLines;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
-import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.BitSet;
 import java.util.List;
@@ -28,9 +24,9 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     private static final double JITTER_SAMPLE_SPACING = 3;
 
     @Override
-    public Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, TerrainCache terrain) {
-        Road road = new Road(pos1, pos2);
-        Optional<LatticePathfinder.Path> path = LatticePathfinder.findPath(road.getStartPos(), road.getEndPos(), terrain);
+    public Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, RoadTypes.Choice roadType, TerrainCache terrain) {
+        Road road = new Road(pos1, pos2, roadType);
+        Optional<LatticePathfinder.Path> path = LatticePathfinder.findPath(road.getStartPos(), road.getEndPos(), terrain, road.settings);
         if (path.isEmpty()) {
             return Optional.empty();
         }
@@ -41,7 +37,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         // The noise is created per road since its seed is mutable state and roads may be generated concurrently
         addCenterLine(road, isBridgeSegment, createJitterNoise(road.getStartPos()));
 
-        RoadProfile.apply(road, terrain, YungsRoadsCommon.CONFIG.advanced);
+        RoadProfile.apply(road, terrain, road.settings);
         return Optional.of(road);
     }
 
@@ -100,7 +96,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
 
         for (int n = 0; n < nodeCount; n++) {
             Road.DebugNode node = road.nodes.get(n);
-            node.jitteredPos = shifted(jitter, node.rawPos, node.rawPos.getX(), node.rawPos.getZ(),
+            node.jitteredPos = shifted(jitter, road.settings.jitterAmount, node.rawPos, node.rawPos.getX(), node.rawPos.getZ(),
                     normalX[n], normalZ[n], weight[n]);
             addConnected(road.positions, node.jitteredPos);
             if (n == nodeCount - 1 || isBridgeSegment[n]) {
@@ -114,7 +110,7 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
                 double t = k / (double) pieces;
                 // The blended direction isn't renormalized, so where the nodes' directions differ a lot the shift
                 // shrinks between them instead of swinging abruptly from one side to the other
-                addConnected(road.positions, shifted(jitter, node.rawPos,
+                addConnected(road.positions, shifted(jitter, road.settings.jitterAmount, node.rawPos,
                         Mth.lerp(t, node.rawPos.getX(), next.getX()),
                         Mth.lerp(t, node.rawPos.getZ(), next.getZ()),
                         Mth.lerp(t, normalX[n], normalX[n + 1]),
@@ -127,11 +123,12 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
     /**
      * Shifts a point on the unjittered center line sideways by the noise there, and rounds it to a block position.
      *
+     * @param jitterAmount The furthest the point may be shifted, in blocks.
      * @param base The position whose y the result takes.
      */
-    private static BlockPos shifted(FastNoise jitter, BlockPos base, double x, double z, double normalX, double normalZ,
-                                    double weight) {
-        double offset = jitter.GetNoise((float) x, (float) z) * YungsRoadsCommon.CONFIG.advanced.jitterAmount * weight;
+    private static BlockPos shifted(FastNoise jitter, double jitterAmount, BlockPos base, double x, double z,
+                                    double normalX, double normalZ, double weight) {
+        double offset = jitter.GetNoise((float) x, (float) z) * jitterAmount * weight;
         return new BlockPos((int) Math.round(x + normalX * offset), base.getY(), (int) Math.round(z + normalZ * offset));
     }
 
@@ -199,36 +196,5 @@ public class AStarRoadGenerator extends AbstractRoadGenerator {
         jitter.SetFractalOctaves(1);
         jitter.SetSeed(roadStartPos.getX() * 1000 + roadStartPos.getZ());
         return jitter;
-    }
-
-    @Override
-    public void placeDebugMarkers(Road road, RoadBlockWriter writer, ChunkPos chunkPos) {
-        if (YungsRoadsCommon.CONFIG.debug.placeStraightDebugLine) {
-            placeDebugLine(road, writer, chunkPos);
-        }
-        if (YungsRoadsCommon.CONFIG.debug.placeRoadEndpointDebugMarkers) {
-            placeDebugMarker(writer, chunkPos, road.getStartPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
-            placeDebugMarker(writer, chunkPos, road.getEndPos(), Blocks.EMERALD_BLOCK.defaultBlockState());
-        }
-        for (Road.DebugNode debugNode : road.nodes) {
-            if (YungsRoadsCommon.CONFIG.debug.placeUnjitteredPosDebugMarkers) {
-                placeDebugMarker(writer, chunkPos, debugNode.rawPos, Blocks.PURPLE_WOOL.defaultBlockState());
-            }
-            if (YungsRoadsCommon.CONFIG.debug.placeJitteredPosDebugMarkers) {
-                placeDebugMarker(writer, chunkPos, debugNode.jitteredPos, Blocks.REDSTONE_BLOCK.defaultBlockState());
-            }
-        }
-    }
-
-    /**
-     * Places a straight line of gold blocks between the start and end points of the road.
-     */
-    private void placeDebugLine(Road road, RoadBlockWriter writer, ChunkPos chunkPos) {
-        BlockState gold = Blocks.GOLD_BLOCK.defaultBlockState();
-        placeDebugBlock(writer, chunkPos, road.getStartPos(), gold);
-        for (BlockPos pos : BlockLines.betweenXZ(road.getStartPos(), road.getEndPos())) {
-            placeDebugBlock(writer, chunkPos, pos, gold);
-        }
-        placeDebugBlock(writer, chunkPos, road.getEndPos(), gold);
     }
 }

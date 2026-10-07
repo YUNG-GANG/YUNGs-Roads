@@ -2,13 +2,12 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.api.world.randomize.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
-import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
-import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadFeatureConfiguration;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypeConfig;
-import com.yungnickyoung.minecraft.yungsroads.world.config.TempEnum;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSurfaceConfig;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.feature.RoadFeature;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
+import com.yungnickyoung.minecraft.yungsroads.world.road.RoadCenter;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.RoadBlockWriter;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.core.BlockPos;
@@ -28,9 +27,13 @@ import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 public abstract class AbstractRoadGenerator {
@@ -70,19 +73,6 @@ public abstract class AbstractRoadGenerator {
     /** The thinnest ceiling a tunnel is bored under. Where it would be thinner, the road is cut open to the sky. */
     private static final int MIN_TUNNEL_CEILING = 3;
 
-    private static final RoadTypeConfig DEFAULT_SETTINGS = new RoadTypeConfig(
-            List.of(Blocks.DIRT.defaultBlockState(),
-                    Blocks.GRASS_BLOCK.defaultBlockState(),
-                    Blocks.PODZOL.defaultBlockState(),
-                    Blocks.DIRT_PATH.defaultBlockState()),
-            TempEnum.ANY,
-            new BlockStateRandomizer(Blocks.DIRT_PATH.defaultBlockState())
-                    .addBlock(Blocks.GRASS_BLOCK.defaultBlockState(), 0.05f),
-            Optional.of(new BlockStateRandomizer(Blocks.DIRT.defaultBlockState())),
-            1.5f,
-            2.0f,
-            List.of());
-
     private final FastNoise noise;
 
     /** Varies the edges of bridges. Fine enough to make them ragged, so roughness reads as wear rather than waves. */
@@ -105,16 +95,11 @@ public abstract class AbstractRoadGenerator {
      * Note that this simply constructs the {@link Road} object. Blocks are not actually placed until
      * {@link RoadFeature#place(FeaturePlaceContext)}.
      *
+     * @param roadType The road type the road is generated with.
      * @param terrain Terrain samples shared by all roads generated for the same region.
      * @return Road connecting the two positions, if one was successfully generated.
      */
-    public abstract Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, TerrainCache terrain);
-
-    /**
-     * Places debug markers for the given {@link Road}, as enabled in the debug config.
-     * Only blocks within the given chunk are modified.
-     */
-    public abstract void placeDebugMarkers(Road road, RoadBlockWriter writer, ChunkPos chunkPos);
+    public abstract Optional<Road> generateRoad(BlockPos pos1, BlockPos pos2, RoadTypes.Choice roadType, TerrainCache terrain);
 
     /**
      * Places road blocks around each of the given road center positions, at the heights stored in their y.
@@ -126,31 +111,32 @@ public abstract class AbstractRoadGenerator {
      * so a whole stretch of road bridges together, while steep drops beside a road resting on the ground are left alone.
      * <p>
      * Where the road runs deep below the ground, it's carried through a tunnel, whose walls are lined or made stable.
+     * <p>
+     * Each column is placed with the settings of its nearest center's road. Where roads overlap at the same position,
+     * the position belongs to the road that comes first by {@link Road#compare}, so every chunk agrees.
      *
-     * @param centers The road center positions within {@link #PLACEMENT_LOOKUP_REACH} blocks of the chunk.
+     * @param roadCenters The road center positions within {@link #PLACEMENT_LOOKUP_REACH} blocks of the chunk.
      * @param isLandBridge Whether a center position is part of a land bridge. See {@link Road#landBridges}.
      * @param isTunnel Whether a center position is part of a tunnel. See {@link Road#tunnels}.
      */
-    public void placeRoadInChunk(RoadBlockWriter writer, RandomSource random, ChunkPos chunkPos, List<BlockPos> centers,
-                                 Predicate<BlockPos> isLandBridge, Predicate<BlockPos> isTunnel,
-                                 RoadFeatureConfiguration config) {
-        if (YungsRoadsCommon.CONFIG.debug.placeDebugPaths) {
-            for (BlockPos center : centers) {
-                placeDebugBlock(writer, chunkPos, center, Blocks.DIAMOND_BLOCK.defaultBlockState());
-            }
-            return;
+    public void placeRoadInChunk(RoadBlockWriter writer, RandomSource random, ChunkPos chunkPos, List<RoadCenter> roadCenters,
+                                 Predicate<BlockPos> isLandBridge, Predicate<BlockPos> isTunnel) {
+        Map<BlockPos, Road> roadAt = new LinkedHashMap<>();
+        for (RoadCenter center : roadCenters) {
+            roadAt.merge(center.pos(), center.road(), (a, b) -> Road.compare(a, b) <= 0 ? a : b);
         }
+        List<BlockPos> centers = List.copyOf(roadAt.keySet());
+        Function<BlockPos, RoadSettings> settingsAt = center -> roadAt.get(center).settings;
 
-        // Per column of the chunk, indexed by (x & 15) << 4 | (z & 15). A column's ground and road type are found
-        // when a center first reaches it.
-        int[] groundHeights = new int[16 * 16];
-        RoadTypeConfig[] roadTypes = new RoadTypeConfig[16 * 16];
+        // Per column of the chunk, indexed by (x & 15) << 4 | (z & 15)
+        ColumnSurfaces surfaces = new ColumnSurfaces(writer, chunkPos);
         boolean[] isGroundRoad = new boolean[16 * 16];
         NearestCenters nearest = new NearestCenters(chunkPos);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (BlockPos center : centers) {
             double widthNoise = widthNoise(center);
+            RoadSettings settings = settingsAt.apply(center);
 
             for (int dx = -PLACEMENT_REACH; dx <= PLACEMENT_REACH; dx++) {
                 for (int dz = -PLACEMENT_REACH; dz <= PLACEMENT_REACH; dz++) {
@@ -164,11 +150,7 @@ public abstract class AbstractRoadGenerator {
                     }
 
                     int column = (x & 15) << 4 | (z & 15);
-                    if (roadTypes[column] == null) {
-                        groundHeights[column] = writer.surfaceHeight(x, z);
-                        roadTypes[column] = getRoadTypeAt(writer, mutable.set(x, groundHeights[column], z), config);
-                    }
-                    if (distSq < maxRoadDistSq(roadTypes[column], widthNoise)) {
+                    if (distSq < RoadSettings.maxRoadDistSq(surfaces.surface(column, settings), widthNoise)) {
                         isGroundRoad[column] = true;
                     }
                 }
@@ -176,19 +158,16 @@ public abstract class AbstractRoadGenerator {
         }
 
         // Decided before placing anything, since placing changes the ground the decisions read
-        ConfigModule.Advanced settings = YungsRoadsCommon.CONFIG.advanced;
         Set<BlockPos> tunnelCenters = new HashSet<>();
         for (BlockPos center : centers) {
             if (isTunnel.test(center)) {
                 tunnelCenters.add(center);
             }
         }
-        Set<BlockPos> bridgeCenters = findBridgeCenters(writer, centers, isLandBridge, tunnelCenters, config, settings);
-        BridgeDecks decks = new BridgeDecks(writer, nearest, bridgeCenters, config, settings);
-        boolean[] hasRailing = config.bridgeRailingBlockStates.isPresent()
-                ? decks.findRailings(chunkPos)
-                : new boolean[NearestCenters.SIZE * NearestCenters.SIZE];
-        Tunnels tunnels = new Tunnels(nearest, tunnelCenters, config);
+        Set<BlockPos> bridgeCenters = findBridgeCenters(writer, centers, isLandBridge, tunnelCenters, settingsAt);
+        BridgeDecks decks = new BridgeDecks(writer, nearest, bridgeCenters, settingsAt);
+        boolean[] hasRailing = decks.findRailings(chunkPos);
+        Tunnels tunnels = new Tunnels(nearest, tunnelCenters, settingsAt);
 
         for (int column = 0; column < 16 * 16; column++) {
             int x = chunkPos.getMinBlockX() + (column >> 4);
@@ -198,24 +177,25 @@ public abstract class AbstractRoadGenerator {
                 tunnels.placeWall(writer, random, x, z);
                 continue;
             }
-            mutable.set(x, groundHeights[column], z);
+            RoadSettings settings = settingsAt.apply(center);
+            RoadSurfaceConfig surface = surfaces.surface(column, settings);
+            mutable.set(x, surfaces.groundHeight(column), z);
 
             if (bridgeCenters.contains(center)) {
                 // A bridge's edge is measured from its center line alone, so it doesn't trace the ground far below
                 if (decks.isDeck(x, z)) {
                     boolean decayed = decks.isDecayed(x, center.getY(), z);
-                    placeBridgeColumn(writer, random, mutable, center.getY(), decayed, roadTypes[column], config, settings);
+                    placeBridgeColumn(writer, random, mutable, center.getY(), decayed, surface, settings);
                     if (hasRailing[nearest.index(x, z)]) {
-                        placeRailing(writer, random, mutable.setY(center.getY()), nearest, hasRailing, config);
+                        placeRailing(writer, random, mutable.setY(center.getY()), nearest, hasRailing, settings);
                     }
                 } else {
                     tunnels.placeWall(writer, random, x, z);
                 }
             } else if (tunnels.isInterior(x, z)) {
-                placeTunnelColumn(writer, random, mutable, center.getY(), tunnels.clearance(x, z), roadTypes[column],
-                        config, settings);
+                placeTunnelColumn(writer, random, mutable, center.getY(), tunnels.clearance(x, z), surface, settings);
             } else if (isGroundRoad[column]) {
-                placeGroundColumn(writer, random, mutable, center.getY(), roadTypes[column], config, settings);
+                placeGroundColumn(writer, random, mutable, center.getY(), surface, settings);
             } else {
                 tunnels.placeWall(writer, random, x, z);
             }
@@ -230,32 +210,19 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
-     * The squared distance from a center within which a road of the given type is placed, exclusive.
-     */
-    private static double maxRoadDistSq(RoadTypeConfig roadType, double widthNoise) {
-        return roadType.roadSizeRadius * roadType.roadSizeRadius + widthNoise * roadType.roadSizeVariation;
-    }
-
-    /**
      * The distance from a bridge center within which its deck is placed, exclusive. The deck is as wide as the widest
-     * road type would be there, so it's never narrower than the road leading onto it, and its width doesn't depend on
-     * what's at the bottom of the hole. Edge roughness then moves the edge in or out per column.
+     * of its road type's surfaces would be there, so it's never narrower than the road leading onto it, and its width
+     * doesn't depend on what's at the bottom of the hole. Edge roughness then moves the edge in or out per column.
      */
-    private double bridgeHalfWidth(BlockPos center, int x, int z, RoadFeatureConfiguration config,
-                                   ConfigModule.Advanced settings) {
-        return widestHalfWidth(center, config) + settings.landBridgeEdgeRoughness * MAX_EDGE_ROUGHNESS * this.edgeNoise.GetNoise(x, z);
+    private double bridgeHalfWidth(BlockPos center, int x, int z, RoadSettings settings) {
+        return widestHalfWidth(center, settings) + settings.landBridgeEdgeRoughness * MAX_EDGE_ROUGHNESS * this.edgeNoise.GetNoise(x, z);
     }
 
     /**
-     * The distance from a center within which the widest road type would be placed, exclusive.
+     * The distance from a center within which the widest of its road type's surfaces would be placed, exclusive.
      */
-    private double widestHalfWidth(BlockPos center, RoadFeatureConfiguration config) {
-        double widthNoise = widthNoise(center);
-        double maxDistSq = config.roadTypes.isEmpty() ? maxRoadDistSq(DEFAULT_SETTINGS, widthNoise) : 0;
-        for (RoadTypeConfig roadType : config.roadTypes) {
-            maxDistSq = Math.max(maxDistSq, maxRoadDistSq(roadType, widthNoise));
-        }
-        return Math.sqrt(maxDistSq);
+    private double widestHalfWidth(BlockPos center, RoadSettings settings) {
+        return Math.sqrt(settings.maxRoadDistSq(widthNoise(center)));
     }
 
     /**
@@ -275,9 +242,9 @@ public abstract class AbstractRoadGenerator {
      */
     private static Set<BlockPos> findBridgeCenters(RoadBlockWriter writer, List<BlockPos> centers,
                                                    Predicate<BlockPos> isLandBridge, Set<BlockPos> tunnelCenters,
-                                                   RoadFeatureConfiguration config, ConfigModule.Advanced settings) {
+                                                   Function<BlockPos, RoadSettings> settingsAt) {
         List<BlockPos> crossings = centers.stream()
-                .filter(center -> isLandBridge.test(center) || crossesHole(writer, center, config, settings))
+                .filter(center -> isLandBridge.test(center) || crossesHole(writer, center, settingsAt.apply(center)))
                 .toList();
         Set<BlockPos> bridgeCenters = new HashSet<>();
         for (BlockPos center : centers) {
@@ -304,15 +271,14 @@ public abstract class AbstractRoadGenerator {
      * keeps the result the same whichever chunk generates first. A bridge's center line is never decayed, so its block
      * is always there to find.
      */
-    private static boolean crossesHole(RoadBlockWriter writer, BlockPos center, RoadFeatureConfiguration config,
-                                       ConfigModule.Advanced settings) {
+    private static boolean crossesHole(RoadBlockWriter writer, BlockPos center, RoadSettings settings) {
         if (!writer.level().hasChunk(center.getX() >> 4, center.getZ() >> 4)) {
             // Unknown, which only happens next to unloaded chunks in a live world. Bridge any gaps to be safe.
             return true;
         }
 
         BlockState atRoad = writer.getBlockState(center);
-        if (isBridgeBlock(atRoad, config)) {
+        if (isBridgeBlock(atRoad, settings)) {
             // Already placed. A bridge resting on the water's surface doesn't cross a hole.
             return writer.getBlockState(center.below()).getFluidState().isEmpty();
         }
@@ -323,8 +289,9 @@ public abstract class AbstractRoadGenerator {
         return overWater ? gap > 0 : gap > settings.maxFillDepth;
     }
 
-    private static boolean isBridgeBlock(BlockState state, RoadFeatureConfiguration config) {
-        return state == config.bridgeBlockStates.getDefaultBlockState() || config.bridgeBlockStates.getEntriesAsMap().containsKey(state);
+    private static boolean isBridgeBlock(BlockState state, RoadSettings settings) {
+        BlockStateRandomizer bridge = settings.blocks.bridgeBlockStates();
+        return state == bridge.getDefaultBlockState() || bridge.getEntriesAsMap().containsKey(state);
     }
 
     /**
@@ -333,10 +300,11 @@ public abstract class AbstractRoadGenerator {
      * whichever chunk generates first, and the placed state is final.
      *
      * @param deck The deck block the railing stands on. Nothing is placed unless it's a bridge block.
+     * @param settings The settings of the deck's road, which must have railings.
      */
     private static void placeRailing(RoadBlockWriter writer, RandomSource random, BlockPos deck, NearestCenters nearest,
-                                     boolean[] hasRailing, RoadFeatureConfiguration config) {
-        if (!isBridgeBlock(writer.getBlockState(deck), config)) {
+                                     boolean[] hasRailing, RoadSettings settings) {
+        if (!isBridgeBlock(writer.getBlockState(deck), settings)) {
             return;
         }
         boolean[] connected = new boolean[4];
@@ -347,7 +315,7 @@ public abstract class AbstractRoadGenerator {
             connected[direction.get2DDataValue()] = hasRailing[nearest.index(x, z)]
                     && neighborCenter != null && neighborCenter.getY() == deck.getY();
         }
-        BlockState railing = config.bridgeRailingBlockStates.orElseThrow().get(random);
+        BlockState railing = settings.blocks.bridgeRailingBlockStates().orElseThrow().get(random);
         writer.setBlock(deck.above(), connectRailing(railing, connected));
     }
 
@@ -386,15 +354,15 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
-     * Determines the road type for the given surface block, based on the block and its biome's temperature.
+     * Determines a road type's surface for the given ground block, based on the block and its biome's temperature.
      */
-    private RoadTypeConfig getRoadTypeAt(RoadBlockWriter writer, BlockPos surfacePos, RoadFeatureConfiguration config) {
-        for (RoadTypeConfig roadType : config.roadTypes) {
-            if (roadType.matches(writer.level(), surfacePos)) {
-                return roadType;
+    private static RoadSurfaceConfig surfaceAt(RoadBlockWriter writer, BlockPos groundPos, RoadSettings settings) {
+        for (RoadSurfaceConfig surface : settings.blocks.surfaces()) {
+            if (surface.matches(writer.level(), groundPos)) {
+                return surface;
             }
         }
-        return DEFAULT_SETTINGS;
+        return RoadSurfaceConfig.FALLBACK;
     }
 
     /**
@@ -403,14 +371,14 @@ public abstract class AbstractRoadGenerator {
      * to a ledge rather than sprouting stray bridge blocks. Over water, the road is always a bridge.
      *
      * @param ground The column's ground block, which may be water.
+     * @param surface The road type's surface matching the ground block.
      */
     private static void placeGroundColumn(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
-                                          RoadTypeConfig roadType, RoadFeatureConfiguration config,
-                                          ConfigModule.Advanced settings) {
+                                          RoadSurfaceConfig surface, RoadSettings settings) {
         if (!writer.getBlockState(ground).getFluidState().isEmpty()) {
-            placeWaterBridge(writer, random, ground, roadHeight, config);
+            placeWaterBridge(writer, random, ground, roadHeight, settings);
         } else if (roadHeight - ground.getY() - 1 <= settings.maxFillDepth) {
-            placeOnGround(writer, random, ground, roadHeight, roadType, settings);
+            placeOnGround(writer, random, ground, roadHeight, surface, settings);
         }
     }
 
@@ -422,16 +390,15 @@ public abstract class AbstractRoadGenerator {
      * @param decayed Whether the deck is missing here. Only applies over land, so water bridges stay whole.
      */
     private static void placeBridgeColumn(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
-                                          boolean decayed, RoadTypeConfig roadType, RoadFeatureConfiguration config,
-                                          ConfigModule.Advanced settings) {
+                                          boolean decayed, RoadSurfaceConfig surface, RoadSettings settings) {
         if (!writer.getBlockState(ground).getFluidState().isEmpty()) {
-            placeWaterBridge(writer, random, ground, roadHeight, config);
+            placeWaterBridge(writer, random, ground, roadHeight, settings);
         } else if (roadHeight - ground.getY() - 1 > 0) {
             if (!decayed) {
-                writer.setBlock(ground.atY(roadHeight), config.bridgeBlockStates.get(random));
+                writer.setBlock(ground.atY(roadHeight), settings.blocks.bridgeBlockStates().get(random));
             }
         } else {
-            placeOnGround(writer, random, ground, roadHeight, roadType, settings);
+            placeOnGround(writer, random, ground, roadHeight, surface, settings);
         }
     }
 
@@ -441,22 +408,22 @@ public abstract class AbstractRoadGenerator {
      * ceiling that's lined or made stable, unless the ceiling would be thinner than {@link #MIN_TUNNEL_CEILING}, where
      * the road is cut open to the sky instead. Under water, it's always bored, so the ceiling holds the water back.
      * <p>
-     * A bored road's type matches the block it's bored into, rather than the surface far above.
+     * A bored road's surface matches the block it's bored into, rather than the ground far above.
      *
      * @param ground The column's ground block, which may be water.
      * @param clearance How many blocks of air a bored tunnel has above the road.
-     * @param surfaceRoadType The road type matching the ground block, used where the road is placed as on the ground.
+     * @param groundSurface The road type's surface matching the ground block, used where the road is placed as on the
+     *                      ground.
      */
-    private void placeTunnelColumn(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
-                                   int clearance, RoadTypeConfig surfaceRoadType, RoadFeatureConfiguration config,
-                                   ConfigModule.Advanced settings) {
+    private static void placeTunnelColumn(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
+                                          int clearance, RoadSurfaceConfig groundSurface, RoadSettings settings) {
         if (ground.getY() - roadHeight <= settings.maxCutDepth) {
-            placeGroundColumn(writer, random, ground, roadHeight, surfaceRoadType, config, settings);
+            placeGroundColumn(writer, random, ground, roadHeight, groundSurface, settings);
             return;
         }
 
         BlockPos road = ground.atY(roadHeight);
-        RoadTypeConfig roadType = getRoadTypeAt(writer, road, config);
+        RoadSurfaceConfig surface = surfaceAt(writer, road, settings);
         int ceilingY = roadHeight + clearance + 1;
         boolean bored = ground.getY() - ceilingY + 1 >= MIN_TUNNEL_CEILING
                 || !writer.getBlockState(ground).getFluidState().isEmpty();
@@ -470,20 +437,19 @@ public abstract class AbstractRoadGenerator {
                 writer.setBlock(pos, Blocks.AIR.defaultBlockState());
             }
         }
-        writer.setBlock(road, roadType.pathBlockStates.get(random));
+        writer.setBlock(road, surface.pathBlockStates.get(random));
         if (bored) {
-            secureTunnelBlock(writer, random, ground.atY(ceilingY), config);
+            secureTunnelBlock(writer, random, ground.atY(ceilingY), settings);
         }
     }
 
     /**
-     * Makes a block of a tunnel's wall or ceiling the tunnel lining, if tunnels have one. Otherwise only fluids and
-     * blocks that fall are replaced with solid blocks, since they would pour or collapse into the tunnel.
+     * Makes a block of a tunnel's wall or ceiling the tunnel lining, if the tunnel's road type has one. Otherwise only
+     * fluids and blocks that fall are replaced with solid blocks, since they would pour or collapse into the tunnel.
      */
-    private static void secureTunnelBlock(RoadBlockWriter writer, RandomSource random, BlockPos pos,
-                                          RoadFeatureConfiguration config) {
-        if (config.tunnelLiningBlockStates.isPresent()) {
-            writer.setBlock(pos, config.tunnelLiningBlockStates.get().get(random));
+    private static void secureTunnelBlock(RoadBlockWriter writer, RandomSource random, BlockPos pos, RoadSettings settings) {
+        if (settings.blocks.tunnelLiningBlockStates().isPresent()) {
+            writer.setBlock(pos, settings.blocks.tunnelLiningBlockStates().get().get(random));
             return;
         }
         BlockState state = writer.getBlockState(pos);
@@ -509,26 +475,26 @@ public abstract class AbstractRoadGenerator {
      * Places a bridge block over water. A bridge never dips below the water's surface.
      */
     private static void placeWaterBridge(RoadBlockWriter writer, RandomSource random, BlockPos water, int roadHeight,
-                                         RoadFeatureConfiguration config) {
-        writer.setBlock(water.atY(Math.max(roadHeight, water.getY())), config.bridgeBlockStates.get(random));
+                                         RoadSettings settings) {
+        writer.setBlock(water.atY(Math.max(roadHeight, water.getY())), settings.blocks.bridgeBlockStates().get(random));
     }
 
     /**
      * Places the road on solid ground at the given height. Ground above the road is cut away, up to the max cut depth,
-     * beyond which the road rises with the ground instead. Any gap below the road is filled with the road type's fill
+     * beyond which the road rises with the ground instead. Any gap below the road is filled with the surface's fill
      * blocks, which also replace the ground block the road covers, so a surface layer like grass isn't left buried.
-     * Road types without fill blocks copy the ground's own block instead.
+     * Surfaces without fill blocks copy the ground's own block instead.
      */
     private static void placeOnGround(RoadBlockWriter writer, RandomSource random, BlockPos ground, int roadHeight,
-                                      RoadTypeConfig roadType, ConfigModule.Advanced settings) {
+                                      RoadSurfaceConfig surface, RoadSettings settings) {
         BlockState groundState = writer.getBlockState(ground);
         writer.clearVegetationAbove(ground);
         int y = Math.max(roadHeight, ground.getY() - settings.maxCutDepth);
         for (int cutY = ground.getY(); cutY > y; cutY--) {
             writer.setBlock(ground.atY(cutY), Blocks.AIR.defaultBlockState());
         }
-        if (roadType.fillBlockStates.isPresent()) {
-            BlockStateRandomizer fill = roadType.fillBlockStates.get();
+        if (surface.fillBlockStates.isPresent()) {
+            BlockStateRandomizer fill = surface.fillBlockStates.get();
             for (int fillY = ground.getY(); fillY < y; fillY++) {
                 writer.setBlock(ground.atY(fillY), fill.get(random));
             }
@@ -538,11 +504,11 @@ public abstract class AbstractRoadGenerator {
                 writer.setBlock(ground.atY(fillY), fillState);
             }
         }
-        writer.setBlock(ground.atY(y), roadType.pathBlockStates.get(random));
+        writer.setBlock(ground.atY(y), surface.pathBlockStates.get(random));
     }
 
     /**
-     * The block to fill gaps under a road with when its road type has no fill blocks: the ground's own block, so a
+     * The block to fill gaps under a road with when its surface has no fill blocks: the ground's own block, so a
      * raised road's sides blend in with the terrain, or dirt if the ground isn't a plain full block. Properties like
      * snow cover are reset, since the fill is covered by the road.
      */
@@ -550,35 +516,6 @@ public abstract class AbstractRoadGenerator {
         return groundState.isSolidRender(writer.level(), ground) && !groundState.hasBlockEntity()
                 ? groundState.getBlock().defaultBlockState()
                 : Blocks.DIRT.defaultBlockState();
-    }
-
-    /**
-     * Places a single debug block at the surface, if the position is inside the given chunk.
-     */
-    void placeDebugBlock(RoadBlockWriter writer, ChunkPos chunkPos, BlockPos pos, BlockState blockState) {
-        if (!isInChunk(chunkPos, pos)) {
-            return;
-        }
-        writer.setBlock(new BlockPos(pos.getX(), writer.surfaceHeight(pos.getX(), pos.getZ()), pos.getZ()), blockState);
-    }
-
-    /**
-     * Places a 10-block tall debug marker tower above the surface, if the position is inside the given chunk.
-     */
-    void placeDebugMarker(RoadBlockWriter writer, ChunkPos chunkPos, BlockPos blockPos, BlockState markerBlock) {
-        if (!isInChunk(chunkPos, blockPos)) {
-            return;
-        }
-
-        BlockPos.MutableBlockPos mutable = blockPos.mutable();
-        mutable.setY(writer.surfaceHeight(mutable.getX(), mutable.getZ()));
-
-        for (int y = 0; y < 10; y++) {
-            mutable.move(Direction.UP);
-            if (writer.getBlockState(mutable).isAir()) {
-                writer.setBlock(mutable, markerBlock);
-            }
-        }
     }
 
     /**
@@ -640,22 +577,22 @@ public abstract class AbstractRoadGenerator {
      * Railings are decided from the road centers, and from blocks that road placement never changes: the block under a
      * deck, and the columns beside it. So a chunk decides the railings just past its edges the same way their own chunk
      * does, whichever generates first, which lets railings connect across chunk borders.
+     * <p>
+     * Each deck column follows the settings of its nearest center's road.
      */
     private final class BridgeDecks {
         private final RoadBlockWriter writer;
         private final NearestCenters nearest;
         private final Set<BlockPos> bridgeCenters;
-        private final RoadFeatureConfiguration config;
-        private final ConfigModule.Advanced settings;
+        private final Function<BlockPos, RoadSettings> settingsAt;
         private final long worldSeed;
 
         BridgeDecks(RoadBlockWriter writer, NearestCenters nearest, Set<BlockPos> bridgeCenters,
-                    RoadFeatureConfiguration config, ConfigModule.Advanced settings) {
+                    Function<BlockPos, RoadSettings> settingsAt) {
             this.writer = writer;
             this.nearest = nearest;
             this.bridgeCenters = bridgeCenters;
-            this.config = config;
-            this.settings = settings;
+            this.settingsAt = settingsAt;
             this.worldSeed = writer.level().getSeed();
         }
 
@@ -682,7 +619,7 @@ public abstract class AbstractRoadGenerator {
          */
         boolean isDecayed(int x, int y, int z) {
             BlockPos center = this.nearest.center(x, z);
-            double decayChance = this.settings.landBridgeDecay * Math.sqrt(this.nearest.distSq(x, z)) / halfWidth(center, x, z);
+            double decayChance = this.settingsAt.apply(center).landBridgeDecay * Math.sqrt(this.nearest.distSq(x, z)) / halfWidth(center, x, z);
             return decayChance > 0 && decayRoll(this.worldSeed, x, y, z) < decayChance;
         }
 
@@ -702,14 +639,18 @@ public abstract class AbstractRoadGenerator {
         }
 
         /**
-         * Whether the column gets a railing: it's a bridge block on the edge of a deck, beside a drop at least as deep
-         * as the railing drop setting. Railings are never on the center line, and they decay like the deck, so one is
-         * also missing wherever the deck below it is. Of the columns that qualify, only the railing chance setting's
-         * share get one.
+         * Whether the column gets a railing: it's a bridge block on the edge of a deck whose road type has railings,
+         * beside a drop at least as deep as the railing drop setting. Railings are never on the center line, and they
+         * decay like the deck, so one is also missing wherever the deck below it is. Of the columns that qualify, only
+         * the railing chance setting's share get one.
          */
         private boolean hasRailing(int x, int z) {
             BlockPos center = this.nearest.center(x, z);
             if (center == null || this.nearest.distSq(x, z) == 0 || !isDeck(x, z)) {
+                return false;
+            }
+            RoadSettings settings = this.settingsAt.apply(center);
+            if (settings.blocks.bridgeRailingBlockStates().isEmpty()) {
                 return false;
             }
             int y = center.getY();
@@ -717,17 +658,17 @@ public abstract class AbstractRoadGenerator {
                 return false;
             }
             // Rolled separately from decay, which already rolls at the railing's position
-            double chance = this.settings.landBridgeRailingChance / 100.0;
+            double chance = settings.landBridgeRailingChance / 100.0;
             if (chance < 1 && decayRoll(this.worldSeed ^ RAILING_CHANCE_SALT, x, y + 1, z) >= chance) {
                 return false;
             }
-            if (!hasBridgeBlock(x, y, z)) {
+            if (!hasBridgeBlock(x, y, z, settings)) {
                 return false;
             }
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     // Diagonal neighbors count too, so the railings along a diagonal edge form a connected staircase
-                    if ((dx != 0 || dz != 0) && isOffRoad(x + dx, z + dz) && hasDropBelow(x + dx, y, z + dz)) {
+                    if ((dx != 0 || dz != 0) && isOffRoad(x + dx, z + dz) && hasDropBelow(x + dx, y, z + dz, settings.landBridgeRailingDrop)) {
                         return true;
                     }
                 }
@@ -740,11 +681,11 @@ public abstract class AbstractRoadGenerator {
          * way {@link #placeBridgeColumn} does. A bridge block that's already there counts, in case the column's own
          * chunk has placed its roads, which changes the ground the decision reads.
          */
-        private boolean hasBridgeBlock(int x, int deckY, int z) {
+        private boolean hasBridgeBlock(int x, int deckY, int z, RoadSettings settings) {
             if (!this.writer.level().hasChunk(x >> 4, z >> 4)) {
                 return false;
             }
-            if (isBridgeBlock(this.writer.getBlockState(new BlockPos(x, deckY, z)), this.config)) {
+            if (isBridgeBlock(this.writer.getBlockState(new BlockPos(x, deckY, z)), settings)) {
                 return true;
             }
             int groundY = this.writer.surfaceHeight(x, z);
@@ -753,9 +694,9 @@ public abstract class AbstractRoadGenerator {
             return overWater ? groundY <= deckY : deckY - groundY - 1 > 0;
         }
 
-        /** Whether stepping off the deck into the column means falling at least the railing drop setting. */
-        private boolean hasDropBelow(int x, int deckY, int z) {
-            for (int y = deckY; y > deckY - this.settings.landBridgeRailingDrop; y--) {
+        /** Whether stepping off the deck into the column means falling at least the given railing drop. */
+        private boolean hasDropBelow(int x, int deckY, int z, int railingDrop) {
+            for (int y = deckY; y > deckY - railingDrop; y--) {
                 if (!isOpen(x, y, z)) {
                     return false;
                 }
@@ -770,7 +711,7 @@ public abstract class AbstractRoadGenerator {
         }
 
         private double halfWidth(BlockPos center, int x, int z) {
-            return bridgeHalfWidth(center, x, z, this.config, this.settings);
+            return bridgeHalfWidth(center, x, z, this.settingsAt.apply(center));
         }
     }
 
@@ -783,19 +724,22 @@ public abstract class AbstractRoadGenerator {
     private final class Tunnels {
         private final NearestCenters nearest;
         private final Set<BlockPos> tunnelCenters;
-        private final RoadFeatureConfiguration config;
+        private final Function<BlockPos, RoadSettings> settingsAt;
 
-        Tunnels(NearestCenters nearest, Set<BlockPos> tunnelCenters, RoadFeatureConfiguration config) {
+        Tunnels(NearestCenters nearest, Set<BlockPos> tunnelCenters, Function<BlockPos, RoadSettings> settingsAt) {
             this.nearest = nearest;
             this.tunnelCenters = tunnelCenters;
-            this.config = config;
+            this.settingsAt = settingsAt;
         }
 
-        /** Whether the column is bored out: nearest a tunnel center, within the widest road type's width of it. */
+        /**
+         * Whether the column is bored out: nearest a tunnel center, within the width of the widest of its road type's
+         * surfaces.
+         */
         boolean isInterior(int x, int z) {
             BlockPos center = this.nearest.center(x, z);
             return center != null && this.tunnelCenters.contains(center)
-                    && Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.config);
+                    && Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.settingsAt.apply(center));
         }
 
         /**
@@ -804,7 +748,7 @@ public abstract class AbstractRoadGenerator {
          */
         int clearance(int x, int z) {
             BlockPos center = this.nearest.center(x, z);
-            return Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.config) - 1
+            return Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.settingsAt.apply(center)) - 1
                     ? TUNNEL_HEIGHT
                     : TUNNEL_HEIGHT - 1;
         }
@@ -812,7 +756,8 @@ public abstract class AbstractRoadGenerator {
         /**
          * Secures the wall of any tunnel beside the column, which mustn't be bored out itself: the blocks from each
          * neighboring interior column's road up to its ceiling, below the column's own ground surface. Diagonal
-         * neighbors count too, so nothing leaks in through a tunnel's corners.
+         * neighbors count too, so nothing leaks in through a tunnel's corners. The wall is lined as the first
+         * neighboring interior column's road type would line it.
          */
         void placeWall(RoadBlockWriter writer, RandomSource random, int x, int z) {
             if (this.tunnelCenters.isEmpty()) {
@@ -820,20 +765,66 @@ public abstract class AbstractRoadGenerator {
             }
             int bottom = Integer.MAX_VALUE;
             int top = Integer.MIN_VALUE;
+            RoadSettings settings = null;
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if ((dx != 0 || dz != 0) && isInterior(x + dx, z + dz)) {
-                        int roadHeight = this.nearest.center(x + dx, z + dz).getY();
-                        bottom = Math.min(bottom, roadHeight);
-                        top = Math.max(top, roadHeight + clearance(x + dx, z + dz) + 1);
+                        BlockPos center = this.nearest.center(x + dx, z + dz);
+                        bottom = Math.min(bottom, center.getY());
+                        top = Math.max(top, center.getY() + clearance(x + dx, z + dz) + 1);
+                        if (settings == null) {
+                            settings = this.settingsAt.apply(center);
+                        }
                     }
                 }
+            }
+            if (settings == null) {
+                return;
             }
             top = Math.min(top, writer.surfaceHeight(x, z));
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, 0, z);
             for (int y = bottom; y <= top; y++) {
-                secureTunnelBlock(writer, random, pos.setY(y), this.config);
+                secureTunnelBlock(writer, random, pos.setY(y), settings);
             }
+        }
+    }
+
+    /**
+     * The ground height of each column in a chunk, and which of a road type's surfaces matches its ground. Both are
+     * found when first needed, since only columns a road reaches need them.
+     */
+    private static final class ColumnSurfaces {
+        private final RoadBlockWriter writer;
+        private final ChunkPos chunkPos;
+        private final int[] groundHeights = new int[16 * 16];
+        private final boolean[] hasGroundHeight = new boolean[16 * 16];
+        /** Per road type's settings, the surface of each column. Most chunks only see one road type. */
+        private final Map<RoadSettings, RoadSurfaceConfig[]> surfaces = new IdentityHashMap<>();
+        private final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        ColumnSurfaces(RoadBlockWriter writer, ChunkPos chunkPos) {
+            this.writer = writer;
+            this.chunkPos = chunkPos;
+        }
+
+        /** The y of the column's ground block, which may be water. */
+        int groundHeight(int column) {
+            if (!this.hasGroundHeight[column]) {
+                this.groundHeights[column] = this.writer.surfaceHeight(
+                        this.chunkPos.getMinBlockX() + (column >> 4), this.chunkPos.getMinBlockZ() + (column & 15));
+                this.hasGroundHeight[column] = true;
+            }
+            return this.groundHeights[column];
+        }
+
+        /** The road type's surface matching the column's ground block. */
+        RoadSurfaceConfig surface(int column, RoadSettings settings) {
+            RoadSurfaceConfig[] columnSurfaces = this.surfaces.computeIfAbsent(settings, s -> new RoadSurfaceConfig[16 * 16]);
+            if (columnSurfaces[column] == null) {
+                this.mutable.set(this.chunkPos.getMinBlockX() + (column >> 4), groundHeight(column), this.chunkPos.getMinBlockZ() + (column & 15));
+                columnSurfaces[column] = surfaceAt(this.writer, this.mutable, settings);
+            }
+            return columnSurfaces[column];
         }
     }
 
