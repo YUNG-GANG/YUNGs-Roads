@@ -1,13 +1,18 @@
 package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
+import com.yungnickyoung.minecraft.yungsapi.api.world.randomize.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeExport;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.GlobalSetting;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadBlocks;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSurfaceConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.config.ITunableSetting;
@@ -25,6 +30,7 @@ import net.minecraft.client.gui.components.MultiLineTextWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -33,7 +39,13 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Vector2i;
 import org.lwjgl.glfw.GLFW;
 
@@ -41,14 +53,18 @@ import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.function.ToDoubleFunction;
 
 /**
@@ -56,10 +72,10 @@ import java.util.function.ToDoubleFunction;
  * around the player, and a map shows the result next to the terrain that routing sees.
  * <p>
  * The Road Type tab walks through tuning a road type: pick an existing road type and variant as the baseline, edit its
- * routing and shaping settings, apply them to preview the roads, then export the road type as a datapack file. Global
- * settings have their own tab, since they apply to every road type and are saved to the config file instead. View
- * options only change what's drawn, so they take effect right away. Every road type's edits are kept until they're
- * applied, so several can be changed at once.
+ * routing, shaping, and blocks on the pages of a rail of icons, apply them to preview the roads, then export the road
+ * type as a datapack file. Global settings have their own tab, since they apply to every road type and are saved to the
+ * config file instead. View options only change what's drawn, so they take effect right away. Every road type's edits
+ * are kept until they're applied, so several can be changed at once.
  */
 public class RoadDebugScreen extends Screen {
     /** The lang entry of the global tab's Place roads option. Also listed in the help page. */
@@ -67,7 +83,8 @@ public class RoadDebugScreen extends Screen {
     /** The view options with a checkbox, by the id of their lang entries. Also listed in the help page. */
     static final List<String> VIEW_OPTIONS = List.of("world_overlay", "previous_roads", "nodes", "region_borders");
 
-    private static final int PANEL_WIDTH = 200;
+    /** Wide enough for the rail beside the road type's pages, which are as wide as the other tabs' content was. */
+    private static final int PANEL_WIDTH = 224;
     private static final int MARGIN = 6;
     /**
      * The height of the panel's header, naming the mod the screen is for, since it may be one of hundreds in a modpack.
@@ -77,7 +94,13 @@ public class RoadDebugScreen extends Screen {
     private static final int TABS_TOP = MARGIN + HEADER_HEIGHT;
     /** The bottom of the tabs, where each tab's content starts. */
     private static final int TABS_BOTTOM = TABS_TOP + TAB_HEIGHT;
-    private static final int SUB_TAB_HEIGHT = 14;
+    /** Where the road type tab's pages start, right of the rail of icons that picks between them. */
+    private static final int PAGE_X = MARGIN + PageRailTab.SIZE + 4;
+    private static final int RAIL_GAP = 1;
+    private static final int RAIL_COLOR = 0xFF161616;
+    private static final int RAIL_BORDER_COLOR = 0xFF3A3A3A;
+    /** The height of the road type page's name, shown above it. */
+    private static final int PAGE_HEADING_HEIGHT = 14;
     private static final int BUTTON_HEIGHT = 16;
     private static final int STEP_HEIGHT = 12;
     private static final int ROW_HEIGHT = 18;
@@ -96,6 +119,7 @@ public class RoadDebugScreen extends Screen {
     private static final int VALID_TEXT_COLOR = 0xFFE0E0E0;
     /** Marks values and road types that differ from what Reset restores. */
     private static final int EDITED_COLOR = 0xFFFFD050;
+    private static final int SECTION_TITLE_COLOR = 0xFF8CC4FF;
 
     private enum Tab {
         ROAD_TYPE("road_type"),
@@ -109,22 +133,41 @@ public class RoadDebugScreen extends Screen {
         }
     }
 
-    /** A page of settings or options. The road type tab has a page for each group of settings, the others one each. */
+    /**
+     * A page of settings or options. The road type tab has a page for each group of settings, picked by its icon on the
+     * rail, and the others one each.
+     */
     private enum Page {
-        ROUTING(Tab.ROAD_TYPE, "routing", HelpPage.Section.ROUTING),
-        SHAPING(Tab.ROAD_TYPE, "shaping", HelpPage.Section.SHAPING),
-        GLOBAL(Tab.GLOBAL, "global", HelpPage.Section.GLOBAL),
-        VIEW(Tab.VIEW, "view", HelpPage.Section.VIEW);
+        ROUTING(Tab.ROAD_TYPE, "routing", HelpPage.Section.ROUTING, Items.COMPASS),
+        SHAPING(Tab.ROAD_TYPE, "shaping", HelpPage.Section.SHAPING, Items.IRON_SHOVEL),
+        BLOCKS(Tab.ROAD_TYPE, "blocks", HelpPage.Section.BLOCKS, Items.BRICKS),
+        GLOBAL(Tab.GLOBAL, "global", HelpPage.Section.GLOBAL, null),
+        VIEW(Tab.VIEW, "view", HelpPage.Section.VIEW, null);
 
         final Tab tab;
+        final String id;
         final Component displayName;
         /** The help page's section about the page. */
         final HelpPage.Section helpSection;
+        /** The page's icon on the road type tab's rail, or null if it's another tab's page. */
+        @Nullable
+        final Item icon;
 
-        Page(Tab tab, String id, HelpPage.Section helpSection) {
+        Page(Tab tab, String id, HelpPage.Section helpSection, @Nullable Item icon) {
             this.tab = tab;
+            this.id = id;
             this.displayName = Component.translatable("yungsroads.screen.tab." + id);
             this.helpSection = helpSection;
+            this.icon = icon;
+        }
+
+        /** Where the page's content starts: right of the rail on the road type tab, at the margin elsewhere. */
+        int left() {
+            return this.tab == Tab.ROAD_TYPE ? PAGE_X : MARGIN;
+        }
+
+        int width() {
+            return PANEL_WIDTH - MARGIN - left();
         }
 
         /** Whether the page's content scrolls, since its settings and formulas can be taller than the panel. */
@@ -178,6 +221,8 @@ public class RoadDebugScreen extends Screen {
      */
     private final Map<VariantKey, Map<RoadSetting, String>> pendingTypeText = new LinkedHashMap<>();
     private final Map<GlobalSetting, String> pendingGlobalText = new EnumMap<>(GlobalSetting.class);
+    /** Blocks as edited, for every road type variant. Replaced as a whole on each edit, never changed. */
+    private final Map<VariantKey, RoadBlocks> pendingBlocks = new LinkedHashMap<>();
     private ConfigModule.Debug pendingDebug = new ConfigModule.Debug();
 
     /** The road types of the level the fields were loaded from: as loaded, as applied, and which its roads can get. */
@@ -196,6 +241,8 @@ public class RoadDebugScreen extends Screen {
      */
     private final Map<AbstractWidget, String> optionTooltips = new HashMap<>();
 
+    /** The top of the road type tab's rail, where its page's name is shown. */
+    private int railTop;
     /** The top of each page's content, below its tab's header. */
     private final Map<Page, Integer> pageTop = new EnumMap<>(Page.class);
     /** Where each settings page's formulas start, below its settings. */
@@ -206,6 +253,11 @@ public class RoadDebugScreen extends Screen {
     private final Map<Page, Integer> maxScroll = new EnumMap<>(Page.class);
     /** The shown page's scroll bar, laid out for it each frame. Scrolls by whole rows, like the mouse wheel. */
     private final ScrollBar scrollBar = new ScrollBar(ROW_HEIGHT);
+    /**
+     * Widgets drawn as one row, such as a setting's slider and text box, which are shown or hidden together as the page
+     * scrolls, though they differ in height.
+     */
+    private final List<List<AbstractWidget>> rowGroups = new ArrayList<>();
     /** The y of each widget on a scrolling page when the page isn't scrolled. */
     private final Map<AbstractWidget, Integer> unscrolledY = new HashMap<>();
     /** The top of the action buttons at the bottom of the panel, with their step labels. The status is drawn above. */
@@ -265,6 +317,7 @@ public class RoadDebugScreen extends Screen {
         this.settingRows.clear();
         this.optionTooltips.clear();
         this.unscrolledY.clear();
+        this.rowGroups.clear();
         this.applyButtons.clear();
         this.revertButtons.clear();
         this.exportButtons.clear();
@@ -279,7 +332,7 @@ public class RoadDebugScreen extends Screen {
         int tabWidth = contentWidth / Tab.values().length;
         for (Tab t : Tab.values()) {
             int width = t.ordinal() == Tab.values().length - 1 ? contentWidth - tabWidth * t.ordinal() : tabWidth;
-            addRenderableWidget(new PanelTab(x + tabWidth * t.ordinal(), TABS_TOP, width, TAB_HEIGHT, t.displayName, false,
+            addRenderableWidget(new PanelTab(x + tabWidth * t.ordinal(), TABS_TOP, width, TAB_HEIGHT, t.displayName,
                     () -> this.tab == t, () -> selectTab(t)));
         }
 
@@ -294,15 +347,16 @@ public class RoadDebugScreen extends Screen {
         Map<Page, Integer> rowY = new EnumMap<>(Page.class);
         if (this.selected != null) {
             for (RoadSetting setting : RoadSetting.values()) {
-                addSettingRow(setting, x, contentWidth, rowY);
+                addSettingRow(setting, rowY);
             }
+            initBlocksPage();
         }
         // The global page says where its settings are saved, since unlike the road type's, they're for every road type
         MultiLineTextWidget globalNote = note("yungsroads.screen.global.note", x, otherTop, contentWidth);
         addScrollingWidget(Page.GLOBAL, globalNote, otherTop);
         rowY.put(Page.GLOBAL, otherTop + globalNote.getHeight() + 6);
         for (GlobalSetting setting : GlobalSetting.values()) {
-            addSettingRow(setting, x, contentWidth, rowY);
+            addSettingRow(setting, rowY);
         }
         int placeRoadsY = rowY.get(Page.GLOBAL) + 2;
         Checkbox placeRoads = Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
@@ -353,15 +407,18 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * The road type tab's header: step 1 picks the road type and variant to start from, and step 2 picks which of its
-     * settings are shown. Without a road network, a note says there's nothing to tune instead.
+     * The road type tab's header: step 1 picks the road type and variant to start from, and step 2's rail of icons
+     * picks which of its pages is shown. Without a road network, a note says there's nothing to tune instead.
      */
     private void initRoadTypeHeader(int x, int contentWidth) {
         int y = TABS_BOTTOM + 4;
         if (this.selected == null || this.levelTypes == null) {
             int noteBottom = y + addTabWidget(Tab.ROAD_TYPE, note("yungsroads.screen.no_network", x, y, contentWidth)).getHeight();
-            this.pageTop.put(Page.ROUTING, noteBottom);
-            this.pageTop.put(Page.SHAPING, noteBottom);
+            for (Page page : Page.values()) {
+                if (page.tab == Tab.ROAD_TYPE) {
+                    this.pageTop.put(page, noteBottom);
+                }
+            }
             return;
         }
 
@@ -391,15 +448,18 @@ public class RoadDebugScreen extends Screen {
 
         this.steps.add(new Step(Tab.ROAD_TYPE, 2, Component.translatable("yungsroads.screen.step.edit"), y));
         y += STEP_HEIGHT;
-        int subTabWidth = contentWidth / 2;
-        for (Page page : List.of(Page.ROUTING, Page.SHAPING)) {
-            int subTabX = x + (page == Page.ROUTING ? 0 : subTabWidth);
-            addTabWidget(Tab.ROAD_TYPE, new PanelTab(subTabX, y, page == Page.ROUTING ? subTabWidth : contentWidth - subTabWidth,
-                    SUB_TAB_HEIGHT, page.displayName, true, () -> this.roadTypePage == page, () -> selectPage(page)));
+        this.railTop = y;
+        int railY = y;
+        for (Page page : Page.values()) {
+            if (page.tab != Tab.ROAD_TYPE) {
+                continue;
+            }
+            PageRailTab railTab = addTabWidget(Tab.ROAD_TYPE, new PageRailTab(x, railY, page.displayName, new ItemStack(page.icon),
+                    () -> this.roadTypePage == page, () -> selectPage(page)));
+            this.optionTooltips.put(railTab, Language.getInstance().getOrDefault("yungsroads.screen.page." + page.id + ".description"));
+            railY += PageRailTab.SIZE + RAIL_GAP;
+            this.pageTop.put(page, y + PAGE_HEADING_HEIGHT);
         }
-        y += SUB_TAB_HEIGHT + 4;
-        this.pageTop.put(Page.ROUTING, y);
-        this.pageTop.put(Page.SHAPING, y);
     }
 
     /**
@@ -486,8 +546,10 @@ public class RoadDebugScreen extends Screen {
         this.rebuildPending = true;
     }
 
-    private void addSettingRow(ITunableSetting setting, int x, int contentWidth, Map<Page, Integer> rowY) {
+    private void addSettingRow(ITunableSetting setting, Map<Page, Integer> rowY) {
         Page page = Page.of(setting);
+        int x = page.left();
+        int contentWidth = page.width();
         int y = rowY.getOrDefault(page, this.pageTop.get(page));
         rowY.put(page, y + ROW_HEIGHT);
         Component name = Component.translatable(setting.nameKey());
@@ -518,9 +580,240 @@ public class RoadDebugScreen extends Screen {
         });
         box.setValue(pendingText(setting));
         this.settingRows.put(setting, List.of(slider, box));
+        this.rowGroups.add(List.of(slider, box));
         addScrollingWidget(page, slider, y);
         addScrollingWidget(page, box, y + 1);
     }
+
+    /**
+     * The blocks page: the variant's surfaces, in the order they're tried, then the blocks of its bridges and tunnels.
+     * Each list of blocks is a row that opens it in a dialog to edit, marked while it differs from what Reset restores.
+     */
+    private void initBlocksPage() {
+        Page page = Page.BLOCKS;
+        int x = page.left();
+        int width = page.width();
+        int y = this.pageTop.get(page);
+        VariantKey key = this.selected;
+        RoadBlocks blocks = this.pendingBlocks.get(key);
+        RoadBlocks baseline = baselineSettings(key).blocks;
+        int labelWidth = 0;
+        for (String label : List.of("ground", "path", "fill", "deck", "railings", "lining")) {
+            labelWidth = Math.max(labelWidth, this.font.width(Component.translatable("yungsroads.screen.blocks." + label)) + 6);
+        }
+
+        y = addBlocksHeading("yungsroads.screen.blocks.surfaces", x, y, width);
+        List<RoadSurfaceConfig> surfaces = blocks.surfaces();
+        for (int i = 0; i < surfaces.size(); i++) {
+            int index = i;
+            RoadSurfaceConfig surface = surfaces.get(i);
+            RoadSurfaceConfig baseSurface = i < baseline.surfaces().size() ? baseline.surfaces().get(i) : null;
+            Component surfaceName = Component.translatable("yungsroads.screen.blocks.surface", i + 1);
+            MultiLineTextWidget name = addScrollingWidget(page, new MultiLineTextWidget(x, y + 4, surfaceName, this.font).setColor(0xFFFFFFFF), y + 4);
+            int buttonX = x + width;
+            buttonX -= 14;
+            Button remove = surfaceButton(buttonX, y, "✕", "yungsroads.screen.blocks.surface.remove",
+                    () -> setSurfaces(key, list -> list.remove(index)));
+            remove.active = surfaces.size() > 1;
+            buttonX -= 16;
+            Button later = surfaceButton(buttonX, y, "▼", "yungsroads.screen.blocks.surface.later",
+                    () -> setSurfaces(key, list -> list.add(index + 1, list.remove(index))));
+            later.active = i < surfaces.size() - 1;
+            buttonX -= 16;
+            Button earlier = surfaceButton(buttonX, y, "▲", "yungsroads.screen.blocks.surface.earlier",
+                    () -> setSurfaces(key, list -> list.add(index - 1, list.remove(index))));
+            earlier.active = i > 0;
+            this.rowGroups.add(List.of(name, earlier, later, remove));
+            y += 16;
+
+            Component ground = Component.translatable("yungsroads.screen.blocks.dialog.ground", i + 1);
+            y = addBlockListRow(x, y, width, "ground", labelWidth, targetIcons(surface.targetBlocks), targetNames(surface.targetBlocks),
+                    baseSurface == null || differs(RoadSurfaceConfig.TARGET_BLOCK_CODEC.listOf(), surface.targetBlocks, baseSurface.targetBlocks),
+                    () -> BlockListScreen.ground(this, ground, docs("target_blocks"), surface.targetBlocks,
+                            value -> setSurface(key, index, new RoadSurfaceConfig(value, surface.pathBlockStates, surface.fillBlockStates, surface.decorations))));
+            Component path = Component.translatable("yungsroads.screen.blocks.dialog.path", i + 1);
+            y = addBlockListRow(x, y, width, "path", labelWidth, icons(surface.pathBlockStates), mix(surface.pathBlockStates),
+                    baseSurface == null || differs(BlockStateRandomizer.CODEC, surface.pathBlockStates, baseSurface.pathBlockStates),
+                    () -> BlockListScreen.weighted(this, path, docs("path_blockstates"), null, Optional.of(surface.pathBlockStates),
+                            Blocks.DIRT_PATH.defaultBlockState(),
+                            value -> setSurface(key, index, new RoadSurfaceConfig(surface.targetBlocks, value.orElseThrow(), surface.fillBlockStates, surface.decorations))));
+            Component fill = Component.translatable("yungsroads.screen.blocks.dialog.fill", i + 1);
+            y = addBlockListRow(x, y, width, "fill", labelWidth, surface.fillBlockStates.map(this::icons).orElse(List.of()),
+                    optionalMix(surface.fillBlockStates, "yungsroads.screen.blocks.fill.none"),
+                    baseSurface == null || differs(surface.fillBlockStates, baseSurface.fillBlockStates),
+                    () -> BlockListScreen.weighted(this, fill, docs("fill_blockstates"), Component.translatable("yungsroads.screen.blocks.fill.none_option"),
+                            surface.fillBlockStates, Blocks.DIRT.defaultBlockState(),
+                            value -> setSurface(key, index, new RoadSurfaceConfig(surface.targetBlocks, surface.pathBlockStates, value, surface.decorations))));
+            y += 4;
+        }
+        Button addSurface = addScrollingWidget(page, Button.builder(Component.translatable("yungsroads.screen.blocks.surface.add"),
+                        button -> setSurfaces(key, list -> list.add(copy(list.get(list.size() - 1)))))
+                .bounds(x, y, Math.min(width, 110), BUTTON_HEIGHT)
+                .build(), y);
+        this.optionTooltips.put(addSurface, Language.getInstance().getOrDefault("yungsroads.screen.blocks.surface.add.description"));
+        y += BUTTON_HEIGHT + 8;
+
+        y = addBlocksHeading("yungsroads.screen.blocks.bridges", x, y, width);
+        y = addBlockListRow(x, y, width, "deck", labelWidth, icons(blocks.bridgeBlockStates()), mix(blocks.bridgeBlockStates()),
+                differs(BlockStateRandomizer.CODEC, blocks.bridgeBlockStates(), baseline.bridgeBlockStates()),
+                () -> BlockListScreen.weighted(this, Component.translatable("yungsroads.screen.blocks.dialog.deck"), docs("bridge_blockstates"), null,
+                        Optional.of(blocks.bridgeBlockStates()), Blocks.OAK_PLANKS.defaultBlockState(),
+                        value -> setBlocks(key, current -> new RoadBlocks(current.surfaces(), value.orElseThrow(),
+                                current.bridgeRailingBlockStates(), current.tunnelLiningBlockStates()))));
+        y = addBlockListRow(x, y, width, "railings", labelWidth, blocks.bridgeRailingBlockStates().map(this::icons).orElse(List.of()),
+                optionalMix(blocks.bridgeRailingBlockStates(), "yungsroads.screen.blocks.railings.none"),
+                differs(blocks.bridgeRailingBlockStates(), baseline.bridgeRailingBlockStates()),
+                () -> BlockListScreen.weighted(this, Component.translatable("yungsroads.screen.blocks.dialog.railings"), docs("bridge_railing_blockstates"),
+                        Component.translatable("yungsroads.screen.blocks.railings.none_option"), blocks.bridgeRailingBlockStates(),
+                        Blocks.OAK_FENCE.defaultBlockState(),
+                        value -> setBlocks(key, current -> new RoadBlocks(current.surfaces(), current.bridgeBlockStates(),
+                                value, current.tunnelLiningBlockStates()))));
+        y += 8;
+
+        y = addBlocksHeading("yungsroads.screen.blocks.tunnels", x, y, width);
+        y = addBlockListRow(x, y, width, "lining", labelWidth, blocks.tunnelLiningBlockStates().map(this::icons).orElse(List.of()),
+                optionalMix(blocks.tunnelLiningBlockStates(), "yungsroads.screen.blocks.lining.none"),
+                differs(blocks.tunnelLiningBlockStates(), baseline.tunnelLiningBlockStates()),
+                () -> BlockListScreen.weighted(this, Component.translatable("yungsroads.screen.blocks.dialog.lining"), docs("tunnel_lining_blockstates"),
+                        Component.translatable("yungsroads.screen.blocks.lining.none_option"), blocks.tunnelLiningBlockStates(),
+                        Blocks.STONE_BRICKS.defaultBlockState(),
+                        value -> setBlocks(key, current -> new RoadBlocks(current.surfaces(), current.bridgeBlockStates(),
+                                current.bridgeRailingBlockStates(), value))));
+        this.formulaY.put(page, y + 6);
+    }
+
+    /** A section title on the blocks page. */
+    private int addBlocksHeading(String key, int x, int y, int width) {
+        MultiLineTextWidget heading = new MultiLineTextWidget(x, y, Component.translatable(key).withStyle(ChatFormatting.BOLD), this.font)
+                .setMaxWidth(width)
+                .setColor(SECTION_TITLE_COLOR);
+        addScrollingWidget(Page.BLOCKS, heading, y);
+        return y + heading.getHeight() + 4;
+    }
+
+    /**
+     * A row for one list of blocks, which opens the list's dialog when clicked.
+     *
+     * @param label  The row's label, which is also the lang entry of its tooltip, describing the list.
+     * @param dialog Makes the dialog, with the list as it is when clicked.
+     */
+    private int addBlockListRow(int x, int y, int width, String label, int labelWidth, List<ItemStack> icons, Component summary,
+                                boolean edited, Supplier<Screen> dialog) {
+        BlockListRow row = new BlockListRow(x, y, width, Component.translatable("yungsroads.screen.blocks." + label), labelWidth,
+                icons, summary, () -> edited, () -> this.minecraft.setScreen(dialog.get()));
+        addScrollingWidget(Page.BLOCKS, row, y);
+        this.optionTooltips.put(row, Language.getInstance().getOrDefault("yungsroads.screen.blocks." + label + ".description"));
+        return y + BlockListRow.HEIGHT + 2;
+    }
+
+    private Button surfaceButton(int x, int y, String text, String tooltipKey, Runnable onPress) {
+        Button button = Button.builder(Component.literal(text), b -> onPress.run())
+                .bounds(x, y, 14, 14)
+                .tooltip(Tooltip.create(Component.translatable(tooltipKey)))
+                .build();
+        addScrollingWidget(Page.BLOCKS, button, y);
+        return button;
+    }
+
+    /** A block list's description, as written for the datapack's README. */
+    private static Component docs(String field) {
+        return Component.translatable("yungsroads.docs.blocks." + field);
+    }
+
+    /** Replaces the variant's blocks with an edited copy, and shows them once the widgets are rebuilt. */
+    private void setBlocks(VariantKey key, Function<RoadBlocks, RoadBlocks> edit) {
+        this.pendingBlocks.put(key, edit.apply(this.pendingBlocks.get(key)));
+        this.rebuildPending = true;
+    }
+
+    private void setSurface(VariantKey key, int index, RoadSurfaceConfig surface) {
+        setSurfaces(key, list -> list.set(index, surface));
+    }
+
+    /** Edits a copy of the variant's list of surfaces. */
+    private void setSurfaces(VariantKey key, Consumer<List<RoadSurfaceConfig>> edit) {
+        setBlocks(key, current -> {
+            List<RoadSurfaceConfig> surfaces = new ArrayList<>(current.surfaces());
+            edit.accept(surfaces);
+            return new RoadBlocks(List.copyOf(surfaces), current.bridgeBlockStates(), current.bridgeRailingBlockStates(), current.tunnelLiningBlockStates());
+        });
+    }
+
+    private static RoadSurfaceConfig copy(RoadSurfaceConfig surface) {
+        return new RoadSurfaceConfig(surface.targetBlocks, surface.pathBlockStates, surface.fillBlockStates, surface.decorations);
+    }
+
+    /** Whether a list of blocks differs from what Reset restores, compared as they'd be written to a road type file. */
+    private static <T> boolean differs(Codec<T> codec, T value, T baseline) {
+        return !codec.encodeStart(JsonOps.INSTANCE, value).getOrThrow(IllegalStateException::new)
+                .equals(codec.encodeStart(JsonOps.INSTANCE, baseline).getOrThrow(IllegalStateException::new));
+    }
+
+    private static boolean differs(Optional<BlockStateRandomizer> value, Optional<BlockStateRandomizer> baseline) {
+        return value.isPresent() != baseline.isPresent()
+                || value.isPresent() && differs(BlockStateRandomizer.CODEC, value.get(), baseline.get());
+    }
+
+    /** The blocks of a mix as items, the default block last, leaving out blocks without one. */
+    private List<ItemStack> icons(BlockStateRandomizer mix) {
+        List<BlockState> states = new ArrayList<>();
+        mix.getEntries().forEach(entry -> states.add(entry.blockState));
+        states.add(mix.getDefaultBlockState());
+        return icons(states);
+    }
+
+    private List<ItemStack> icons(List<BlockState> states) {
+        return states.stream()
+                .map(state -> state.getBlock().asItem())
+                .filter(item -> item != Items.AIR)
+                .distinct()
+                .map(ItemStack::new)
+                .toList();
+    }
+
+    /** A surface's ground blocks as items, a block tag shown by its first block with one. */
+    private List<ItemStack> targetIcons(List<ExtraCodecs.TagOrElementLocation> targets) {
+        return targets.stream()
+                .flatMap(target -> BlockListScreen.blocks(target).stream()
+                        .map(block -> block.asItem())
+                        .filter(item -> item != Items.AIR)
+                        .limit(1))
+                .distinct()
+                .map(ItemStack::new)
+                .toList();
+    }
+
+    /** A surface's ground blocks in words, block tags as typed, such as {@code #dirt}. */
+    private static Component targetNames(List<ExtraCodecs.TagOrElementLocation> targets) {
+        MutableComponent names = Component.empty();
+        for (int i = 0; i < targets.size(); i++) {
+            ExtraCodecs.TagOrElementLocation target = targets.get(i);
+            names.append(i == 0 ? Component.empty() : Component.literal(", "));
+            if (target.tag()) {
+                names.append(Component.literal(BlockListScreen.text(target)).withColor(SECTION_TITLE_COLOR));
+            } else {
+                BuiltInRegistries.BLOCK.getOptional(target.id()).ifPresent(block -> names.append(block.getName()));
+            }
+        }
+        return names;
+    }
+
+    /** A mix of blocks in words, with each block's chance, the default block taking the rest. */
+    private static Component mix(BlockStateRandomizer mix) {
+        MutableComponent text = Component.empty();
+        double rest = 1;
+        for (BlockStateRandomizer.Entry entry : mix.getEntries()) {
+            text.append(entry.blockState.getBlock().getName()).append(" " + BlockListScreen.percent(entry.probability) + "%, ");
+            rest -= entry.probability;
+        }
+        return text.append(mix.getDefaultBlockState().getBlock().getName())
+                .append(" " + BlockListScreen.percent(Math.max(0, rest)) + "%");
+    }
+
+    private static Component optionalMix(Optional<BlockStateRandomizer> mix, String noneKey) {
+        return mix.map(RoadDebugScreen::mix).orElseGet(() -> Component.translatable(noneKey).withColor(NOTE_COLOR));
+    }
+
 
     private int addViewCheckbox(int x, int y, int width, String option, boolean selected, Consumer<Boolean> onChange) {
         String key = "yungsroads.screen.view." + option;
@@ -559,9 +852,10 @@ public class RoadDebugScreen extends Screen {
      *
      * @param y The widget's y when the page isn't scrolled.
      */
-    private void addScrollingWidget(Page page, AbstractWidget widget, int y) {
+    private <T extends AbstractWidget> T addScrollingWidget(Page page, T widget, int y) {
         addPageWidget(page, widget);
         this.unscrolledY.put(widget, y);
+        return widget;
     }
 
     /** The page shown: the road type tab's selected page, or the other tabs' only page. */
@@ -739,9 +1033,14 @@ public class RoadDebugScreen extends Screen {
             }
         }
         if (this.tab == Tab.ROAD_TYPE && this.selected != null) {
-            // Underlines the sub-tabs, so the selected one's underline reads as part of a row
-            int y = this.pageTop.get(Page.ROUTING) - 5;
-            guiGraphics.fill(MARGIN, y, PANEL_WIDTH - MARGIN, y + 1, DIVIDER_COLOR);
+            // A framed strip behind the rail's tabs, so they read as one control
+            long railTabs = Arrays.stream(Page.values()).filter(page -> page.tab == Tab.ROAD_TYPE).count();
+            int railBottom = this.railTop + (int) railTabs * (PageRailTab.SIZE + RAIL_GAP) - RAIL_GAP;
+            guiGraphics.fill(MARGIN - 1, this.railTop - 1, MARGIN + PageRailTab.SIZE + 1, railBottom + 1, RAIL_BORDER_COLOR);
+            guiGraphics.fill(MARGIN, this.railTop, MARGIN + PageRailTab.SIZE, railBottom, RAIL_COLOR);
+            // The rail only shows icons, so the page says which it is
+            guiGraphics.drawString(this.font, this.roadTypePage.displayName.copy().withStyle(ChatFormatting.BOLD),
+                    PAGE_X, this.railTop + 2, 0xFFFFFFFF, false);
         }
         if (this.tab != Tab.VIEW) {
             guiGraphics.fill(MARGIN, this.footerTop - 3, PANEL_WIDTH - MARGIN, this.footerTop - 2, DIVIDER_COLOR);
@@ -838,7 +1137,7 @@ public class RoadDebugScreen extends Screen {
             case GLOBAL -> List.of(
                     formulaTitle("yungsroads.formula.global.title"),
                     formulaLine(valueOf, "yungsroads.formula.search_priority", GlobalSetting.HEURISTIC_WEIGHT));
-            case VIEW -> List.of();
+            case BLOCKS, VIEW -> List.of();
         };
     }
 
@@ -848,20 +1147,26 @@ public class RoadDebugScreen extends Screen {
      */
     private void layOutScrollingPage(Page page, int bottom, List<Component> formulas) {
         int top = this.pageTop.get(page);
-        int contentBottom = this.formulaY.getOrDefault(page, top) + formulasHeight(formulas);
+        int contentBottom = this.formulaY.getOrDefault(page, top) + formulasHeight(page, formulas);
         // Scrolling is by whole rows, so the top row always sits right at the page's top instead of being hidden
         int max = Mth.positiveCeilDiv(Math.max(0, contentBottom - bottom), ROW_HEIGHT) * ROW_HEIGHT;
         int offset = Mth.clamp(this.scroll.getOrDefault(page, 0), 0, max);
         this.maxScroll.put(page, max);
         this.scroll.put(page, offset);
-        for (AbstractWidget widget : this.pageWidgets.getOrDefault(page, List.of())) {
+        List<AbstractWidget> widgets = this.pageWidgets.getOrDefault(page, List.of());
+        for (AbstractWidget widget : widgets) {
             int y = this.unscrolledY.get(widget) - offset;
             widget.setY(y);
             widget.visible = y >= top && y + widget.getHeight() <= bottom;
-            // A hidden text box must not keep receiving key presses
-            if (!widget.visible && getFocused() == widget) {
-                setFocused(null);
+        }
+        for (List<AbstractWidget> group : this.rowGroups) {
+            if (widgets.contains(group.get(0)) && group.stream().anyMatch(widget -> !widget.visible)) {
+                group.forEach(widget -> widget.visible = false);
             }
+        }
+        // A hidden text box must not keep receiving key presses
+        if (getFocused() instanceof AbstractWidget focused && widgets.contains(focused) && !focused.visible) {
+            setFocused(null);
         }
     }
 
@@ -1040,12 +1345,13 @@ public class RoadDebugScreen extends Screen {
      */
     @Nullable
     private Component renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
-        int pageTop = this.pageTop.get(page());
-        int x = MARGIN;
+        Page page = page();
+        int pageTop = this.pageTop.get(page);
+        int x = page.left();
         int y = top;
         Style hovered = null;
         for (Component paragraph : paragraphs) {
-            List<FormattedCharSequence> lines = this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2);
+            List<FormattedCharSequence> lines = this.font.split(paragraph, page.width());
             if (y + lines.size() * (this.font.lineHeight + 1) - 1 > bottom) {
                 break;
             }
@@ -1065,11 +1371,11 @@ public class RoadDebugScreen extends Screen {
         return hovered == null || hovered.getHoverEvent() == null ? null : hovered.getHoverEvent().getValue(HoverEvent.Action.SHOW_TEXT);
     }
 
-    /** The height of the given formulas, as drawn by {@link #renderFormula}. */
-    private int formulasHeight(List<Component> paragraphs) {
+    /** The height of the given formulas on the page, as drawn by {@link #renderFormula}. */
+    private int formulasHeight(Page page, List<Component> paragraphs) {
         int height = 0;
         for (Component paragraph : paragraphs) {
-            height += this.font.split(paragraph, PANEL_WIDTH - MARGIN * 2).size() * (this.font.lineHeight + 1) + 2;
+            height += this.font.split(paragraph, page.width()).size() * (this.font.lineHeight + 1) + 2;
         }
         return height;
     }
@@ -1158,6 +1464,7 @@ public class RoadDebugScreen extends Screen {
         for (RoadSetting setting : RoadSetting.values()) {
             text.put(setting, setting.format(setting.get(baseline)));
         }
+        this.pendingBlocks.put(this.selected, baseline.blocks);
         rebuildWidgets();
     }
 
@@ -1216,6 +1523,7 @@ public class RoadDebugScreen extends Screen {
         this.baseTypes = new TreeMap<>();
         types.forEach((id, type) -> this.baseTypes.put(id, type.copy()));
         this.pendingTypeText.clear();
+        this.pendingBlocks.clear();
         this.baseTypes.forEach((id, type) -> {
             for (int variant = 0; variant < type.variants().size(); variant++) {
                 RoadSettings settings = type.variants().get(variant).settings();
@@ -1224,6 +1532,7 @@ public class RoadDebugScreen extends Screen {
                     text.put(setting, setting.format(setting.get(settings)));
                 }
                 this.pendingTypeText.put(new VariantKey(id, variant), text);
+                this.pendingBlocks.put(new VariantKey(id, variant), settings.blocks);
             }
         });
         VariantKey preferred = this.selected != null ? this.selected : lastSelected;
@@ -1264,20 +1573,24 @@ public class RoadDebugScreen extends Screen {
                 : setting.defaultValue();
     }
 
-    /** Whether the entered values are all valid and the same as the given settings, as each setting shows them. */
-    private boolean matches(Map<RoadSetting, String> text, RoadSettings settings) {
+    /**
+     * Whether the variant's entered values are all valid and the same as the given settings, as each setting shows them,
+     * and its blocks are the same.
+     */
+    private boolean matches(VariantKey key, RoadSettings settings) {
+        Map<RoadSetting, String> text = this.pendingTypeText.get(key);
         for (RoadSetting setting : RoadSetting.values()) {
             Double value = parse(setting, text.get(setting));
             if (value == null || !setting.format(value).equals(setting.format(setting.get(settings)))) {
                 return false;
             }
         }
-        return true;
+        return this.pendingBlocks.get(key).sameAs(settings.blocks);
     }
 
-    /** Whether the variant's entered values differ from the road type as the level loaded it. */
+    /** Whether the variant's entered values or blocks differ from the road type as the level loaded it. */
     private boolean isEdited(VariantKey key) {
-        return this.levelTypes != null && !matches(this.pendingTypeText.get(key), baselineSettings(key));
+        return this.levelTypes != null && !matches(key, baselineSettings(key));
     }
 
     /** Whether any of the road type's variants differ from the road type as the level loaded it. */
@@ -1298,8 +1611,8 @@ public class RoadDebugScreen extends Screen {
             return false;
         }
         for (int variant = 0; variant < applied.variants().size(); variant++) {
-            Map<RoadSetting, String> text = this.pendingTypeText.get(new VariantKey(typeId, variant));
-            if (text != null && !matches(text, applied.variants().get(variant).settings())) {
+            VariantKey key = new VariantKey(typeId, variant);
+            if (this.pendingTypeText.containsKey(key) && !matches(key, applied.variants().get(variant).settings())) {
                 return true;
             }
         }
@@ -1367,6 +1680,7 @@ public class RoadDebugScreen extends Screen {
                 }
                 setting.set(settings, value);
             }
+            settings.blocks = this.pendingBlocks.get(key);
         }
         return types;
     }
@@ -1390,6 +1704,7 @@ public class RoadDebugScreen extends Screen {
             }
             setting.set(settings, value);
         }
+        settings.blocks = this.pendingBlocks.get(this.selected);
         return settings;
     }
 

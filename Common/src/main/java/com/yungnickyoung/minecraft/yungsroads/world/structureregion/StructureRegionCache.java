@@ -172,6 +172,14 @@ public class StructureRegionCache {
     }
 
     /**
+     * Replaces a loaded region in the cache without saving it, for a copy whose saved data is the same, such as one
+     * with other road settings. See {@link StructureRegion#withRoadSettings}.
+     */
+    public void swapRegion(StructureRegion region) {
+        this.cache.put(region.getPos().asLong(), CompletableFuture.completedFuture(region));
+    }
+
+    /**
      * Removes a region from the cache and from disk, so it's generated again the next time it's needed.
      */
     public void invalidateRegion(long regionKey) {

@@ -60,17 +60,34 @@ public final class RoadTuning {
             YungsRoadsCommon.CONFIG.debug = this.debug.copy();
         }
 
-        /** Whether roads would be generated the same with the other settings, which may differ in whether roads are placed. */
-        boolean generatesSameAs(Settings other) {
+        /**
+         * Whether roads would be routed and shaped the same with the other settings, which may differ in how the roads
+         * are placed. See {@link RoadType#routesSameAs}.
+         */
+        boolean routesSameAs(Settings other) {
             if (!this.advanced.sameAs(other.advanced) || !this.roadTypes.keySet().equals(other.roadTypes.keySet())) {
                 return false;
             }
             for (Map.Entry<ResourceLocation, RoadType> entry : this.roadTypes.entrySet()) {
-                if (!entry.getValue().sameAs(other.roadTypes.get(entry.getKey()))) {
+                if (!entry.getValue().routesSameAs(other.roadTypes.get(entry.getKey()))) {
                     return false;
                 }
             }
             return true;
+        }
+
+        /** Whether roads routed the same would also be placed the same. Only meaningful if {@link #routesSameAs}. */
+        boolean placesSameAs(Settings other) {
+            for (Map.Entry<ResourceLocation, RoadType> entry : this.roadTypes.entrySet()) {
+                List<RoadType.Variant> variants = entry.getValue().variants();
+                List<RoadType.Variant> otherVariants = other.roadTypes.get(entry.getKey()).variants();
+                for (int i = 0; i < variants.size(); i++) {
+                    if (!variants.get(i).settings().placesSameAs(otherVariants.get(i).settings())) {
+                        return false;
+                    }
+                }
+            }
+            return sameDebug(this.debug, other.debug);
         }
 
         private static SortedMap<ResourceLocation, RoadType> copy(Map<ResourceLocation, RoadType> roadTypes) {
@@ -84,8 +101,9 @@ public final class RoadTuning {
      * The state before the most recent change.
      *
      * @param regions The regions that change replaced, by region key. A null value means the region wasn't loaded.
+     * @param sameRoutes Whether the change kept the roads' routes, only changing how they're placed.
      */
-    private record Snapshot(ServerLevel level, Settings settings, Long2ObjectMap<StructureRegion> regions) {
+    private record Snapshot(ServerLevel level, Settings settings, Long2ObjectMap<StructureRegion> regions, boolean sameRoutes) {
     }
 
     @Nullable
@@ -113,11 +131,12 @@ public final class RoadTuning {
     }
 
     /**
-     * The roads replaced by the most recent change in the given level, for comparing against the current roads.
+     * The roads replaced by the most recent change in the given level, for comparing against the current roads. None
+     * if the change kept the roads' routes, since they'd only be drawn over the current roads.
      */
     public static Collection<StructureRegion> previousRegions(ServerLevel level) {
         Snapshot snapshot = previous;
-        if (snapshot == null || snapshot.level != level) {
+        if (snapshot == null || snapshot.level != level || snapshot.sameRoutes) {
             return List.of();
         }
         return snapshot.regions.values().stream().filter(Objects::nonNull).toList();
@@ -129,30 +148,39 @@ public final class RoadTuning {
     }
 
     /**
-     * Applies the settings, regenerating the roads near the given position unless only whether roads are placed changed.
-     * Regeneration runs on worker threads, and the results are swapped in on the server thread when all are done.
+     * Applies the settings. If they only change how roads are placed, such as their blocks, width, or whether roads are
+     * placed at all, the roads keep their routes and are just re-placed. Otherwise, or if nothing changed, the roads near
+     * the given position are regenerated, on worker threads, and swapped in on the server thread when all are done.
      */
     public static void apply(ServerLevel level, Settings settings, BlockPos center) {
         if (busy) {
             return;
         }
         Settings oldSettings = Settings.current(level);
-        boolean onlyDebugChanged = settings.generatesSameAs(oldSettings) && !sameDebug(settings.debug, oldSettings.debug);
+        // Applying unchanged settings regenerates, which refreshes roads generated before an earlier change
+        boolean placementOnly = settings.routesSameAs(oldSettings) && !settings.placesSameAs(oldSettings);
         settings.applyTo(level);
-
         StructureRegionCache cache = cacheOf(level);
+
+        if (placementOnly) {
+            // Placement reads each road's settings, so every loaded road gets its type's new ones
+            Long2ObjectMap<StructureRegion> oldRegions = new Long2ObjectOpenHashMap<>();
+            RoadTypes roadTypes = roadTypesOf(level);
+            for (StructureRegion region : cache.getLoadedRegions()) {
+                oldRegions.put(region.getPos().asLong(), region);
+                cache.swapRegion(region.withRoadSettings(roadTypes));
+            }
+            previous = new Snapshot(level, oldSettings, oldRegions, true);
+            refreshPlacedRoads(level);
+            status = Component.translatable("yungsroads.status.replaced");
+            return;
+        }
+
         LongList regionKeys = StructureRegionCache.regionKeysNearArea(
                 center.getX() - REGENERATE_RADIUS, center.getZ() - REGENERATE_RADIUS,
                 center.getX() + REGENERATE_RADIUS, center.getZ() + REGENERATE_RADIUS);
         Long2ObjectMap<StructureRegion> oldRegions = new Long2ObjectOpenHashMap<>();
         regionKeys.forEach(regionKey -> oldRegions.put(regionKey, cache.getRegionIfLoaded(regionKey)));
-
-        if (onlyDebugChanged) {
-            previous = new Snapshot(level, oldSettings, oldRegions);
-            refreshPlacedRoads(level);
-            status = Component.translatable("yungsroads.status.replaced");
-            return;
-        }
 
         busy = true;
         status = Component.translatable("yungsroads.status.regenerating", regionKeys.size());
@@ -180,7 +208,7 @@ public final class RoadTuning {
                 cache.replaceRegion(region);
                 roadCount += region.getRoads().size();
             }
-            previous = new Snapshot(level, oldSettings, oldRegions);
+            previous = new Snapshot(level, oldSettings, oldRegions, false);
             refreshPlacedRoads(level);
             status = Component.translatable("yungsroads.status.regenerated",
                     regionKeys.size(), roadCount, String.format("%.1f", (System.nanoTime() - startTime) / 1e9));
@@ -211,7 +239,7 @@ public final class RoadTuning {
             }
         }
 
-        previous = new Snapshot(level, currentSettings, currentRegions);
+        previous = new Snapshot(level, currentSettings, currentRegions, snapshot.sameRoutes);
         refreshPlacedRoads(level);
         status = Component.translatable("yungsroads.status.reverted");
     }

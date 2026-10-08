@@ -70,6 +70,15 @@ public class Road {
     }
 
     /**
+     * A copy of the road with other settings, such as its type's after they're edited. Only for settings that route it
+     * the same, since the copy keeps the road's route. See {@link RoadSettings#routesSameAs}.
+     */
+    public Road withSettings(RoadSettings settings) {
+        return new Road(this.startPos, this.endPos, this.roadType, this.variant, settings,
+                this.nodes, this.positions, this.bridges, this.landBridges, this.tunnels);
+    }
+
+    /**
      * The codec for saving roads. Loaded roads get the settings of their type and variant from the given road types.
      *
      * @param roadTypes May be null if the codec is only used for encoding.

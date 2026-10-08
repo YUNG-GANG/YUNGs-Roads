@@ -89,6 +89,15 @@ public class StructureRegion {
         return new StructureRegion(regionKey, endpointChunks, roads);
     }
 
+    /**
+     * A copy of the region whose roads have the current settings of their road types, for after the types are edited
+     * in ways that don't change routes. See {@link Road#withSettings}.
+     */
+    public StructureRegion withRoadSettings(RoadTypes roadTypes) {
+        List<Road> roads = this.roads.stream().map(road -> road.withSettings(roadTypes.settings(road.roadType, road.variant))).toList();
+        return new StructureRegion(this.pos.asLong(), this.roadEndpointChunks, new ArrayList<>(roads));
+    }
+
     public CompoundTag toNbt() {
         CompoundTag compoundTag = new CompoundTag();
         compoundTag.putInt(VERSION_KEY, FORMAT_VERSION);

@@ -1,5 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.config;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.Predicate;
@@ -47,6 +49,10 @@ public enum RoadSetting implements ITunableSetting {
     LAND_BRIDGE_RAILING_CHANCE(Group.SHAPING, "land_bridge_railing_chance", 0, 100, true, 1,
             settings -> settings.landBridgeRailingChance, (settings, value) -> settings.landBridgeRailingChance = (int) value);
 
+    /** The settings only read when placing roads, which don't change the roads' routes, heights, or spans. */
+    private static final Set<RoadSetting> PLACEMENT_ONLY = EnumSet.of(ROAD_WIDTH, WIDTH_VARIATION,
+            LAND_BRIDGE_EDGE_ROUGHNESS, LAND_BRIDGE_DECAY, LAND_BRIDGE_RAILING_DROP, LAND_BRIDGE_RAILING_CHANCE);
+
     private final Group group;
     private final String key;
     private final double min;
@@ -79,6 +85,14 @@ public enum RoadSetting implements ITunableSetting {
         this.sliderExponent = sliderExponent;
         this.getter = getter;
         this.setter = setter;
+    }
+
+    /**
+     * Whether the setting changes the roads' routes, heights, or spans, which are worked out when a region generates.
+     * Changing only the others needs the roads re-placed, but not regenerated.
+     */
+    public boolean affectsRoutes() {
+        return !PLACEMENT_ONLY.contains(this);
     }
 
     public double get(RoadSettings settings) {

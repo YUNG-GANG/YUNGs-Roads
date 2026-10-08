@@ -55,7 +55,8 @@ public final class RoadSettings {
     public int landBridgeRailingDrop = 4;
     public int landBridgeRailingChance = 100;
 
-    public final RoadBlocks blocks;
+    /** Replaced as a whole when edited, since copies share it. */
+    public RoadBlocks blocks;
 
     /** Settings with every numeric setting at its default value. */
     public RoadSettings(RoadBlocks blocks) {
@@ -76,14 +77,27 @@ public final class RoadSettings {
         return copy;
     }
 
-    /** Whether every setting has the same value as in the other instance. */
-    public boolean sameAs(RoadSettings other) {
+    /**
+     * Whether roads would be routed and shaped the same with the other settings: whether every setting that affects
+     * routes has the same value. Blocks and the other settings only affect how the roads are placed.
+     */
+    public boolean routesSameAs(RoadSettings other) {
         for (RoadSetting setting : RoadSetting.values()) {
-            if (setting.get(this) != setting.get(other)) {
+            if (setting.affectsRoutes() && setting.get(this) != setting.get(other)) {
                 return false;
             }
         }
-        return this.blocks.equals(other.blocks);
+        return true;
+    }
+
+    /** Whether roads would be placed the same with the other settings, given the same routes. */
+    public boolean placesSameAs(RoadSettings other) {
+        for (RoadSetting setting : RoadSetting.values()) {
+            if (!setting.affectsRoutes() && setting.get(this) != setting.get(other)) {
+                return false;
+            }
+        }
+        return this.blocks.sameAs(other.blocks);
     }
 
     /**

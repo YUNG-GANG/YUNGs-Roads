@@ -10,6 +10,7 @@ import net.minecraft.util.ExtraCodecs;
 import net.minecraft.world.level.biome.Biome;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -45,15 +46,19 @@ public record RoadType(Optional<Selection> selection, List<Variant> variants) {
         return new RoadType(this.selection, this.variants.stream().map(variant -> new Variant(variant.weight, variant.settings.copy())).toList());
     }
 
-    /** Whether every variant has the same weight and settings as the other type's, which must have the same selection. */
-    public boolean sameAs(RoadType other) {
-        if (this.variants.size() != other.variants.size()) {
+    /**
+     * Whether roads would be chosen, routed, and shaped the same with the other type: whether they have the same
+     * selection, and each variant has the same weight and the same settings that affect routes.
+     * See {@link RoadSettings#routesSameAs}.
+     */
+    public boolean routesSameAs(RoadType other) {
+        if (!Objects.equals(this.selection, other.selection) || this.variants.size() != other.variants.size()) {
             return false;
         }
         for (int i = 0; i < this.variants.size(); i++) {
             Variant a = this.variants.get(i);
             Variant b = other.variants.get(i);
-            if (a.weight != b.weight || !a.settings.sameAs(b.settings)) {
+            if (a.weight != b.weight || !a.settings.routesSameAs(b.settings)) {
                 return false;
             }
         }

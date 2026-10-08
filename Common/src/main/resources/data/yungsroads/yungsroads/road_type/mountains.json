@@ -33,18 +33,10 @@
           "surfaces": [
             {
               "target_blocks": [
-                {
-                  "Name": "minecraft:dirt"
-                },
-                {
-                  "Name": "minecraft:grass_block"
-                },
-                {
-                  "Name": "minecraft:podzol"
-                },
-                {
-                  "Name": "minecraft:dirt_path"
-                }
+                "minecraft:dirt",
+                "minecraft:grass_block",
+                "minecraft:podzol",
+                "minecraft:dirt_path"
               ],
               "path_blockstates": {
                 "entries": [
@@ -68,18 +60,10 @@
             },
             {
               "target_blocks": [
-                {
-                  "Name": "minecraft:stone"
-                },
-                {
-                  "Name": "minecraft:andesite"
-                },
-                {
-                  "Name": "minecraft:granite"
-                },
-                {
-                  "Name": "minecraft:gravel"
-                }
+                "minecraft:stone",
+                "minecraft:andesite",
+                "minecraft:granite",
+                "minecraft:gravel"
               ],
               "path_blockstates": {
                 "entries": [
@@ -103,12 +87,8 @@
             },
             {
               "target_blocks": [
-                {
-                  "Name": "minecraft:snow_block"
-                },
-                {
-                  "Name": "minecraft:ice"
-                }
+                "minecraft:snow_block",
+                "minecraft:ice"
               ],
               "path_blockstates": {
                 "entries": [
@@ -126,39 +106,17 @@
             },
             {
               "target_blocks": [
-                {
-                  "Name": "minecraft:sand"
-                },
-                {
-                  "Name": "minecraft:sandstone"
-                },
-                {
-                  "Name": "minecraft:red_sand"
-                },
-                {
-                  "Name": "minecraft:red_sandstone"
-                },
-                {
-                  "Name": "minecraft:terracotta"
-                },
-                {
-                  "Name": "minecraft:brown_terracotta"
-                },
-                {
-                  "Name": "minecraft:orange_terracotta"
-                },
-                {
-                  "Name": "minecraft:red_terracotta"
-                },
-                {
-                  "Name": "minecraft:white_terracotta"
-                },
-                {
-                  "Name": "minecraft:light_gray_terracotta"
-                },
-                {
-                  "Name": "minecraft:yellow_terracotta"
-                }
+                "minecraft:sand",
+                "minecraft:sandstone",
+                "minecraft:red_sand",
+                "minecraft:red_sandstone",
+                "minecraft:terracotta",
+                "minecraft:brown_terracotta",
+                "minecraft:orange_terracotta",
+                "minecraft:red_terracotta",
+                "minecraft:white_terracotta",
+                "minecraft:light_gray_terracotta",
+                "minecraft:yellow_terracotta"
               ],
               "path_blockstates": {
                 "entries": [
