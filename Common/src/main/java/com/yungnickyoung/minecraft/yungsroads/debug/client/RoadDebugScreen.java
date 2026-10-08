@@ -69,9 +69,14 @@ public class RoadDebugScreen extends Screen {
 
     private static final int PANEL_WIDTH = 200;
     private static final int MARGIN = 6;
+    /**
+     * The height of the panel's header, naming the mod the screen is for, since it may be one of hundreds in a modpack.
+     */
+    private static final int HEADER_HEIGHT = 13;
     private static final int TAB_HEIGHT = 20;
+    private static final int TABS_TOP = MARGIN + HEADER_HEIGHT;
     /** The bottom of the tabs, where each tab's content starts. */
-    private static final int TABS_BOTTOM = MARGIN + TAB_HEIGHT;
+    private static final int TABS_BOTTOM = TABS_TOP + TAB_HEIGHT;
     private static final int SUB_TAB_HEIGHT = 14;
     private static final int BUTTON_HEIGHT = 16;
     private static final int STEP_HEIGHT = 12;
@@ -268,7 +273,7 @@ public class RoadDebugScreen extends Screen {
         int tabWidth = contentWidth / Tab.values().length;
         for (Tab t : Tab.values()) {
             int width = t.ordinal() == Tab.values().length - 1 ? contentWidth - tabWidth * t.ordinal() : tabWidth;
-            addRenderableWidget(new PanelTab(x + tabWidth * t.ordinal(), MARGIN, width, TAB_HEIGHT, t.displayName, false,
+            addRenderableWidget(new PanelTab(x + tabWidth * t.ordinal(), TABS_TOP, width, TAB_HEIGHT, t.displayName, false,
                     () -> this.tab == t, () -> selectTab(t)));
         }
 
@@ -715,6 +720,10 @@ public class RoadDebugScreen extends Screen {
                 ? PANEL_WIDTH - MARGIN
                 : selectedLeft + (PANEL_WIDTH - MARGIN * 2) / Tab.values().length;
         RenderSystem.enableBlend();
+        guiGraphics.drawString(this.font, Component.empty()
+                .append(Component.translatable("yungsroads.screen.header.mod").withStyle(ChatFormatting.BOLD))
+                .append(" ")
+                .append(Component.translatable("yungsroads.screen.header.tool").withStyle(ChatFormatting.GRAY)), MARGIN, MARGIN - 1, 0xFFFFFFFF);
         guiGraphics.blit(Screen.HEADER_SEPARATOR, 0, TABS_BOTTOM - 2, 0.0F, 0.0F, selectedLeft, 2, 32, 2);
         guiGraphics.blit(Screen.HEADER_SEPARATOR, selectedRight, TABS_BOTTOM - 2, 0.0F, 0.0F, PANEL_WIDTH - selectedRight, 2, 32, 2);
         RenderSystem.disableBlend();
@@ -782,8 +791,8 @@ public class RoadDebugScreen extends Screen {
         this.drawer.toggle(this.helpPage, mapWidth());
         if (opening) {
             // The first time, help starts at the top, introducing the screen, rather than at the shown tab's section
-            this.helpPage.showSection(DrawerTab.hasHelpBeenOpened() ? helpSection() : HelpPage.Section.OVERVIEW);
-            DrawerTab.markHelpOpened();
+            this.helpPage.showSection(ClientMilestone.HELP_OPENED.isReached() ? helpSection() : HelpPage.Section.OVERVIEW);
+            ClientMilestone.HELP_OPENED.reach();
         }
     }
 

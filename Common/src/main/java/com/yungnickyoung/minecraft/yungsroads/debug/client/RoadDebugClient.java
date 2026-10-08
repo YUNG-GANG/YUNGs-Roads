@@ -3,7 +3,11 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Camera;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -40,10 +44,31 @@ public final class RoadDebugClient {
                 if (minecraft.player != null) {
                     minecraft.player.displayClientMessage(Component.translatable("yungsroads.screen.singleplayer_only"), true);
                 }
-            } else {
+            } else if (ClientMilestone.TEST_WORLD_WARNING_ACCEPTED.isReached()) {
                 minecraft.setScreen(new RoadDebugScreen());
+            } else {
+                minecraft.setScreen(testWorldWarning(minecraft));
             }
         }
+    }
+
+    /**
+     * Warns that the debug screen changes roads in chunks that already generated, so it's only for test worlds. Shown
+     * until the player accepts it once, which opens the screen. Cancelling returns to the game.
+     */
+    private static Screen testWorldWarning(Minecraft minecraft) {
+        return new ConfirmScreen(accepted -> {
+            if (accepted) {
+                ClientMilestone.TEST_WORLD_WARNING_ACCEPTED.reach();
+                minecraft.setScreen(serverLevel() == null ? null : new RoadDebugScreen());
+            } else {
+                minecraft.setScreen(null);
+            }
+        },
+                Component.translatable("yungsroads.screen.warning.title").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD),
+                Component.translatable("yungsroads.screen.warning.text"),
+                Component.translatable("yungsroads.screen.warning.accept"),
+                CommonComponents.GUI_CANCEL);
     }
 
     /** Releases the map's terrain tiles, which hold onto the level they were sampled from. */

@@ -1,7 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.mojang.math.Axis;
-import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -14,9 +13,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -24,8 +20,7 @@ import java.util.function.BooleanSupplier;
  * running up it. The tabs sit at the screen's right edge while the drawer is closed and slide out with it. The tab of
  * the page shown matches the drawer, joining it.
  * <p>
- * Until help has been opened for the first time, the help tab pulses yellow so it isn't missed. That it's been opened
- * is remembered across launches by an empty marker file in the config folder.
+ * Until help has been opened for the first time, the help tab pulses yellow so it isn't missed.
  */
 final class DrawerTab extends AbstractWidget {
     static final int WIDTH = 20;
@@ -41,9 +36,6 @@ final class DrawerTab extends AbstractWidget {
     private static final int PULSE_COLOR = 0xFFFFD030;
     private static final int PULSE_TEXT_COLOR = 0xFF202020;
     private static final long PULSE_MILLIS = 1200;
-
-    /** Whether help has ever been opened, read from the marker file the first time it's needed. */
-    private static Boolean opened;
 
     private final BooleanSupplier selected;
     /** Whether the tab pulses until help is first opened. */
@@ -66,40 +58,13 @@ final class DrawerTab extends AbstractWidget {
         this.onPress.run();
     }
 
-    /** Stops the help tab's pulse for good, since the player has found help. */
-    static void markHelpOpened() {
-        if (hasHelpBeenOpened()) {
-            return;
-        }
-        opened = true;
-        try {
-            Path marker = markerPath();
-            Files.createDirectories(marker.getParent());
-            Files.createFile(marker);
-        } catch (IOException e) {
-            // Only means the tab pulses again next launch
-            YungsRoadsCommon.LOGGER.warn("Unable to record that the road debug help has been opened", e);
-        }
-    }
-
-    static boolean hasHelpBeenOpened() {
-        if (opened == null) {
-            opened = Files.exists(markerPath());
-        }
-        return opened;
-    }
-
-    private static Path markerPath() {
-        return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve(YungsRoadsCommon.MOD_ID).resolve("help_opened");
-    }
-
     @Override
     protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         boolean selected = this.selected.getAsBoolean();
         int background = selected ? SELECTED_BACKGROUND_COLOR : isHoveredOrFocused() ? HOVERED_BACKGROUND_COLOR : BACKGROUND_COLOR;
         int edge = EDGE_COLOR;
         int text = selected || isHoveredOrFocused() ? SELECTED_TEXT_COLOR : TEXT_COLOR;
-        if (this.pulsesUntilHelpOpened && !hasHelpBeenOpened()) {
+        if (this.pulsesUntilHelpOpened && !ClientMilestone.HELP_OPENED.isReached()) {
             // Fades between the usual background and yellow, lingering at each so it reads as a flash rather than a
             // shimmer. The text switches to dark halfway, staying readable on both, and the yellow edge stays put so
             // the tab still stands out while dark.
