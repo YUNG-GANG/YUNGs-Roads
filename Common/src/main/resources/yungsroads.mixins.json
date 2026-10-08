@@ -7,9 +7,6 @@
     "ServerLevelMixin",
     "TreeFeatureMixin"
   ],
-  "client": [
-    "client.DebugScreenOverlayMixin"
-  ],
   "injectors": {
     "defaultRequire": 1
   },

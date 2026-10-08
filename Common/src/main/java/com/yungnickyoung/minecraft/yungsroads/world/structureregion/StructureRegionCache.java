@@ -2,7 +2,6 @@ package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
-import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.RoadCenter;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -145,28 +144,6 @@ public class StructureRegionCache {
             }
         }
         return false;
-    }
-
-    /**
-     * Finds the road node whose jittered position is at the given x-z position, searching only regions that are
-     * already loaded. Intended for debug displays, which shouldn't trigger region generation.
-     */
-    @Nullable
-    public Road.DebugNode findLoadedDebugNodeAt(BlockPos pos) {
-        for (long regionKey : regionKeysNearChunk(new ChunkPos(pos))) {
-            StructureRegion region = getRegionIfLoaded(regionKey);
-            if (region == null) {
-                continue;
-            }
-            for (Road road : region.getRoads()) {
-                for (Road.DebugNode node : road.nodes) {
-                    if (node.jitteredPos.getX() == pos.getX() && node.jitteredPos.getZ() == pos.getZ()) {
-                        return node;
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     /**

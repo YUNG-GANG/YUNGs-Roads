@@ -65,7 +65,7 @@ public class RoadDebugScreen extends Screen {
     /** The lang entry of the global tab's Place roads option. Also listed in the help page. */
     static final String PLACE_ROADS_KEY = "yungsroads.screen.global.place_roads";
     /** The view options with a checkbox, by the id of their lang entries. Also listed in the help page. */
-    static final List<String> VIEW_OPTIONS = List.of("world_overlay", "previous_roads", "nodes", "region_borders", "f3_info");
+    static final List<String> VIEW_OPTIONS = List.of("world_overlay", "previous_roads", "nodes", "region_borders");
 
     private static final int PANEL_WIDTH = 200;
     private static final int MARGIN = 6;
@@ -190,6 +190,11 @@ public class RoadDebugScreen extends Screen {
 
     /** Each setting's slider and text box, for showing its tooltip when either is hovered. */
     private final Map<ITunableSetting, List<AbstractWidget>> settingRows = new HashMap<>();
+    /**
+     * The tooltip text of each option that isn't a setting, shown like a setting's, with its glossary terms
+     * highlighted and defined.
+     */
+    private final Map<AbstractWidget, String> optionTooltips = new HashMap<>();
 
     /** The top of each page's content, below its tab's header. */
     private final Map<Page, Integer> pageTop = new EnumMap<>(Page.class);
@@ -258,6 +263,7 @@ public class RoadDebugScreen extends Screen {
         this.pageWidgets.clear();
         this.steps.clear();
         this.settingRows.clear();
+        this.optionTooltips.clear();
         this.unscrolledY.clear();
         this.applyButtons.clear();
         this.revertButtons.clear();
@@ -299,14 +305,16 @@ public class RoadDebugScreen extends Screen {
             addSettingRow(setting, x, contentWidth, rowY);
         }
         int placeRoadsY = rowY.get(Page.GLOBAL) + 2;
-        addScrollingWidget(Page.GLOBAL, Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
+        Checkbox placeRoads = Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
                 .pos(x, placeRoadsY)
                 .maxWidth(contentWidth)
                 .selected(this.pendingDebug.placeRoads)
-                .tooltip(Tooltip.create(Component.translatable(PLACE_ROADS_KEY + ".description").append("\n")
-                        .append(Component.translatable("yungsroads.screen.applied_with_apply"))))
                 .onValueChange((box, value) -> this.pendingDebug.placeRoads = value)
-                .build(), placeRoadsY);
+                .build();
+        addScrollingWidget(Page.GLOBAL, placeRoads, placeRoadsY);
+        Language language = Language.getInstance();
+        this.optionTooltips.put(placeRoads, language.getOrDefault(PLACE_ROADS_KEY + ".description") + "\n"
+                + language.getOrDefault("yungsroads.screen.applied_with_apply"));
         rowY.put(Page.GLOBAL, placeRoadsY + CHECKBOX_ROW_HEIGHT);
         rowY.forEach((page, y) -> this.formulaY.put(page, y + 6));
 
@@ -317,21 +325,18 @@ public class RoadDebugScreen extends Screen {
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(1), RoadDebugClient.showPreviousRoads, value -> RoadDebugClient.showPreviousRoads = value);
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(2), RoadDebugClient.showNodes, value -> RoadDebugClient.showNodes = value);
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(3), RoadDebugClient.showRegionBorders, value -> RoadDebugClient.showRegionBorders = value);
-        y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(4), YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info, value -> {
-            YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = value;
-            this.pendingDebug.enableExtraDebugF3Info = value;
-        });
         CycleButton<TerrainTiles.Layer> terrainButton = CycleButton.<TerrainTiles.Layer>builder(layer -> layer.displayName)
                 .withValues(TerrainTiles.Layer.values())
                 .withInitialValue(RoadDebugClient.terrainLayer)
-                .withTooltip(layer -> Tooltip.create(Component.translatable("yungsroads.screen.view.terrain.tooltip")))
                 .create(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.screen.view.terrain"),
                         (button, layer) -> RoadDebugClient.terrainLayer = layer);
         addPageWidget(Page.VIEW, terrainButton);
+        this.optionTooltips.put(terrainButton, language.getOrDefault("yungsroads.screen.view.terrain.description"));
         y += ROW_HEIGHT;
-        addPageWidget(Page.VIEW, Button.builder(Component.translatable("yungsroads.screen.view.center_map"), button -> this.map.recenter())
+        Button centerMap = addPageWidget(Page.VIEW, Button.builder(Component.translatable("yungsroads.screen.view.center_map"), button -> this.map.recenter())
                 .bounds(x, y, contentWidth, BUTTON_HEIGHT)
                 .build());
+        this.optionTooltips.put(centerMap, language.getOrDefault("yungsroads.screen.view.center_map.description"));
 
         // The drawer's tabs sit over the map, so they take clicks before the map does, and are drawn after the map and
         // the drawer. Moved with the drawer's edge as it slides out.
@@ -523,10 +528,10 @@ public class RoadDebugScreen extends Screen {
                 .pos(x, y)
                 .maxWidth(width)
                 .selected(selected)
-                .tooltip(Tooltip.create(Component.translatable(key + ".description")))
                 .onValueChange((box, value) -> onChange.accept(value))
                 .build();
         addPageWidget(Page.VIEW, checkbox);
+        this.optionTooltips.put(checkbox, Language.getInstance().getOrDefault(key + ".description"));
         return y + CHECKBOX_ROW_HEIGHT;
     }
 
@@ -595,7 +600,7 @@ public class RoadDebugScreen extends Screen {
         // A hidden text box must not keep receiving key presses
         setFocused(null);
         if (this.drawer.isShowing(this.helpPage)) {
-            this.helpPage.showSection(helpSection());
+            this.helpPage.showSection(helpSection(), true);
         }
     }
 
@@ -790,8 +795,9 @@ public class RoadDebugScreen extends Screen {
         boolean opening = !this.drawer.isShowing(this.helpPage);
         this.drawer.toggle(this.helpPage, mapWidth());
         if (opening) {
-            // The first time, help starts at the top, introducing the screen, rather than at the shown tab's section
-            this.helpPage.showSection(ClientMilestone.HELP_OPENED.isReached() ? helpSection() : HelpPage.Section.OVERVIEW);
+            // The first time, help starts at the top, introducing the screen, rather than at the shown tab's section.
+            // It opens there rather than scrolling, since the page wasn't showing before.
+            this.helpPage.showSection(ClientMilestone.HELP_OPENED.isReached() ? helpSection() : HelpPage.Section.OVERVIEW, false);
             ClientMilestone.HELP_OPENED.reach();
         }
     }
@@ -964,8 +970,9 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * The hovered setting's description, its baseline value, and the definitions of its terms, or null if no setting
-     * is hovered. Hidden while dragging, so the map's preview stays visible.
+     * The hovered setting's description, its baseline value, and the definitions of its terms, or the hovered option's
+     * description and the definitions of its terms. Null if neither is hovered. Hidden while dragging, so the map's
+     * preview stays visible.
      */
     @Nullable
     private Component settingTooltip() {
@@ -989,6 +996,11 @@ public class RoadDebugScreen extends Screen {
                         RoadTypeNames.name(this.selected.typeId), setting.isToggle() ? onOff(language, baseline) : setting.format(baseline));
             }
             return RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details, this::tooltipFits);
+        }
+        for (Map.Entry<AbstractWidget, String> option : this.optionTooltips.entrySet()) {
+            if (option.getKey().visible && option.getKey().isHovered()) {
+                return RoutingGlossary.withDefinitions(option.getValue(), this::tooltipFits);
+            }
         }
         return null;
     }
@@ -1154,9 +1166,7 @@ public class RoadDebugScreen extends Screen {
         for (GlobalSetting setting : GlobalSetting.values()) {
             this.pendingGlobalText.put(setting, setting.format(setting.get(defaults)));
         }
-        boolean f3Info = this.pendingDebug.enableExtraDebugF3Info;
         this.pendingDebug = new ConfigModule.Debug();
-        this.pendingDebug.enableExtraDebugF3Info = f3Info;
         rebuildWidgets();
     }
 

@@ -83,8 +83,9 @@ final class HelpPage implements DrawerPage {
      */
     private Section jumpedTo;
     private int jumpedToScroll;
-    /** The section to scroll to once the page is laid out. */
+    /** The section to scroll to once the page is laid out, and whether to animate the scroll there. */
     private Section pendingSection;
+    private boolean animatePending;
 
     private record Link(Section section, int x, int y, int width) {
         boolean isMouseOver(double mouseX, double mouseY) {
@@ -113,9 +114,13 @@ final class HelpPage implements DrawerPage {
         return areaWidth < MIN_WIDTH + 40 ? areaWidth - DrawerTab.WIDTH : Mth.clamp(areaWidth / 2, MIN_WIDTH, MAX_WIDTH);
     }
 
-    /** Scrolls to the start of the section. */
-    void showSection(Section section) {
+    /**
+     * Scrolls to the start of the section, quickly easing there if animated, so the reader sees the page move rather
+     * than being dropped somewhere new.
+     */
+    void showSection(Section section, boolean animate) {
         this.pendingSection = section;
+        this.animatePending = animate;
     }
 
     @Override
@@ -132,7 +137,7 @@ final class HelpPage implements DrawerPage {
         for (Link link : this.links) {
             if (link.isMouseOver(mouseX, mouseY)) {
                 Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-                showSection(link.section);
+                showSection(link.section, true);
                 return;
             }
         }
@@ -163,9 +168,14 @@ final class HelpPage implements DrawerPage {
 
         if (this.pendingSection != null) {
             this.text.setViewHeight(bottom - contentTop);
-            this.text.scrollTo(this.sectionTops.getOrDefault(this.pendingSection, 0));
+            int sectionTop = this.sectionTops.getOrDefault(this.pendingSection, 0);
+            if (this.animatePending) {
+                this.jumpedToScroll = this.text.animateScrollTo(sectionTop);
+            } else {
+                this.text.scrollTo(sectionTop);
+                this.jumpedToScroll = this.text.scroll();
+            }
             this.jumpedTo = this.pendingSection;
-            this.jumpedToScroll = this.text.scroll();
             this.pendingSection = null;
         }
         return this.text.render(guiGraphics, left, contentTop, bottom, right + SideDrawer.PADDING - 4, mouseX, mouseY);
@@ -205,13 +215,13 @@ final class HelpPage implements DrawerPage {
 
     /**
      * The section at the top of the page: the last whose title is scrolled to near the top or above it. While the page
-     * is still where a jump left it, the section jumped to.
+     * is scrolling to a section or still where it was left there, the section jumped to.
      */
     private Section sectionBeingRead() {
         if (this.pendingSection != null) {
             return this.pendingSection;
         }
-        if (this.jumpedTo != null && this.text.scroll() == this.jumpedToScroll) {
+        if (this.jumpedTo != null && (this.text.isAnimating() || this.text.scroll() == this.jumpedToScroll)) {
             return this.jumpedTo;
         }
         this.jumpedTo = null;
@@ -274,6 +284,7 @@ final class HelpPage implements DrawerPage {
                 for (String option : RoadDebugScreen.VIEW_OPTIONS) {
                     paragraphs.add(option("yungsroads.screen.view." + option));
                 }
+                paragraphs.add(option("yungsroads.screen.view.terrain"));
             }
             case SAVING -> paragraphs.addAll(text(section.key + ".text", RoadTuning.REGENERATE_RADIUS));
             case GLOSSARY -> {

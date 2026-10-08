@@ -157,7 +157,7 @@ public class Road {
 
     /**
      * A pathfinding node along a road, with the A* values it was found with.
-     * The values are kept for the F3 debug overlay.
+     * The values are kept for the tuning screen's map and Inspect page.
      */
     public static class DebugNode {
         public static final Codec<DebugNode> CODEC = RecordCodecBuilder.create(builder -> builder

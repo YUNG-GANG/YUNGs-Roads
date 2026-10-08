@@ -54,7 +54,8 @@ final class RoutingGlossary {
         LAND_BRIDGE("land_bridge"),
         ROAD_TYPE("road_type"),
         ROAD_NETWORK("road_network"),
-        VARIANT("variant");
+        VARIANT("variant"),
+        REGION("region");
 
         private final String key;
 

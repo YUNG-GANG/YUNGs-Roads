@@ -255,7 +255,7 @@ public final class RoadTuning {
         return ((IStructureRegionCacheProvider) level).getStructureRegionCache();
     }
 
-    /** Whether the options affecting placed blocks are the same. The F3 option is applied as soon as it's changed. */
+    /** Whether the options affecting placed blocks are the same. */
     private static boolean sameDebug(ConfigModule.Debug a, ConfigModule.Debug b) {
         return a.placeRoads == b.placeRoads;
     }

@@ -28,7 +28,6 @@ public class ConfigModuleFabric {
         advanced.heuristicWeight = GlobalSetting.HEURISTIC_WEIGHT.clamp(configFabric.advanced.heuristicWeight);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
-        debug.enableExtraDebugF3Info = configFabric.debug.enableExtraDebugF3Info;
         debug.placeRoads = configFabric.debug.placeRoads;
     }
 
@@ -44,7 +43,6 @@ public class ConfigModuleFabric {
         configFabric.advanced.heuristicWeight = advanced.heuristicWeight;
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
-        configFabric.debug.enableExtraDebugF3Info = debug.enableExtraDebugF3Info;
         configFabric.debug.placeRoads = debug.placeRoads;
 
         holder.save();

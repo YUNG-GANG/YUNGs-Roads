@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
+import net.minecraft.Util;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -24,6 +25,8 @@ final class ScrollingText {
     static final int BAR_INDENT = 6;
     private static final int BAR_WIDTH = 2;
     private static final int DIVIDER_COLOR = 0xFF505050;
+    /** How long an animated scroll takes, however far it goes, so long jumps stay quick. */
+    private static final long ANIMATION_MILLIS = 250;
 
     private record Line(FormattedCharSequence text, int y, int color) {
     }
@@ -45,6 +48,11 @@ final class ScrollingText {
     private int height = 0;
     private int scroll = 0;
     private int maxScroll = 0;
+    /** The animated scroll's start, target and start time, while one is running. */
+    private int animationFrom;
+    private int animationTo;
+    private long animationStart;
+    private boolean animating = false;
 
     ScrollingText(Font font) {
         this.font = font;
@@ -114,11 +122,42 @@ final class ScrollingText {
     void setViewHeight(int viewHeight) {
         this.maxScroll = Math.max(0, this.height - viewHeight);
         this.scroll = Mth.clamp(this.scroll, 0, this.maxScroll);
+        this.animationTo = Mth.clamp(this.animationTo, 0, this.maxScroll);
     }
 
     /** Scrolls so the given y is at the top, or as near as the text's length allows. */
     void scrollTo(int y) {
+        this.animating = false;
         this.scroll = Mth.clamp(y, 0, this.maxScroll);
+    }
+
+    /**
+     * Quickly scrolls so the given y is at the top, or as near as the text's length allows, easing there over the
+     * next frames so the reader sees which way the text moved. Scrolling by hand stops it.
+     *
+     * @return Where the scroll will end.
+     */
+    int animateScrollTo(int y) {
+        this.animationFrom = this.scroll;
+        this.animationTo = Mth.clamp(y, 0, this.maxScroll);
+        this.animationStart = Util.getMillis();
+        this.animating = true;
+        return this.animationTo;
+    }
+
+    boolean isAnimating() {
+        return this.animating;
+    }
+
+    /** Moves an animated scroll along to where it should be by now. */
+    private void advanceAnimation() {
+        if (!this.animating) {
+            return;
+        }
+        float t = Math.min(1, (Util.getMillis() - this.animationStart) / (float) ANIMATION_MILLIS);
+        float eased = 1 - (1 - t) * (1 - t) * (1 - t);
+        this.scroll = Math.round(Mth.lerp(eased, this.animationFrom, this.animationTo));
+        this.animating = t < 1;
     }
 
     void mouseScrolled(double scrollY) {
@@ -131,6 +170,7 @@ final class ScrollingText {
         if (offset < 0) {
             return false;
         }
+        this.animating = false;
         this.scroll = offset;
         return true;
     }
@@ -140,6 +180,7 @@ final class ScrollingText {
         if (!this.scrollBar.isDragging()) {
             return false;
         }
+        this.animating = false;
         this.scroll = this.scrollBar.mouseDragged(mouseY);
         return true;
     }
@@ -156,6 +197,7 @@ final class ScrollingText {
     @Nullable
     Component render(GuiGraphics guiGraphics, int x, int top, int bottom, int scrollBarX, int mouseX, int mouseY) {
         setViewHeight(bottom - top);
+        advanceAnimation();
         Style hovered = null;
         guiGraphics.enableScissor(x - BAR_INDENT, top, scrollBarX, bottom);
         for (Bar bar : this.bars) {

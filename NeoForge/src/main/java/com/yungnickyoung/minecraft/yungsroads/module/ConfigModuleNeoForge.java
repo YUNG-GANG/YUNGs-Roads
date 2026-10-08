@@ -50,7 +50,6 @@ public class ConfigModuleNeoForge {
     }
 
     private static void bakeDebugConfig() {
-        YungsRoadsCommon.CONFIG.debug.enableExtraDebugF3Info = YRConfigNeoForge.debug.enableExtraDebugF3Info.get();
         YungsRoadsCommon.CONFIG.debug.placeRoads = YRConfigNeoForge.debug.placeRoads.get();
     }
 
@@ -63,7 +62,6 @@ public class ConfigModuleNeoForge {
         YRConfigNeoForge.advanced.heuristicWeight.set(advanced.heuristicWeight);
 
         ConfigModule.Debug debug = YungsRoadsCommon.CONFIG.debug;
-        YRConfigNeoForge.debug.enableExtraDebugF3Info.set(debug.enableExtraDebugF3Info);
         YRConfigNeoForge.debug.placeRoads.set(debug.placeRoads);
 
         YRConfigNeoForge.SPEC.save();

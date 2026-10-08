@@ -10,12 +10,10 @@ public class ConfigModule {
     public Debug debug = new Debug();
 
     public static class Debug {
-        public boolean enableExtraDebugF3Info = false;
         public boolean placeRoads = true;
 
         public Debug copy() {
             Debug copy = new Debug();
-            copy.enableExtraDebugF3Info = this.enableExtraDebugF3Info;
             copy.placeRoads = this.placeRoads;
             return copy;
         }
