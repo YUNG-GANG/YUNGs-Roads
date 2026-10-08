@@ -28,9 +28,10 @@ public class StructureRegion {
 
     /**
      * Road positions are indexed into every chunk within this many blocks of them.
-     * Must cover both the positions that can affect placement in a chunk and the range of road proximity checks.
+     * Must cover both the positions that can affect placement in a chunk and the range of road proximity checks. The
+     * lookup reach covers both, since it's at least the widest road's half-width plus a block.
      */
-    public static final int INDEX_PADDING = Math.max(AbstractRoadGenerator.PLACEMENT_LOOKUP_REACH, 3);
+    public static final int INDEX_PADDING = AbstractRoadGenerator.PLACEMENT_LOOKUP_REACH;
 
     private static final String VERSION_KEY = "version";
     private static final String ENDPOINT_CHUNKS_KEY = "endpoint_chunks";

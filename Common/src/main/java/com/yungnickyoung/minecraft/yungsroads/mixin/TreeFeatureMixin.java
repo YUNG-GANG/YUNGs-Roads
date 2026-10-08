@@ -36,8 +36,9 @@ public class TreeFeatureMixin {
 
         StructureRegionCache structureRegionCache = ((IStructureRegionCacheProvider) serverLevel).getStructureRegionCache();
 
-        // TODO - make this toggleable, and make the range either configurable or derived from road width
-        if (structureRegionCache.hasRoadNear(blockPos, 3)) {
+        // Keeps a block clear past the road's edge, so trunks don't stand at its very edge
+        // TODO - make this toggleable
+        if (structureRegionCache.hasRoadNear(blockPos, 1)) {
             cir.setReturnValue(false);
         }
     }

@@ -136,8 +136,7 @@ public final class RoadTypeExport {
 
         readme.append("### `blocks`\n\n");
         readme.append("- `surfaces`: ").append(text("yungsroads.docs.blocks.surfaces")).append("\n");
-        for (String field : new String[]{"target_blocks", "path_blockstates", "fill_blockstates",
-                "road_size_radius", "road_size_variation"}) {
+        for (String field : new String[]{"target_blocks", "path_blockstates", "fill_blockstates"}) {
             readme.append("  - `").append(field).append("`: ").append(text("yungsroads.docs.blocks." + field)).append("\n");
         }
         for (String field : new String[]{"bridge_blockstates", "bridge_railing_blockstates", "tunnel_lining_blockstates"}) {

@@ -14,6 +14,8 @@
           "max_bridge_length": 32
         },
         "shaping": {
+          "road_width": 3.2,
+          "width_variation": 1.4,
           "smoothing_radius": 6,
           "max_cut_depth": 4,
           "max_fill_depth": 2,
@@ -59,9 +61,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:dirt"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -96,9 +96,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:stone"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -121,9 +119,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:snow_block"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -185,9 +181,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:sand"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             }
           ],
           "bridge_blockstates": {
@@ -219,6 +213,8 @@
           "max_bridge_length": 32
         },
         "shaping": {
+          "road_width": 3.2,
+          "width_variation": 1.4,
           "smoothing_radius": 4,
           "max_cut_depth": 4,
           "max_fill_depth": 2,
@@ -264,9 +260,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:dirt"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -301,9 +295,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:stone"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -326,9 +318,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:snow_block"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -390,9 +380,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:sand"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             }
           ],
           "bridge_blockstates": {
@@ -424,6 +412,8 @@
           "max_bridge_length": 32
         },
         "shaping": {
+          "road_width": 3.2,
+          "width_variation": 1.4,
           "smoothing_radius": 4,
           "max_cut_depth": 4,
           "max_fill_depth": 2,
@@ -475,9 +465,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:dirt"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -512,9 +500,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:stone"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -537,9 +523,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:snow_block"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             },
             {
               "target_blocks": [
@@ -601,9 +585,7 @@
                 "defaultBlockState": {
                   "Name": "minecraft:sand"
                 }
-              },
-              "road_size_radius": 1.5,
-              "road_size_variation": 1.5
+              }
             }
           ],
           "bridge_blockstates": {

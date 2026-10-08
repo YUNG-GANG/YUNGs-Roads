@@ -23,6 +23,11 @@ public enum RoadSetting implements ITunableSetting {
             settings -> settings.waterWeight, (settings, value) -> settings.waterWeight = value),
     MAX_BRIDGE_LENGTH(Group.ROUTING, "max_bridge_length", 0, 256, true, 1,
             settings -> settings.maxBridgeLength, (settings, value) -> settings.maxBridgeLength = (int) value),
+    // The widest road, at both maximums, must leave placement's reads within one chunk. See AbstractRoadGenerator.
+    ROAD_WIDTH(Group.SHAPING, "road_width", 1, 8, false, 1,
+            settings -> settings.roadWidth, (settings, value) -> settings.roadWidth = value),
+    WIDTH_VARIATION(Group.SHAPING, "width_variation", 0, 4, false, 1,
+            settings -> settings.widthVariation, (settings, value) -> settings.widthVariation = value),
     SMOOTHING_RADIUS(Group.SHAPING, "smoothing_radius", 0, 32, true, 1,
             settings -> settings.smoothingRadius, (settings, value) -> settings.smoothingRadius = (int) value),
     MAX_CUT_DEPTH(Group.SHAPING, "max_cut_depth", 0, 16, true, 1,

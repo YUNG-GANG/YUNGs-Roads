@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.world.road.generator;
 
 import com.yungnickyoung.minecraft.yungsapi.api.world.randomize.BlockStateRandomizer;
 import com.yungnickyoung.minecraft.yungsapi.noise.FastNoise;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSurfaceConfig;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
@@ -37,16 +38,22 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 public abstract class AbstractRoadGenerator {
-    /**
-     * The furthest horizontal distance (along either axis) from a road center position that placement may modify.
-     */
-    public static final int PLACEMENT_REACH = 2;
+    /** How far, in blocks, edge roughness may move a bridge's edge in or out, at the maximum setting. */
+    private static final double MAX_EDGE_ROUGHNESS = 1.0;
 
     /**
-     * How far, in blocks, a bridge extends past the last center that crosses the hole or dip it spans. Covers the
-     * placement reach, so a road crossing a rim at an angle is bridged across its whole width.
+     * The furthest horizontal distance (along either axis) from a road center position that placement may modify: half
+     * the widest road any road type can have, plus as far as edge roughness can move a bridge's edge out.
      */
-    public static final int BRIDGE_MARGIN = 3;
+    public static final int PLACEMENT_REACH = (int) Math.ceil(
+            (RoadSetting.ROAD_WIDTH.max() + RoadSetting.WIDTH_VARIATION.max()) / 2 + MAX_EDGE_ROUGHNESS);
+
+    /** The least distance, in blocks, a bridge extends past the last center that crosses the hole or dip it spans. */
+    private static final int MIN_BRIDGE_MARGIN = 3;
+
+    /** The furthest a bridge of any road type extends past the last center that crosses the hole or dip it spans. */
+    private static final int MAX_BRIDGE_MARGIN = bridgeMargin(
+            (RoadSetting.ROAD_WIDTH.max() + RoadSetting.WIDTH_VARIATION.max()) / 2);
 
     /**
      * How far, in blocks, past a chunk's edges the shape of bridge decks is worked out to decide its railings. A chunk
@@ -62,10 +69,18 @@ public abstract class AbstractRoadGenerator {
      * The furthest horizontal distance (along either axis) from a chunk at which a road center position can affect
      * what's placed in it.
      */
-    public static final int PLACEMENT_LOOKUP_REACH = PLACEMENT_REACH + BRIDGE_MARGIN + RAILING_REACH;
+    public static final int PLACEMENT_LOOKUP_REACH = PLACEMENT_REACH + MAX_BRIDGE_MARGIN + RAILING_REACH;
 
-    /** How far, in blocks, edge roughness may move a bridge's edge in or out, at the maximum setting. */
-    private static final double MAX_EDGE_ROUGHNESS = 1.0;
+    static {
+        // Roads are placed in the features step, when only the neighboring chunks are sure to have terrain. A chunk reads
+        // the ground at road centers up to the lookup reach past its edges to find bridges, so the reach must stay within
+        // its neighbors. Further out, a center could read as floating over a hole, giving bridges that depend on which
+        // chunks happened to generate first. Capping road width keeps the reach in bounds.
+        if (PLACEMENT_LOOKUP_REACH > 16) {
+            throw new IllegalStateException("Road placement lookup reach " + PLACEMENT_LOOKUP_REACH
+                    + " exceeds a chunk. Lower the max Road Width or Width Variation.");
+        }
+    }
 
     /** How many blocks of air a tunnel has above its road, away from its edges, where the ceiling is a block lower. */
     private static final int TUNNEL_HEIGHT = 4;
@@ -135,23 +150,25 @@ public abstract class AbstractRoadGenerator {
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (BlockPos center : centers) {
-            double widthNoise = widthNoise(center);
             RoadSettings settings = settingsAt.apply(center);
+            double halfWidth = settings.halfWidth(widthNoise(center));
+            // A center only reaches the columns its road could cover, as a bridge with the roughest edges, so where a
+            // narrow road meets a wider one, the narrow road's centers don't claim the wider road's columns
+            double reach = halfWidth + settings.landBridgeEdgeRoughness * MAX_EDGE_ROUGHNESS;
+            int maxOffset = (int) Math.ceil(reach);
 
-            for (int dx = -PLACEMENT_REACH; dx <= PLACEMENT_REACH; dx++) {
-                for (int dz = -PLACEMENT_REACH; dz <= PLACEMENT_REACH; dz++) {
-                    int x = center.getX() + dx;
-                    int z = center.getZ() + dz;
+            for (int dx = -maxOffset; dx <= maxOffset; dx++) {
+                for (int dz = -maxOffset; dz <= maxOffset; dz++) {
                     // Distances are kept as squared values as an optimization
                     int distSq = dx * dx + dz * dz;
-                    nearest.offer(x, z, center, distSq);
-                    if (!isInChunk(chunkPos, x, z)) {
+                    if (distSq >= reach * reach) {
                         continue;
                     }
-
-                    int column = (x & 15) << 4 | (z & 15);
-                    if (distSq < RoadSettings.maxRoadDistSq(surfaces.surface(column, settings), widthNoise)) {
-                        isGroundRoad[column] = true;
+                    int x = center.getX() + dx;
+                    int z = center.getZ() + dz;
+                    nearest.offer(x, z, center, distSq);
+                    if (isInChunk(chunkPos, x, z) && distSq < halfWidth * halfWidth) {
+                        isGroundRoad[(x & 15) << 4 | (z & 15)] = true;
                     }
                 }
             }
@@ -203,26 +220,36 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
-     * Subtly varies the road's width along its length to make its shape more interesting. Ranges from 0 to 2.
+     * Subtly varies the road's width along its length to make its shape more interesting. Ranges from 0 to 1, how far
+     * the road is widened by its width variation.
      */
     private double widthNoise(BlockPos center) {
-        return this.noise.GetNoise(center.getX(), center.getZ()) + 1;
+        // Clamped, since the reach placement allows for assumes the road is never wider than its settings say
+        return Mth.clamp((this.noise.GetNoise(center.getX(), center.getZ()) + 1) / 2, 0, 1);
     }
 
     /**
-     * The distance from a bridge center within which its deck is placed, exclusive. The deck is as wide as the widest
-     * of its road type's surfaces would be there, so it's never narrower than the road leading onto it, and its width
-     * doesn't depend on what's at the bottom of the hole. Edge roughness then moves the edge in or out per column.
+     * The distance from a bridge center within which its deck is placed, exclusive. The deck is as wide as the road
+     * there, so it's as wide as the road leading onto it, and its width doesn't depend on what's at the bottom of the
+     * hole. Edge roughness then moves the edge in or out per column, but never through the center line, so a narrow
+     * road's bridge isn't broken.
      */
     private double bridgeHalfWidth(BlockPos center, int x, int z, RoadSettings settings) {
-        return widestHalfWidth(center, settings) + settings.landBridgeEdgeRoughness * MAX_EDGE_ROUGHNESS * this.edgeNoise.GetNoise(x, z);
+        double roughness = Mth.clamp(this.edgeNoise.GetNoise(x, z), -1, 1);
+        return Math.max(0.5, halfWidth(center, settings) + settings.landBridgeEdgeRoughness * MAX_EDGE_ROUGHNESS * roughness);
+    }
+
+    /** The distance from a center within which its road is placed, exclusive. */
+    private double halfWidth(BlockPos center, RoadSettings settings) {
+        return settings.halfWidth(widthNoise(center));
     }
 
     /**
-     * The distance from a center within which the widest of its road type's surfaces would be placed, exclusive.
+     * How far, in blocks, a bridge extends past the last center that crosses the hole or dip it spans. At least the
+     * road's half-width, so where the road crosses a rim at an angle, it's bridged across its whole width.
      */
-    private double widestHalfWidth(BlockPos center, RoadSettings settings) {
-        return Math.sqrt(settings.maxRoadDistSq(widthNoise(center)));
+    private static int bridgeMargin(double maxHalfWidth) {
+        return Math.max(MIN_BRIDGE_MARGIN, (int) Math.ceil(maxHalfWidth));
     }
 
     /**
@@ -235,8 +262,8 @@ public abstract class AbstractRoadGenerator {
     }
 
     /**
-     * Finds the centers whose road is carried on a bridge: those within {@link #BRIDGE_MARGIN} blocks of a center that
-     * crosses a hole or is part of a land bridge. The margin carries the bridge past each rim, so where the road meets a
+     * Finds the centers whose road is carried on a bridge: those within their road's {@link #bridgeMargin} of a center
+     * that crosses a hole or is part of a land bridge. The margin carries the bridge past each rim, so where the road meets a
      * rim at an angle, the side of the road that's already over the hole is bridged too. Tunnels are never bridged, so a
      * tunnel can open straight onto a bridge.
      */
@@ -251,10 +278,11 @@ public abstract class AbstractRoadGenerator {
             if (tunnelCenters.contains(center)) {
                 continue;
             }
+            int margin = bridgeMargin(settingsAt.apply(center).maxHalfWidth());
             for (BlockPos crossing : crossings) {
                 int dx = crossing.getX() - center.getX();
                 int dz = crossing.getZ() - center.getZ();
-                if (dx * dx + dz * dz <= BRIDGE_MARGIN * BRIDGE_MARGIN) {
+                if (dx * dx + dz * dz <= margin * margin) {
                     bridgeCenters.add(center);
                     break;
                 }
@@ -267,9 +295,13 @@ public abstract class AbstractRoadGenerator {
      * Whether the road crosses a hole in the ground at the given center, such as a ravine, that routing didn't know
      * about. Over water, that's only where the road is above the water's surface.
      * <p>
-     * The center may be in a neighboring chunk that has already placed its roads, so a placed bridge counts too. That
-     * keeps the result the same whichever chunk generates first. A bridge's center line is never decayed, so its block
-     * is always there to find.
+     * The center may be in a neighboring chunk that has already placed its roads, so a placed bridge is measured from
+     * the ground under it, which placing it left unchanged. That keeps the result the same whichever chunk generates
+     * first. A bridge's center line is never decayed, so its block is always there to find.
+     * <p>
+     * A bridge block alone doesn't mean a hole: a bridge extends past the holes it crosses, over gaps too small to
+     * count as one. Counting those would let a chunk that generates later extend the bridge further than one that
+     * generated first.
      */
     private static boolean crossesHole(RoadBlockWriter writer, BlockPos center, RoadSettings settings) {
         if (!writer.level().hasChunk(center.getX() >> 4, center.getZ() >> 4)) {
@@ -277,13 +309,16 @@ public abstract class AbstractRoadGenerator {
             return true;
         }
 
-        BlockState atRoad = writer.getBlockState(center);
-        if (isBridgeBlock(atRoad, settings)) {
-            // Already placed. A bridge resting on the water's surface doesn't cross a hole.
-            return writer.getBlockState(center.below()).getFluidState().isEmpty();
+        int groundHeight;
+        if (isBridgeBlock(writer.getBlockState(center), settings)) {
+            BlockPos.MutableBlockPos ground = center.mutable().move(Direction.DOWN);
+            while (ground.getY() > writer.level().getMinBuildHeight() && RoadBlockWriter.isAboveGround(writer.getBlockState(ground))) {
+                ground.move(Direction.DOWN);
+            }
+            groundHeight = ground.getY();
+        } else {
+            groundHeight = writer.surfaceHeight(center.getX(), center.getZ());
         }
-
-        int groundHeight = writer.surfaceHeight(center.getX(), center.getZ());
         int gap = center.getY() - groundHeight - 1;
         boolean overWater = !writer.getBlockState(center.atY(groundHeight)).getFluidState().isEmpty();
         return overWater ? gap > 0 : gap > settings.maxFillDepth;
@@ -733,13 +768,12 @@ public abstract class AbstractRoadGenerator {
         }
 
         /**
-         * Whether the column is bored out: nearest a tunnel center, within the width of the widest of its road type's
-         * surfaces.
+         * Whether the column is bored out: nearest a tunnel center, within the road's width.
          */
         boolean isInterior(int x, int z) {
             BlockPos center = this.nearest.center(x, z);
             return center != null && this.tunnelCenters.contains(center)
-                    && Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.settingsAt.apply(center));
+                    && Math.sqrt(this.nearest.distSq(x, z)) < halfWidth(center, this.settingsAt.apply(center));
         }
 
         /**
@@ -748,7 +782,7 @@ public abstract class AbstractRoadGenerator {
          */
         int clearance(int x, int z) {
             BlockPos center = this.nearest.center(x, z);
-            return Math.sqrt(this.nearest.distSq(x, z)) < widestHalfWidth(center, this.settingsAt.apply(center)) - 1
+            return Math.sqrt(this.nearest.distSq(x, z)) < halfWidth(center, this.settingsAt.apply(center)) - 1
                     ? TUNNEL_HEIGHT
                     : TUNNEL_HEIGHT - 1;
         }

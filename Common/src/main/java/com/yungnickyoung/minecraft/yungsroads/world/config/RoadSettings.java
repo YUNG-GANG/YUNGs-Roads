@@ -42,7 +42,9 @@ public final class RoadSettings {
     public double waterWeight = 8;
     public int maxBridgeLength = 32;
 
-    // Shaping
+    // Shaping. The width defaults match the roads placed before width was a setting, when it was set per surface.
+    public double roadWidth = 3.2;
+    public double widthVariation = 1.4;
     public int smoothingRadius = 6;
     public int maxCutDepth = 4;
     public int maxFillDepth = 2;
@@ -84,18 +86,18 @@ public final class RoadSettings {
         return this.blocks.equals(other.blocks);
     }
 
-    /** The widest a road of this type can be, as the squared distance from its center line within which it's placed. */
-    public double maxRoadDistSq(double widthNoise) {
-        double maxDistSq = 0;
-        for (RoadSurfaceConfig surface : this.blocks.surfaces().isEmpty() ? List.of(RoadSurfaceConfig.FALLBACK) : this.blocks.surfaces()) {
-            maxDistSq = Math.max(maxDistSq, maxRoadDistSq(surface, widthNoise));
-        }
-        return maxDistSq;
+    /**
+     * The distance from the road's center line to its edge, exclusive, at a point along it.
+     *
+     * @param widthNoise From 0 to 1, how far the road is widened there by its width variation.
+     */
+    public double halfWidth(double widthNoise) {
+        return (this.roadWidth + this.widthVariation * widthNoise) / 2;
     }
 
-    /** The squared distance from a road's center line within which a road with the given surface is placed. */
-    public static double maxRoadDistSq(RoadSurfaceConfig surface, double widthNoise) {
-        return surface.roadSizeRadius * surface.roadSizeRadius + widthNoise * surface.roadSizeVariation;
+    /** The distance from the road's center line to its edge, exclusive, where the road is widest. */
+    public double maxHalfWidth() {
+        return halfWidth(1);
     }
 
     private Map<RoadSetting, Double> values(ITunableSetting.Group group) {

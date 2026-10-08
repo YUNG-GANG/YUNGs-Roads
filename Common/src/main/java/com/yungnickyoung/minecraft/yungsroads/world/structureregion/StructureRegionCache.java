@@ -132,13 +132,14 @@ public class StructureRegionCache {
     }
 
     /**
-     * Whether any road center position is within the given horizontal range of the position.
-     * The range must not exceed {@link StructureRegion#INDEX_PADDING}.
+     * Whether the position is within the given horizontal margin of any road's edge, measured where the road is widest.
+     * The road's half-width plus the margin must not exceed {@link StructureRegion#INDEX_PADDING}.
      */
-    public boolean hasRoadNear(BlockPos pos, int range) {
+    public boolean hasRoadNear(BlockPos pos, double margin) {
         for (RoadCenter center : getRoadCentersNearChunk(new ChunkPos(pos))) {
             int dx = center.pos().getX() - pos.getX();
             int dz = center.pos().getZ() - pos.getZ();
+            double range = center.road().settings.maxHalfWidth() + margin;
             if (dx * dx + dz * dz <= range * range) {
                 return true;
             }

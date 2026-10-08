@@ -829,6 +829,7 @@ public class RoadDebugScreen extends Screen {
                     formulaLine(valueOf, "yungsroads.formula.max_bridge_length", RoadSetting.MAX_BRIDGE_LENGTH));
             case SHAPING -> List.of(
                     formulaTitle("yungsroads.formula.shaping.title"),
+                    formulaLine(valueOf, "yungsroads.formula.width", RoadSetting.ROAD_WIDTH, RoadSetting.WIDTH_VARIATION),
                     formulaLine(valueOf, "yungsroads.formula.smoothing", RoadSetting.SMOOTHING_RADIUS),
                     formulaLine(valueOf, "yungsroads.formula.cut", RoadSetting.MAX_CUT_DEPTH),
                     formulaLine(valueOf, "yungsroads.formula.fill", RoadSetting.MAX_FILL_DEPTH),

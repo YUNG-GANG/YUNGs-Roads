@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * The blocks a road type builds with. Not tunable in game, so it's shared between copies of {@link RoadSettings}.
  *
- * @param surfaces The road's blocks and width over each kind of ground. Each column uses the first that matches.
+ * @param surfaces The road's blocks over each kind of ground. Each column uses the first that matches.
  * @param bridgeBlockStates The blocks bridges over water and land bridges are built from.
  * @param bridgeRailingBlockStates The railings along the edges of land bridges with a drop beside them. Fences, walls,
  *                                 panes, and bars connect to each other. Without it, land bridges have no railings.
