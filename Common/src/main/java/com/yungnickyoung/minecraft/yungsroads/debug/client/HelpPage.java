@@ -36,6 +36,7 @@ final class HelpPage implements DrawerPage {
         OVERVIEW("overview"),
         ROAD_TYPES("road_types"),
         ROAD_NETWORKS("road_networks"),
+        SELECTION("selection"),
         ROUTING("routing"),
         SHAPING("shaping"),
         BLOCKS("blocks"),

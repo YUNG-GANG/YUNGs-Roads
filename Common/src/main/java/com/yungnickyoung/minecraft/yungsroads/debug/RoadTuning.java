@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.debug;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.services.Services;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadNetwork;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
@@ -17,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -25,6 +27,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
@@ -256,20 +259,45 @@ public final class RoadTuning {
     }
 
     /**
-     * Saves a road type, as applied, to the world's tuned road type datapack. See {@link RoadTypeExport#writeWorldDatapack}.
+     * Saves a road type, as applied, to the world's tuned road type datapack, under its own id or another. See
+     * {@link RoadTypeExport#writeWorldDatapack}.
+     *
+     * @param saveId The id to save it under. Its own replaces it in this world, and a new one adds a new road type.
      */
-    public static void saveRoadType(ServerLevel level, ResourceLocation typeId) {
+    public static void saveRoadType(ServerLevel level, ResourceLocation typeId, ResourceLocation saveId) {
         RoadType type = roadTypesOf(level).current().get(typeId);
         if (type == null) {
             return;
         }
         try {
-            RoadTypeExport.writeWorldDatapack(level.getServer(), typeId, type);
-            status = Component.translatable("yungsroads.status.saved_road_type", typeId.toString(), RoadTypeExport.DATAPACK_NAME);
+            RoadTypeExport.writeWorldDatapack(level.getServer(), saveId, type);
+            status = roadTypesOf(level).current().containsKey(saveId)
+                    ? Component.translatable("yungsroads.status.saved_road_type", saveId.toString(), RoadTypeExport.DATAPACK_NAME)
+                    : Component.translatable("yungsroads.status.saved_new_road_type", saveId.toString(), RoadTypeExport.DATAPACK_NAME);
         } catch (IOException | RuntimeException e) {
             YungsRoadsCommon.LOGGER.error("Unable to save road type {}", typeId, e);
             status = Component.translatable("yungsroads.status.save_road_type_failed", String.valueOf(e.getMessage()));
         }
+    }
+
+    /**
+     * Where a new road type's id must be added for the level's roads to get it: its road network's road type tag, or
+     * the road network itself if it lists its road types directly.
+     */
+    public static Component whereToAddRoadType(ServerLevel level, ResourceLocation id) {
+        Optional<RoadNetwork> network = RoadNetwork.of(level);
+        if (network.isEmpty()) {
+            return Component.translatable("yungsroads.screen.save.add_to.no_network");
+        }
+        Optional<TagKey<RoadType>> tag = network.get().roadTypes().unwrapKey();
+        if (tag.isPresent()) {
+            ResourceLocation tagId = tag.get().location();
+            return Component.translatable("yungsroads.screen.save.add_to.tag", id.toString(),
+                    "data/" + tagId.getNamespace() + "/tags/yungsroads/road_type/" + tagId.getPath() + ".json");
+        }
+        ResourceLocation dimension = level.dimension().location();
+        return Component.translatable("yungsroads.screen.save.add_to.network", id.toString(),
+                "data/" + dimension.getNamespace() + "/yungsroads/road_network/" + dimension.getPath() + ".json");
     }
 
     private static void refreshPlacedRoads(ServerLevel level) {

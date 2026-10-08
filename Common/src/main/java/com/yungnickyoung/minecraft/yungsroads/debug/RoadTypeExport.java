@@ -40,7 +40,8 @@ public final class RoadTypeExport {
 
     /**
      * Writes a road type to the world's tuned road type datapack, with a README describing the format and every setting.
-     * The file replaces any saved before for the same id, and overrides the road type of that id in this world. Vanilla
+     * The file replaces any saved before for the same id. It overrides the road type of that id in this world, or adds a
+     * new road type if there's none, which roads only use once it's added to a road network. Vanilla
      * enables new datapacks in a world's datapacks folder when the world loads, so the road type is used from the next
      * time it loads.
      */

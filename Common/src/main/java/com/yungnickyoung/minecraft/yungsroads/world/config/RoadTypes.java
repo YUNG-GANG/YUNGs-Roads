@@ -123,9 +123,9 @@ public final class RoadTypes {
 
     /**
      * Chooses the road type for a road between two positions, by sampling the biomes along the straight line between
-     * them. Each sample votes for the allowed types whose selection matches its biome with the highest priority, or for
-     * the default type if none match. The type with the most votes wins, with ties going to the higher priority and then
-     * the lower id. If the type has several variants, one is picked at random by weight, seeded by the world seed and
+     * them. Each sample counts toward the allowed types whose selection matches its biome with the highest priority, or
+     * toward the default type if none match. The type covering the most samples, the largest share of the route, wins,
+     * with ties going to the higher priority and then the lower id. If the type has several variants, one is picked at random by weight, seeded by the world seed and
      * the road's endpoints, so the same road always gets the same variant.
      * <p>
      * The result doesn't depend on which endpoint is given first.
@@ -137,33 +137,33 @@ public final class RoadTypes {
         double length = Math.sqrt(Math.pow(b.getX() - a.getX(), 2) + Math.pow(b.getZ() - a.getZ(), 2));
         int samples = Math.max(2, (int) Math.ceil(length / BIOME_SAMPLE_SPACING) + 1);
 
-        Map<ResourceLocation, Integer> votes = new HashMap<>();
+        Map<ResourceLocation, Integer> counts = new HashMap<>();
         for (int s = 0; s < samples; s++) {
             double t = s / (double) (samples - 1);
             int x = (int) Math.round(a.getX() + (b.getX() - a.getX()) * t);
             int z = (int) Math.round(a.getZ() + (b.getZ() - a.getZ()) * t);
             for (ResourceLocation typeId : matchingTypes(types, this.allowed, this.defaultId, biomeAt.apply(x, z))) {
-                votes.merge(typeId, 1, Integer::sum);
+                counts.merge(typeId, 1, Integer::sum);
             }
         }
 
-        List<Vote> ranked = new ArrayList<>();
-        votes.forEach((typeId, count) -> ranked.add(new Vote(typeId, count)));
-        ranked.sort(Comparator.comparingInt(Vote::votes).reversed()
-                .thenComparing(Comparator.comparingInt((Vote vote) -> types.get(vote.typeId).priority()).reversed())
-                .thenComparing(Vote::typeId));
+        List<RouteShare> shares = new ArrayList<>();
+        counts.forEach((typeId, count) -> shares.add(new RouteShare(typeId, count)));
+        shares.sort(Comparator.comparingInt(RouteShare::samples).reversed()
+                .thenComparing(Comparator.comparingInt((RouteShare share) -> types.get(share.typeId).priority()).reversed())
+                .thenComparing(RouteShare::typeId));
 
-        ResourceLocation typeId = ranked.get(0).typeId;
+        ResourceLocation typeId = shares.get(0).typeId;
         RoadType type = types.get(typeId);
         int variant = pickVariant(type, worldSeed, a, b);
-        return new Choice(typeId, variant, type.variants().get(variant).settings(), List.copyOf(ranked));
+        return new Choice(typeId, variant, type.variants().get(variant).settings(), samples, List.copyOf(shares));
     }
 
     /**
-     * The types a biome votes for: the allowed ones whose selection matches it with the highest priority, or the
+     * The types a biome counts toward: the allowed ones whose selection matches it with the highest priority, or the
      * default type if none match.
      *
-     * @param allowed The types that may be voted for besides the default type.
+     * @param allowed The types a biome may count toward besides the default type.
      */
     private static List<ResourceLocation> matchingTypes(SortedMap<ResourceLocation, RoadType> types, Set<ResourceLocation> allowed,
                                                         ResourceLocation defaultId, Holder<Biome> biome) {
@@ -210,12 +210,14 @@ public final class RoadTypes {
     /**
      * The road type chosen for a road.
      *
-     * @param votes How many biome samples voted for each type, most first, in the order ties were broken.
+     * @param samples How many biome samples were taken along the road.
+     * @param shares Each type's share of the route, largest first, in the order ties were broken. A sample whose biome
+     *               matches several types equally counts toward each, so the shares can add up to more than the samples.
      */
-    public record Choice(ResourceLocation typeId, int variant, RoadSettings settings, List<Vote> votes) {
+    public record Choice(ResourceLocation typeId, int variant, RoadSettings settings, int samples, List<RouteShare> shares) {
     }
 
-    /** How many of a road's biome samples voted for a road type. */
-    public record Vote(ResourceLocation typeId, int votes) {
+    /** How many of a road's biome samples count toward a road type: its share of the road's route. */
+    public record RouteShare(ResourceLocation typeId, int samples) {
     }
 }

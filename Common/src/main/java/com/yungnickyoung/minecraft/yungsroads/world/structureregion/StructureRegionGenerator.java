@@ -40,6 +40,7 @@ public class StructureRegionGenerator {
     public StructureRegionGenerator(ServerLevel serverLevel) {
         this.terrainSampler = new TerrainSampler(serverLevel);
         this.roadNetwork = RoadNetwork.of(serverLevel);
+        this.roadNetwork.ifPresent(network -> network.warnAboutMistakes(serverLevel.dimension().location()));
         this.structureLocator = this.roadNetwork
                 .map(network -> new StructureLocator(serverLevel, this.terrainSampler, network.structures()))
                 .orElse(null);

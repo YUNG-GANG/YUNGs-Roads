@@ -10,7 +10,9 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
+import net.minecraft.Util;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.CommonComponents;
@@ -23,6 +25,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
@@ -43,13 +46,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A dialog over the tuning screen for editing one of a road type's lists of blocks: either a weighted mix, such as a
- * surface's path blocks, where each block has a chance and a default block takes the rest, or the ground blocks a
- * surface replaces.
+ * A dialog over the tuning screen for editing one of a road type's lists: a weighted mix of blocks, such as a surface's
+ * path blocks, where each block has a chance and a default block takes the rest, or a list of ids and tags, such as the
+ * ground blocks a surface replaces or the biomes a road type is chosen for.
  * <p>
- * Blocks are typed as ids, with suggestions from the block registry. A mix's blocks may give block state properties as
- * commands do, such as {@code oak_slab[type=top]}. Ground blocks match any state of a block, and may instead be block
- * tags, such as {@code #minecraft:dirt}. Nothing changes until Done is pressed, which is only allowed while every row
+ * Entries are typed as ids, with suggestions from their registry. A mix's blocks may give block state properties as
+ * commands do, such as {@code oak_slab[type=top]}. A list of ids may also have tags, such as {@code #minecraft:dirt}. Nothing changes until Done is pressed, which is only allowed while every row
  * is valid. The edits are kept in this screen, not its widgets, so they survive the window being resized.
  */
 final class BlockListScreen extends Screen {
@@ -69,8 +71,6 @@ final class BlockListScreen extends Screen {
     private static final int SUGGESTION_HEIGHT = 11;
     /** The fewest rows the list shows, scrolling if there are more than fit. */
     private static final int MIN_VISIBLE_ROWS = 2;
-    private static final int OVERLAY_COLOR = 0xB0000000;
-    private static final int BACKGROUND_COLOR = 0xF0181818;
     private static final int BORDER_COLOR = 0xFF505050;
     private static final int TEXT_COLOR = 0xFFE0E0E0;
     private static final int NOTE_COLOR = 0xFFA0A0A0;
@@ -103,15 +103,21 @@ final class BlockListScreen extends Screen {
 
     private final Screen parent;
     private final Component description;
-    /** Whether each block has a chance, with a default block taking the rest, rather than being ground blocks. */
+    /** Whether each block has a chance, with a default block taking the rest, rather than being a list of ids and tags. */
     private final boolean weighted;
+    /** For a list of ids, the registry they're from, such as blocks or the level's biomes. Mixes are always of blocks. */
+    private final Registry<?> registry;
+    /** What the list is of, "block" or "biome", which picks its lang entries and its entries' names. */
+    private final String kind;
+    /** Whether a list of ids may have one tag alone or ids without tags, but not both, as vanilla's biome lists. */
+    private final boolean tagOrIds;
     /** For a list that can be left out, the label of the option to leave it out, or null if it's required. */
     @Nullable
     private final Component noneLabel;
     @Nullable
     private final Consumer<Optional<BlockStateRandomizer>> onWeightedDone;
     @Nullable
-    private final Consumer<List<ExtraCodecs.TagOrElementLocation>> onGroundDone;
+    private final Consumer<Optional<List<ExtraCodecs.TagOrElementLocation>>> onIdsDone;
 
     private final List<Row> rows = new ArrayList<>();
     private String defaultBlock = "";
@@ -149,16 +155,19 @@ final class BlockListScreen extends Screen {
      */
     private boolean suggestionsDismissed = false;
 
-    private BlockListScreen(Screen parent, Component title, Component description, boolean weighted, @Nullable Component noneLabel,
-                            @Nullable Consumer<Optional<BlockStateRandomizer>> onWeightedDone,
-                            @Nullable Consumer<List<ExtraCodecs.TagOrElementLocation>> onGroundDone) {
+    private BlockListScreen(Screen parent, Component title, Component description, boolean weighted, Registry<?> registry, String kind,
+                            boolean tagOrIds, @Nullable Component noneLabel, @Nullable Consumer<Optional<BlockStateRandomizer>> onWeightedDone,
+                            @Nullable Consumer<Optional<List<ExtraCodecs.TagOrElementLocation>>> onIdsDone) {
         super(title);
         this.parent = parent;
         this.description = description;
         this.weighted = weighted;
+        this.registry = registry;
+        this.kind = kind;
+        this.tagOrIds = tagOrIds;
         this.noneLabel = noneLabel;
         this.onWeightedDone = onWeightedDone;
-        this.onGroundDone = onGroundDone;
+        this.onIdsDone = onIdsDone;
     }
 
     /**
@@ -169,7 +178,7 @@ final class BlockListScreen extends Screen {
      */
     static BlockListScreen weighted(Screen parent, Component title, Component description, @Nullable Component noneLabel,
                                     Optional<BlockStateRandomizer> value, BlockState fallback, Consumer<Optional<BlockStateRandomizer>> onDone) {
-        BlockListScreen screen = new BlockListScreen(parent, title, description, true, noneLabel, onDone, null);
+        BlockListScreen screen = new BlockListScreen(parent, title, description, true, BuiltInRegistries.BLOCK, "block", false, noneLabel, onDone, null);
         screen.none = value.isEmpty();
         screen.defaultBlock = text(value.map(BlockStateRandomizer::getDefaultBlockState).orElse(fallback));
         value.ifPresent(randomizer -> randomizer.getEntries().forEach(entry ->
@@ -180,8 +189,24 @@ final class BlockListScreen extends Screen {
     /** A dialog for the ground blocks a surface replaces, as block ids and block tags. */
     static BlockListScreen ground(Screen parent, Component title, Component description, List<ExtraCodecs.TagOrElementLocation> value,
                                   Consumer<List<ExtraCodecs.TagOrElementLocation>> onDone) {
-        BlockListScreen screen = new BlockListScreen(parent, title, description, false, null, null, onDone);
+        BlockListScreen screen = new BlockListScreen(parent, title, description, false, BuiltInRegistries.BLOCK, "block", false, null,
+                null, result -> onDone.accept(result.orElseThrow()));
         value.forEach(target -> screen.rows.add(new Row(text(target), "", null)));
+        return screen;
+    }
+
+    /**
+     * A dialog for the biomes a road type is chosen for: one biome tag, or a list of biomes, as vanilla writes them.
+     *
+     * @param noneLabel The label of the option to choose the road type for no biomes, which leaves it only used if it
+     *                  is a road network's default.
+     */
+    static BlockListScreen biomes(Screen parent, Component title, Component description, Component noneLabel, Registry<Biome> biomes,
+                                  Optional<List<ExtraCodecs.TagOrElementLocation>> value,
+                                  Consumer<Optional<List<ExtraCodecs.TagOrElementLocation>>> onDone) {
+        BlockListScreen screen = new BlockListScreen(parent, title, description, false, biomes, "biome", true, noneLabel, null, onDone);
+        screen.none = value.isEmpty();
+        value.ifPresent(targets -> targets.forEach(target -> screen.rows.add(new Row(text(target), "", null))));
         return screen;
     }
 
@@ -194,19 +219,35 @@ final class BlockListScreen extends Screen {
         return id.getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE) ? id.getPath() : id.toString();
     }
 
-    /** The ground block or block tag typed, or null if there's no such block or tag. */
+    /** The id or tag typed, or null if the list's registry has no such entry or tag. */
     @Nullable
-    static ExtraCodecs.TagOrElementLocation parseTarget(String text) {
+    private ExtraCodecs.TagOrElementLocation parseId(String text) {
         String trimmed = text.trim();
         boolean tag = trimmed.startsWith("#");
         ResourceLocation id = ResourceLocation.tryParse(tag ? trimmed.substring(1) : trimmed);
         if (id == null || id.getPath().isEmpty()) {
             return null;
         }
-        boolean exists = tag
-                ? BuiltInRegistries.BLOCK.getTag(TagKey.create(Registries.BLOCK, id)).isPresent()
-                : BuiltInRegistries.BLOCK.containsKey(id);
+        boolean exists = tag ? hasTag(this.registry, id) : this.registry.containsKey(id);
         return exists ? new ExtraCodecs.TagOrElementLocation(id, tag) : null;
+    }
+
+    private static <T> boolean hasTag(Registry<T> registry, ResourceLocation id) {
+        return registry.getTag(TagKey.create(registry.key(), id)).isPresent();
+    }
+
+    /** The ids an id or tag matches in the registry, in the registry's order for a tag. */
+    private static <T> List<ResourceLocation> members(Registry<T> registry, ExtraCodecs.TagOrElementLocation target) {
+        if (!target.tag()) {
+            return registry.containsKey(target.id()) ? List.of(target.id()) : List.of();
+        }
+        return registry.getTag(TagKey.create(registry.key(), target.id()))
+                .map(set -> set.stream().flatMap(holder -> holder.unwrapKey().stream()).map(key -> key.location()).toList())
+                .orElse(List.of());
+    }
+
+    private static <T> Stream<ResourceLocation> tagNames(Registry<T> registry) {
+        return registry.getTagNames().map(TagKey::location);
     }
 
     /** The blocks a ground block or block tag matches, in the registry's order for a tag. */
@@ -294,7 +335,7 @@ final class BlockListScreen extends Screen {
             addRow(row, x, innerWidth);
         }
         y += this.rowsHeight + 4;
-        this.addButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads.blocks.add"), button -> addBlock())
+        this.addButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads." + this.kind + "s.add"), button -> addBlock())
                 .bounds(x, y, Math.min(100, innerWidth), BUTTON_HEIGHT)
                 .build());
         y += BUTTON_HEIGHT;
@@ -334,7 +375,7 @@ final class BlockListScreen extends Screen {
                     rebuildWidgets();
                 })
                 .bounds(removeX, 0, REMOVE_WIDTH, BOX_HEIGHT)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.blocks.remove")))
+                .tooltip(Tooltip.create(Component.translatable("yungsroads." + this.kind + "s.remove")))
                 .build());
         this.rowWidgets.add(new RowWidgets(row, block, chance, remove));
     }
@@ -383,9 +424,9 @@ final class BlockListScreen extends Screen {
         this.doneButton.active = error() == null;
     }
 
-    /** Whether a row's text is a block, or for ground blocks, a block or block tag. */
+    /** Whether a row's text is a block, or for a list of ids, an id or tag in its registry. */
     private boolean isValidBlock(String text) {
-        return this.weighted ? parse(text) != null : parseTarget(text) != null;
+        return this.weighted ? parse(text) != null : parseId(text) != null;
     }
 
     /** The chance typed, as a probability, or null if it isn't a number from 0 to 100. */
@@ -415,8 +456,9 @@ final class BlockListScreen extends Screen {
         if (this.none) {
             return null;
         }
+        String keys = "yungsroads." + this.kind + "s.";
         if (!this.weighted && this.rows.isEmpty()) {
-            return Component.translatable("yungsroads.blocks.error.empty");
+            return Component.translatable(keys + "error.empty");
         }
         Set<String> seen = new HashSet<>();
         for (Row row : this.rows) {
@@ -429,9 +471,9 @@ final class BlockListScreen extends Screen {
                 }
                 shown = text(state);
             } else {
-                ExtraCodecs.TagOrElementLocation target = parseTarget(row.block);
+                ExtraCodecs.TagOrElementLocation target = parseId(row.block);
                 if (target == null) {
-                    return Component.translatable(typed.startsWith("#") ? "yungsroads.blocks.error.unknown_tag" : "yungsroads.blocks.error.unknown", typed);
+                    return Component.translatable(keys + (typed.startsWith("#") ? "error.unknown_tag" : "error.unknown"), typed);
                 }
                 shown = text(target);
             }
@@ -441,6 +483,9 @@ final class BlockListScreen extends Screen {
             if (this.weighted && parseChance(row.chance) == null) {
                 return Component.translatable("yungsroads.blocks.error.chance", shown);
             }
+        }
+        if (this.tagOrIds && this.rows.size() > 1 && this.rows.stream().anyMatch(row -> row.block.trim().startsWith("#"))) {
+            return Component.translatable(keys + "error.tag_or_ids");
         }
         if (this.weighted) {
             if (parse(this.defaultBlock) == null) {
@@ -471,7 +516,7 @@ final class BlockListScreen extends Screen {
             }
             this.onWeightedDone.accept(result);
         } else {
-            this.onGroundDone.accept(this.rows.stream().map(row -> parseTarget(row.block)).toList());
+            this.onIdsDone.accept(this.none ? Optional.empty() : Optional.of(this.rows.stream().map(row -> parseId(row.block)).toList()));
         }
         this.minecraft.setScreen(this.parent);
     }
@@ -516,15 +561,8 @@ final class BlockListScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.parent.render(guiGraphics, -1, -1, partialTick);
-        guiGraphics.pose().pushPose();
-        // Over everything the screen behind draws raised, such as its drawer's tabs
-        guiGraphics.pose().translate(0, 0, 400);
-        guiGraphics.fill(0, 0, this.width, this.height, OVERLAY_COLOR);
+        DialogFrame.begin(guiGraphics, this.parent, this.width, this.height, this.left, this.top, this.dialogWidth, this.dialogHeight, partialTick);
         int right = this.left + this.dialogWidth;
-        int bottom = this.top + this.dialogHeight;
-        guiGraphics.fill(this.left - 1, this.top - 1, right + 1, bottom + 1, BORDER_COLOR);
-        guiGraphics.fill(this.left, this.top, right, bottom, BACKGROUND_COLOR);
 
         layOutRows();
         int x = this.left + PADDING;
@@ -536,14 +574,14 @@ final class BlockListScreen extends Screen {
             y += 10;
         }
         int labelColor = this.none ? 0xFF606060 : NOTE_COLOR;
-        guiGraphics.drawString(this.font, Component.translatable(this.weighted ? "yungsroads.blocks.block" : "yungsroads.blocks.block_or_tag"),
+        guiGraphics.drawString(this.font, Component.translatable(this.weighted ? "yungsroads.blocks.block" : "yungsroads." + this.kind + "s.id_or_tag"),
                 x + ICON_WIDTH, this.rowsTop - 11, labelColor, false);
         if (this.weighted && !this.rowWidgets.isEmpty()) {
             RowWidgets first = this.rowWidgets.get(0);
             guiGraphics.drawString(this.font, Component.translatable("yungsroads.blocks.chance"), first.chance.getX(), this.rowsTop - 11, labelColor, false);
         }
         if (this.rows.isEmpty()) {
-            guiGraphics.drawString(this.font, Component.translatable(this.weighted ? "yungsroads.blocks.no_rows.weighted" : "yungsroads.blocks.no_rows"),
+            guiGraphics.drawString(this.font, Component.translatable(this.weighted ? "yungsroads.blocks.no_rows.weighted" : "yungsroads." + this.kind + "s.no_rows"),
                     x + ICON_WIDTH, this.rowsTop + 6, labelColor, false);
         }
 
@@ -585,7 +623,7 @@ final class BlockListScreen extends Screen {
         if (!tooltip.isEmpty()) {
             guiGraphics.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
         }
-        guiGraphics.pose().popPose();
+        DialogFrame.end(guiGraphics);
     }
 
     private void renderIcon(GuiGraphics guiGraphics, String text, int x, int boxY) {
@@ -594,7 +632,7 @@ final class BlockListScreen extends Screen {
             BlockState state = parse(text);
             blocks = state == null ? List.of() : List.of(state.getBlock());
         } else {
-            ExtraCodecs.TagOrElementLocation target = parseTarget(text);
+            ExtraCodecs.TagOrElementLocation target = this.registry == BuiltInRegistries.BLOCK ? parseId(text) : null;
             blocks = target == null ? List.of() : blocks(target);
         }
         blocks.stream()
@@ -604,21 +642,21 @@ final class BlockListScreen extends Screen {
                 .ifPresent(item -> guiGraphics.renderItem(new ItemStack(item), x, boxY));
     }
 
-    /** For a block tag, the lines of a tooltip naming the blocks it matches, or none if the text isn't a block tag. */
+    /** For a tag, the lines of a tooltip naming what it matches, or none if the text isn't a tag. */
     private List<Component> tagContents(String text) {
-        ExtraCodecs.TagOrElementLocation target = this.weighted ? null : parseTarget(text);
+        ExtraCodecs.TagOrElementLocation target = this.weighted ? null : parseId(text);
         if (target == null || !target.tag()) {
             return List.of();
         }
-        List<Block> blocks = blocks(target);
+        List<ResourceLocation> members = members(this.registry, target);
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("yungsroads.blocks.tag_contents", text(target), blocks.size()));
-        int shown = Math.min(MAX_TAG_BLOCKS_SHOWN, blocks.size());
-        for (Block block : blocks.subList(0, shown)) {
-            lines.add(block.getName().withColor(NOTE_COLOR));
+        lines.add(Component.translatable("yungsroads." + this.kind + "s.tag_contents", text(target), members.size()));
+        int shown = Math.min(MAX_TAG_BLOCKS_SHOWN, members.size());
+        for (ResourceLocation member : members.subList(0, shown)) {
+            lines.add(Component.translatable(Util.makeDescriptionId(this.kind, member)).withColor(NOTE_COLOR));
         }
-        if (blocks.size() > shown) {
-            lines.add(Component.translatable("yungsroads.blocks.tag_more", blocks.size() - shown).withColor(NOTE_COLOR));
+        if (members.size() > shown) {
+            lines.add(Component.translatable("yungsroads.blocks.tag_more", members.size() - shown).withColor(NOTE_COLOR));
         }
         return lines;
     }
@@ -685,7 +723,7 @@ final class BlockListScreen extends Screen {
         this.suggestionText = focused.getValue();
         this.suggestionIndex = 0;
         this.suggestionScroll = 0;
-        this.suggestions = suggest(focused.getValue(), !this.weighted);
+        this.suggestions = suggest(focused.getValue());
     }
 
     private boolean isBlockBox(EditBox box) {
@@ -693,11 +731,12 @@ final class BlockListScreen extends Screen {
     }
 
     /**
-     * Block ids matching typed text: those starting with it first, then those containing it. With tags, block tags
-     * follow, after a {@code #}, and typing a {@code #} suggests only tags. None once properties are being typed, or if
+     * Ids matching typed text: those starting with it first, then those containing it. In a list of ids, tags follow,
+     * after a {@code #}, and typing a {@code #} suggests only tags. None once block properties are being typed, or if
      * the text is already the only match.
      */
-    private static List<String> suggest(String text, boolean withTags) {
+    private List<String> suggest(String text) {
+        boolean withTags = !this.weighted;
         String query = text.trim().toLowerCase(Locale.ROOT);
         if (query.isEmpty() || query.contains("[")) {
             return List.of();
@@ -710,10 +749,10 @@ final class BlockListScreen extends Screen {
         List<String> starting = new ArrayList<>();
         List<String> containing = new ArrayList<>();
         if (!tagsOnly) {
-            collectMatches(BuiltInRegistries.BLOCK.keySet().stream(), "", typed, starting, containing);
+            collectMatches(this.registry.keySet().stream(), "", typed, starting, containing);
         }
         if (withTags) {
-            collectMatches(BuiltInRegistries.BLOCK.getTagNames().map(TagKey::location), "#", typed, starting, containing);
+            collectMatches(tagNames(this.registry), "#", typed, starting, containing);
         }
         List<String> matches = new ArrayList<>(starting);
         matches.addAll(containing);

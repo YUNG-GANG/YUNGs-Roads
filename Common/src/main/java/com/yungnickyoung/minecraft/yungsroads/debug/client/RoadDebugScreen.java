@@ -19,6 +19,8 @@ import com.yungnickyoung.minecraft.yungsroads.world.config.ITunableSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import net.minecraft.ChatFormatting;
+import net.minecraft.Util;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -27,22 +29,31 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineTextWidget;
+import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.narration.NarratedElementType;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -59,6 +70,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -138,6 +150,7 @@ public class RoadDebugScreen extends Screen {
      * rail, and the others one each.
      */
     private enum Page {
+        SELECTION(Tab.ROAD_TYPE, "selection", HelpPage.Section.SELECTION, Items.GRASS_BLOCK),
         ROUTING(Tab.ROAD_TYPE, "routing", HelpPage.Section.ROUTING, Items.COMPASS),
         SHAPING(Tab.ROAD_TYPE, "shaping", HelpPage.Section.SHAPING, Items.IRON_SHOVEL),
         BLOCKS(Tab.ROAD_TYPE, "blocks", HelpPage.Section.BLOCKS, Items.BRICKS),
@@ -209,20 +222,47 @@ public class RoadDebugScreen extends Screen {
     private final List<Step> steps = new ArrayList<>();
 
     /**
-     * The road types whose settings are being edited, as they were when the fields were loaded. The edited numeric
-     * settings are applied to copies of them.
+     * A road type variant as edited: its settings and weight as typed, and its blocks. Edits are kept outside the widgets
+     * so they survive the widgets being rebuilt, such as when the window is resized or another road type is picked, and
+     * aren't applied until the Apply button is pressed.
      */
-    private SortedMap<ResourceLocation, RoadType> baseTypes = new TreeMap<>();
+    private static final class PendingVariant {
+        final Map<RoadSetting, String> text = new EnumMap<>(RoadSetting.class);
+        /** Replaced as a whole on each edit, never changed. */
+        RoadBlocks blocks;
+        String weight;
+        /** What Reset restores: the variant as the level loaded it, or for a variant added here, what it was copied from. */
+        final RoadSettings baseline;
+        final int baselineWeight;
 
-    /**
-     * Values as edited on the settings pages, for every road type variant and for the global settings. Kept outside the
-     * widgets so they survive the widgets being rebuilt, such as when the window is resized or another road type is
-     * picked. Not applied until the Apply button is pressed.
-     */
-    private final Map<VariantKey, Map<RoadSetting, String>> pendingTypeText = new LinkedHashMap<>();
+        PendingVariant(RoadSettings settings, int weight, RoadSettings baseline, int baselineWeight) {
+            for (RoadSetting setting : RoadSetting.values()) {
+                this.text.put(setting, setting.format(setting.get(settings)));
+            }
+            this.blocks = settings.blocks;
+            this.weight = Integer.toString(weight);
+            this.baseline = baseline;
+            this.baselineWeight = baselineWeight;
+        }
+    }
+
+    /** A road type as edited: the biomes it's chosen for, its priority as typed, and its variants. */
+    private static final class PendingType {
+        /** The biomes, or empty if the road type is only chosen as a road network's default road type. */
+        Optional<HolderSet<Biome>> biomes;
+        String priority;
+        final List<PendingVariant> variants = new ArrayList<>();
+
+        PendingType(Optional<RoadType.Selection> selection) {
+            this.biomes = selection.map(RoadType.Selection::biomes);
+            this.priority = Integer.toString(selection.map(RoadType.Selection::priority).orElse(0));
+        }
+    }
+
+    /** Every road type's edits, by id. */
+    private final Map<ResourceLocation, PendingType> pendingTypes = new TreeMap<>();
+    /** The global settings as typed. */
     private final Map<GlobalSetting, String> pendingGlobalText = new EnumMap<>(GlobalSetting.class);
-    /** Blocks as edited, for every road type variant. Replaced as a whole on each edit, never changed. */
-    private final Map<VariantKey, RoadBlocks> pendingBlocks = new LinkedHashMap<>();
     private ConfigModule.Debug pendingDebug = new ConfigModule.Debug();
 
     /** The road types of the level the fields were loaded from: as loaded, as applied, and which its roads can get. */
@@ -349,6 +389,7 @@ public class RoadDebugScreen extends Screen {
             for (RoadSetting setting : RoadSetting.values()) {
                 addSettingRow(setting, rowY);
             }
+            initSelectionPage();
             initBlocksPage();
         }
         // The global page says where its settings are saved, since unlike the road type's, they're for every road type
@@ -433,9 +474,8 @@ public class RoadDebugScreen extends Screen {
         addTabWidget(Tab.ROAD_TYPE, this.roadTypeDropdown);
         y += BUTTON_HEIGHT + 2;
 
-        RoadType type = this.baseTypes.get(this.selected.typeId);
         List<VariantKey> variants = new ArrayList<>();
-        for (int variant = 0; variant < type.variants().size(); variant++) {
+        for (int variant = 0; variant < this.pendingTypes.get(this.selected.typeId).variants.size(); variant++) {
             variants.add(new VariantKey(this.selected.typeId, variant));
         }
         this.variantDropdown = new Dropdown<>(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.screen.variant.name"),
@@ -488,7 +528,9 @@ public class RoadDebugScreen extends Screen {
                     .build()));
             Button reset = addTabWidget(footerTab, Button.builder(Component.translatable("yungsroads.screen.reset"),
                             button -> {
-                                if (roadType) {
+                                if (roadType && this.roadTypePage == Page.SELECTION) {
+                                    resetRoadType();
+                                } else if (roadType) {
                                     resetVariant();
                                 } else {
                                     resetGlobal();
@@ -526,14 +568,14 @@ public class RoadDebugScreen extends Screen {
         return label;
     }
 
-    /** The variant picker's label for a variant, with its weight, marking variants with edits. */
+    /** The variant picker's label for a variant, with its share of the road type's roads, marking variants with edits. */
     private Component variantLabel(VariantKey key) {
-        RoadType type = this.baseTypes.get(key.typeId);
-        if (type.variants().size() == 1) {
+        PendingType type = this.pendingTypes.get(key.typeId);
+        if (type.variants.size() == 1) {
             return Component.translatable("yungsroads.screen.variant.only");
         }
-        MutableComponent label = Component.translatable("yungsroads.screen.variant", key.variant + 1, type.variants().size(),
-                type.variants().get(key.variant).weight());
+        MutableComponent label = Component.translatable("yungsroads.screen.variant", key.variant + 1, type.variants.size(),
+                share(type, key.variant));
         if (isEdited(key)) {
             label.append(Component.literal(" ").append(Component.translatable("yungsroads.screen.edited_marker")).withColor(EDITED_COLOR));
         }
@@ -586,6 +628,228 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
+     * The selection page, for the whole road type rather than one variant: the biomes it's chosen for and its priority,
+     * and how its roads are split between its variants.
+     */
+    private void initSelectionPage() {
+        Page page = Page.SELECTION;
+        int x = page.left();
+        int width = page.width();
+        int y = this.pageTop.get(page);
+        ResourceLocation typeId = this.selected.typeId;
+        PendingType type = this.pendingTypes.get(typeId);
+        RoadType loaded = this.levelTypes.loaded().get(typeId);
+        Optional<RoadType.Selection> loadedSelection = loaded == null ? Optional.empty() : loaded.selection();
+        Language language = Language.getInstance();
+
+        MultiLineTextWidget pageNote = note("yungsroads.screen.selection.note", x, y, width);
+        addScrollingWidget(page, pageNote, y);
+        y += pageNote.getHeight() + 6;
+
+        y = addHeading(page, "yungsroads.screen.selection.biomes_heading", x, y, width);
+        int labelWidth = this.font.width(Component.translatable("yungsroads.screen.selection.biomes")) + 6;
+        boolean biomesEdited = type.biomes.isPresent() != loadedSelection.isPresent()
+                || type.biomes.isPresent() && !sameBiomes(type.biomes.get(), loadedSelection.get().biomes());
+        boolean isDefault = typeId.equals(this.levelTypes.defaultId());
+        BlockListRow biomes = new BlockListRow(x, y, width, Component.translatable("yungsroads.screen.selection.biomes"), labelWidth,
+                List.of(), biomeNames(type.biomes, isDefault), () -> biomesEdited, () -> openBiomes(typeId));
+        addScrollingWidget(page, biomes, y);
+        this.optionTooltips.put(biomes, language.getOrDefault("yungsroads.screen.selection.biomes.description"));
+        y += BlockListRow.HEIGHT + 4;
+        // Without biomes, only the network's default type is ever chosen, so say why a road type would have no roads
+        if (type.biomes.isEmpty() && !isDefault) {
+            MultiLineTextWidget unused = note("yungsroads.screen.selection.unused", x, y, width).setColor(EDITED_COLOR);
+            addScrollingWidget(page, unused, y);
+            y += unused.getHeight() + 6;
+        }
+
+        // Priority only decides between road types that share a biome, so it does nothing without biomes. A StringWidget
+        // rather than a MultiLineTextWidget, which is never hovered, so the label shows the priority's tooltip too.
+        Component priorityText = Component.translatable("yungsroads.screen.selection.priority");
+        StringWidget priorityLabel = new StringWidget(x, y + 4, this.font.width(priorityText), this.font.lineHeight, priorityText, this.font)
+                .alignLeft()
+                .setColor(type.biomes.isPresent() ? 0xFFE0E0E0 : NOTE_COLOR);
+        addScrollingWidget(page, priorityLabel, y + 4);
+        EditBox priority = addScrollingWidget(page, new EditBox(this.font, x + width - VALUE_BOX_WIDTH, y + 1, VALUE_BOX_WIDTH, 14,
+                Component.translatable("yungsroads.screen.selection.priority")), y + 1);
+        priority.setMaxLength(9);
+        priority.setValue(type.priority);
+        priority.setEditable(type.biomes.isPresent());
+        Integer loadedPriority = loadedSelection.map(RoadType.Selection::priority).orElse(null);
+        priority.setResponder(text -> {
+            type.priority = text;
+            Integer parsed = parsePriority(text);
+            priority.setTextColor(parsed == null ? INVALID_TEXT_COLOR : parsed.equals(loadedPriority) ? VALID_TEXT_COLOR : EDITED_COLOR);
+        });
+        priority.setValue(type.priority);
+        this.rowGroups.add(List.of(priorityLabel, priority));
+        String priorityTooltip = language.getOrDefault("yungsroads.screen.selection.priority.description");
+        this.optionTooltips.put(priority, priorityTooltip);
+        this.optionTooltips.put(priorityLabel, priorityTooltip);
+        y += ROW_HEIGHT + 8;
+
+        y = addHeading(page, "yungsroads.screen.selection.variants_heading", x, y, width);
+        for (int i = 0; i < type.variants.size(); i++) {
+            VariantKey key = new VariantKey(typeId, i);
+            PendingVariant variant = type.variants.get(i);
+            int removeX = x + width - 14;
+            int shareX = removeX - 4 - 24;
+            int weightX = shareX - 4 - 30;
+            boolean editing = key.equals(this.selected);
+            Button name = addScrollingWidget(page, Button.builder(Component.translatable(editing ? "yungsroads.screen.selection.variant.editing"
+                                    : "yungsroads.screen.selection.variant", i + 1), button -> select(key))
+                    .bounds(x, y, weightX - 4 - x, BUTTON_HEIGHT)
+                    .build(), y);
+            name.active = !editing;
+            this.optionTooltips.put(name, language.getOrDefault("yungsroads.screen.selection.variant.description"));
+            EditBox weight = addScrollingWidget(page, new EditBox(this.font, weightX, y + 1, 30, 14,
+                    Component.translatable("yungsroads.screen.selection.weight")), y + 1);
+            weight.setMaxLength(5);
+            weight.setResponder(text -> {
+                variant.weight = text;
+                Integer parsed = parseWeight(text);
+                weight.setTextColor(parsed == null ? INVALID_TEXT_COLOR : parsed == variant.baselineWeight ? VALID_TEXT_COLOR : EDITED_COLOR);
+            });
+            weight.setValue(variant.weight);
+            this.optionTooltips.put(weight, language.getOrDefault("yungsroads.screen.selection.weight.description"));
+            int index = i;
+            LiveLabel share = addScrollingWidget(page, new LiveLabel(shareX, y + 4, 24,
+                    () -> Component.translatable("yungsroads.screen.selection.share", share(type, index))), y + 4);
+            Button remove = addScrollingWidget(page, Button.builder(Component.literal("✕"), button -> removeVariant(key))
+                    .bounds(removeX, y + 1, 14, 14)
+                    .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.selection.variant.remove")))
+                    .build(), y + 1);
+            remove.active = type.variants.size() > 1;
+            this.rowGroups.add(List.of(name, weight, share, remove));
+            y += ROW_HEIGHT;
+        }
+        Button add = addScrollingWidget(page, Button.builder(Component.translatable("yungsroads.screen.selection.variant.add"), button -> addVariant())
+                .bounds(x, y + 2, Math.min(width, 110), BUTTON_HEIGHT)
+                .build(), y + 2);
+        this.optionTooltips.put(add, language.getOrDefault("yungsroads.screen.selection.variant.add.description"));
+        y += BUTTON_HEIGHT + 4;
+        this.formulaY.put(page, y + 6);
+    }
+
+    /** A section title on a road type page. */
+    private int addHeading(Page page, String key, int x, int y, int width) {
+        MultiLineTextWidget heading = new MultiLineTextWidget(x, y, Component.translatable(key).withStyle(ChatFormatting.BOLD), this.font)
+                .setMaxWidth(width)
+                .setColor(SECTION_TITLE_COLOR);
+        addScrollingWidget(page, heading, y);
+        return y + heading.getHeight() + 4;
+    }
+
+    /**
+     * The biomes a road type is chosen for in words: a tag as typed, the biomes' names, or none, which only the road
+     * network's default type is still used with.
+     */
+    private static Component biomeNames(Optional<HolderSet<Biome>> biomes, boolean isDefault) {
+        if (biomes.isEmpty()) {
+            return Component.translatable(isDefault ? "yungsroads.screen.selection.biomes.none.default" : "yungsroads.screen.selection.biomes.none.unused")
+                    .withColor(NOTE_COLOR);
+        }
+        Optional<TagKey<Biome>> tag = biomes.get().unwrapKey();
+        if (tag.isPresent()) {
+            return Component.literal(BlockListScreen.text(new ExtraCodecs.TagOrElementLocation(tag.get().location(), true))).withColor(SECTION_TITLE_COLOR);
+        }
+        MutableComponent names = Component.empty();
+        biomes.get().stream().flatMap(biome -> biome.unwrapKey().stream()).forEach(key -> {
+            if (!names.getSiblings().isEmpty()) {
+                names.append(", ");
+            }
+            names.append(Component.translatable(Util.makeDescriptionId("biome", key.location())));
+        });
+        return names;
+    }
+
+    /** Opens the dialog for the road type's biomes, as one tag or a list of biomes. */
+    private void openBiomes(ResourceLocation typeId) {
+        ServerLevel level = RoadDebugClient.serverLevel();
+        if (level == null) {
+            return;
+        }
+        Registry<Biome> registry = level.registryAccess().registryOrThrow(Registries.BIOME);
+        PendingType type = this.pendingTypes.get(typeId);
+        Optional<List<ExtraCodecs.TagOrElementLocation>> value = type.biomes.map(set -> set.unwrapKey()
+                .map(tag -> List.of(new ExtraCodecs.TagOrElementLocation(tag.location(), true)))
+                .orElseGet(() -> set.stream().flatMap(biome -> biome.unwrapKey().stream())
+                        .map(key -> new ExtraCodecs.TagOrElementLocation(key.location(), false)).toList()));
+        this.minecraft.setScreen(BlockListScreen.biomes(this, Component.translatable("yungsroads.screen.selection.biomes.dialog", RoadTypeNames.name(typeId)),
+                Component.translatable("yungsroads.screen.selection.biomes.description"),
+                Component.translatable(typeId.equals(this.levelTypes.defaultId()) ? "yungsroads.screen.selection.biomes.none_option.default"
+                        : "yungsroads.screen.selection.biomes.none_option.unused"),
+                registry, value, result -> {
+                    Optional<HolderSet<Biome>> biomes = result.map(targets -> targets.size() == 1 && targets.get(0).tag()
+                            ? registry.getTag(TagKey.create(Registries.BIOME, targets.get(0).id())).<HolderSet<Biome>>map(set -> set).orElseThrow()
+                            : HolderSet.direct(targets.stream().map(target -> registry.getHolderOrThrow(ResourceKey.create(Registries.BIOME, target.id()))).toList()));
+                    // An unchanged list keeps its set, so the road type still counts as routed the same
+                    boolean unchanged = biomes.isPresent() == type.biomes.isPresent()
+                            && (biomes.isEmpty() || sameBiomes(biomes.get(), type.biomes.get()));
+                    if (!unchanged) {
+                        type.biomes = biomes;
+                    }
+                    this.rebuildPending = true;
+                }));
+    }
+
+    /** Adds a variant to the shown road type, a copy of the variant being edited, and edits it. */
+    private void addVariant() {
+        PendingType type = this.pendingTypes.get(this.selected.typeId);
+        PendingVariant source = pendingVariant(this.selected);
+        RoadSettings settings = previewSettings();
+        int weight = Objects.requireNonNullElse(parseWeight(source.weight), 1);
+        // Reset restores the new variant to the copy it started as
+        type.variants.add(new PendingVariant(settings, weight, settings, weight));
+        select(new VariantKey(this.selected.typeId, type.variants.size() - 1));
+    }
+
+    /** Removes a variant from its road type, keeping the same variant edited if it's another. */
+    private void removeVariant(VariantKey key) {
+        PendingType type = this.pendingTypes.get(key.typeId);
+        if (type.variants.size() <= 1) {
+            return;
+        }
+        type.variants.remove(key.variant);
+        int selected = this.selected.variant;
+        if (selected > key.variant || selected == type.variants.size()) {
+            selected--;
+        }
+        select(new VariantKey(key.typeId, selected));
+    }
+
+    /** Resets the whole shown road type to as the level loaded it: its biomes, priority, and variants. */
+    private void resetRoadType() {
+        RoadType loaded = this.levelTypes.loaded().get(this.selected.typeId);
+        if (loaded == null) {
+            return;
+        }
+        this.pendingTypes.put(this.selected.typeId, pendingType(loaded, loaded));
+        select(new VariantKey(this.selected.typeId, Math.min(this.selected.variant, loaded.variants().size() - 1)));
+    }
+
+    /** A line of text that's worked out as it's drawn, such as a share of roads that changes as weights are typed. */
+    private static final class LiveLabel extends AbstractWidget {
+        private final Supplier<Component> text;
+
+        LiveLabel(int x, int y, int width, Supplier<Component> text) {
+            super(x, y, width, 9, Component.empty());
+            this.text = text;
+            this.active = false;
+        }
+
+        @Override
+        protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            guiGraphics.drawString(Minecraft.getInstance().font, this.text.get(), getX(), getY(), NOTE_COLOR, false);
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+            narrationElementOutput.add(NarratedElementType.TITLE, this.text.get());
+        }
+    }
+
+    /**
      * The blocks page: the variant's surfaces, in the order they're tried, then the blocks of its bridges and tunnels.
      * Each list of blocks is a row that opens it in a dialog to edit, marked while it differs from what Reset restores.
      */
@@ -595,14 +859,14 @@ public class RoadDebugScreen extends Screen {
         int width = page.width();
         int y = this.pageTop.get(page);
         VariantKey key = this.selected;
-        RoadBlocks blocks = this.pendingBlocks.get(key);
-        RoadBlocks baseline = baselineSettings(key).blocks;
+        RoadBlocks blocks = pendingVariant(key).blocks;
+        RoadBlocks baseline = pendingVariant(key).baseline.blocks;
         int labelWidth = 0;
         for (String label : List.of("ground", "path", "fill", "deck", "railings", "lining")) {
             labelWidth = Math.max(labelWidth, this.font.width(Component.translatable("yungsroads.screen.blocks." + label)) + 6);
         }
 
-        y = addBlocksHeading("yungsroads.screen.blocks.surfaces", x, y, width);
+        y = addHeading(page, "yungsroads.screen.blocks.surfaces", x, y, width);
         List<RoadSurfaceConfig> surfaces = blocks.surfaces();
         for (int i = 0; i < surfaces.size(); i++) {
             int index = i;
@@ -653,7 +917,7 @@ public class RoadDebugScreen extends Screen {
         this.optionTooltips.put(addSurface, Language.getInstance().getOrDefault("yungsroads.screen.blocks.surface.add.description"));
         y += BUTTON_HEIGHT + 8;
 
-        y = addBlocksHeading("yungsroads.screen.blocks.bridges", x, y, width);
+        y = addHeading(page, "yungsroads.screen.blocks.bridges", x, y, width);
         y = addBlockListRow(x, y, width, "deck", labelWidth, icons(blocks.bridgeBlockStates()), mix(blocks.bridgeBlockStates()),
                 differs(BlockStateRandomizer.CODEC, blocks.bridgeBlockStates(), baseline.bridgeBlockStates()),
                 () -> BlockListScreen.weighted(this, Component.translatable("yungsroads.screen.blocks.dialog.deck"), docs("bridge_blockstates"), null,
@@ -670,7 +934,7 @@ public class RoadDebugScreen extends Screen {
                                 value, current.tunnelLiningBlockStates()))));
         y += 8;
 
-        y = addBlocksHeading("yungsroads.screen.blocks.tunnels", x, y, width);
+        y = addHeading(page, "yungsroads.screen.blocks.tunnels", x, y, width);
         y = addBlockListRow(x, y, width, "lining", labelWidth, blocks.tunnelLiningBlockStates().map(this::icons).orElse(List.of()),
                 optionalMix(blocks.tunnelLiningBlockStates(), "yungsroads.screen.blocks.lining.none"),
                 differs(blocks.tunnelLiningBlockStates(), baseline.tunnelLiningBlockStates()),
@@ -680,15 +944,6 @@ public class RoadDebugScreen extends Screen {
                         value -> setBlocks(key, current -> new RoadBlocks(current.surfaces(), current.bridgeBlockStates(),
                                 current.bridgeRailingBlockStates(), value))));
         this.formulaY.put(page, y + 6);
-    }
-
-    /** A section title on the blocks page. */
-    private int addBlocksHeading(String key, int x, int y, int width) {
-        MultiLineTextWidget heading = new MultiLineTextWidget(x, y, Component.translatable(key).withStyle(ChatFormatting.BOLD), this.font)
-                .setMaxWidth(width)
-                .setColor(SECTION_TITLE_COLOR);
-        addScrollingWidget(Page.BLOCKS, heading, y);
-        return y + heading.getHeight() + 4;
     }
 
     /**
@@ -722,7 +977,8 @@ public class RoadDebugScreen extends Screen {
 
     /** Replaces the variant's blocks with an edited copy, and shows them once the widgets are rebuilt. */
     private void setBlocks(VariantKey key, Function<RoadBlocks, RoadBlocks> edit) {
-        this.pendingBlocks.put(key, edit.apply(this.pendingBlocks.get(key)));
+        PendingVariant variant = pendingVariant(key);
+        variant.blocks = edit.apply(variant.blocks);
         this.rebuildPending = true;
     }
 
@@ -890,6 +1146,10 @@ public class RoadDebugScreen extends Screen {
         Page page = page();
         this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == this.tab));
         this.pageWidgets.forEach((p, widgets) -> widgets.forEach(widget -> widget.visible = p == page));
+        if (this.variantDropdown != null) {
+            // The selection page is for the whole road type, and lists its variants itself
+            this.variantDropdown.visible = this.tab == Tab.ROAD_TYPE && page != Page.SELECTION;
+        }
         closeDropdowns();
         // A hidden text box must not keep receiving key presses
         setFocused(null);
@@ -940,7 +1200,14 @@ public class RoadDebugScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // Status, wrapped above the action buttons
+        // A frame can come before the next tick, and the widgets must not show edits they were built before, such as a
+        // variant that was removed
+        if (this.rebuildPending) {
+            this.rebuildPending = false;
+            rebuildWidgets();
+        }
+        // Status, wrapped above the action buttons. Beside the page rail when it's shown, so it can't cover the rail.
+        int statusX = this.tab == Tab.ROAD_TYPE && this.selected != null ? PAGE_X : MARGIN;
         List<Component> statusLines = new ArrayList<>();
         statusLines.add(status());
         ServerLevel level = RoadDebugClient.serverLevel();
@@ -954,7 +1221,7 @@ public class RoadDebugScreen extends Screen {
         List<FormattedCharSequence> wrapped = new ArrayList<>();
         for (Component line : statusLines) {
             if (!line.getString().isEmpty()) {
-                wrapped.addAll(this.font.split(line, PANEL_WIDTH - MARGIN * 2));
+                wrapped.addAll(this.font.split(line, PANEL_WIDTH - MARGIN - statusX));
             }
         }
         int footerTop = this.tab == Tab.VIEW ? this.height - MARGIN : this.footerTop;
@@ -979,7 +1246,7 @@ public class RoadDebugScreen extends Screen {
 
         int y = statusTop;
         for (FormattedCharSequence line : wrapped) {
-            guiGraphics.drawString(this.font, line, MARGIN, y, 0xFFC0C0C0);
+            guiGraphics.drawString(this.font, line, statusX, y, 0xFFC0C0C0);
             y += 10;
         }
 
@@ -1038,6 +1305,12 @@ public class RoadDebugScreen extends Screen {
             int railBottom = this.railTop + (int) railTabs * (PageRailTab.SIZE + RAIL_GAP) - RAIL_GAP;
             guiGraphics.fill(MARGIN - 1, this.railTop - 1, MARGIN + PageRailTab.SIZE + 1, railBottom + 1, RAIL_BORDER_COLOR);
             guiGraphics.fill(MARGIN, this.railTop, MARGIN + PageRailTab.SIZE, railBottom, RAIL_COLOR);
+            if (this.roadTypePage == Page.SELECTION && this.variantDropdown != null) {
+                // In place of the variant picker, which this page doesn't use
+                Component variants = Component.translatable("yungsroads.screen.selection.variants_below",
+                        this.pendingTypes.get(this.selected.typeId).variants.size());
+                guiGraphics.drawString(this.font, variants, this.variantDropdown.getX() + 4, this.variantDropdown.getY() + 4, NOTE_COLOR, false);
+            }
             // The rail only shows icons, so the page says which it is
             guiGraphics.drawString(this.font, this.roadTypePage.displayName.copy().withStyle(ChatFormatting.BOLD),
                     PAGE_X, this.railTop + 2, 0xFFFFFFFF, false);
@@ -1137,7 +1410,7 @@ public class RoadDebugScreen extends Screen {
             case GLOBAL -> List.of(
                     formulaTitle("yungsroads.formula.global.title"),
                     formulaLine(valueOf, "yungsroads.formula.search_priority", GlobalSetting.HEURISTIC_WEIGHT));
-            case BLOCKS, VIEW -> List.of();
+            case SELECTION, BLOCKS, VIEW -> List.of();
         };
     }
 
@@ -1459,12 +1732,11 @@ public class RoadDebugScreen extends Screen {
         if (this.selected == null || this.levelTypes == null) {
             return;
         }
-        RoadSettings baseline = baselineSettings(this.selected);
-        Map<RoadSetting, String> text = this.pendingTypeText.get(this.selected);
+        PendingVariant variant = pendingVariant(this.selected);
         for (RoadSetting setting : RoadSetting.values()) {
-            text.put(setting, setting.format(setting.get(baseline)));
+            variant.text.put(setting, setting.format(setting.get(variant.baseline)));
         }
-        this.pendingBlocks.put(this.selected, baseline.blocks);
+        variant.blocks = variant.baseline.blocks;
         rebuildWidgets();
     }
 
@@ -1489,13 +1761,19 @@ public class RoadDebugScreen extends Screen {
         showLocalStatus(Component.translatable("yungsroads.screen.copied", this.selected.typeId.toString()));
     }
 
-    /** Saves the shown road type, as applied, to the world's tuned road type datapack. */
+    /**
+     * Opens the dialog for saving the shown road type, as applied, to the world's tuned road type datapack, under its own
+     * id or a new one.
+     */
     private void saveRoadType() {
         ServerLevel level = RoadDebugClient.serverLevel();
-        if (level != null && this.selected != null) {
-            ResourceLocation typeId = this.selected.typeId;
-            level.getServer().execute(() -> RoadTuning.saveRoadType(level, typeId));
+        if (level == null || this.selected == null || this.levelTypes == null) {
+            return;
         }
+        ResourceLocation typeId = this.selected.typeId;
+        this.minecraft.setScreen(new SaveRoadTypeScreen(this, typeId, this.levelTypes.current().keySet(),
+                id -> RoadTuning.whereToAddRoadType(level, id),
+                saveId -> level.getServer().execute(() -> RoadTuning.saveRoadType(level, typeId, saveId))));
     }
 
     /** Saves the applied global settings to the config file. */
@@ -1516,54 +1794,65 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Loads the fields of every road type variant from the given types, keeping the selected variant if this dimension
-     * can still use it.
+     * Loads the edits of every road type from the given types, keeping the selected variant if this dimension can still
+     * use it.
      */
     private void loadTypes(Map<ResourceLocation, RoadType> types) {
-        this.baseTypes = new TreeMap<>();
-        types.forEach((id, type) -> this.baseTypes.put(id, type.copy()));
-        this.pendingTypeText.clear();
-        this.pendingBlocks.clear();
-        this.baseTypes.forEach((id, type) -> {
-            for (int variant = 0; variant < type.variants().size(); variant++) {
-                RoadSettings settings = type.variants().get(variant).settings();
-                Map<RoadSetting, String> text = new EnumMap<>(RoadSetting.class);
-                for (RoadSetting setting : RoadSetting.values()) {
-                    text.put(setting, setting.format(setting.get(settings)));
-                }
-                this.pendingTypeText.put(new VariantKey(id, variant), text);
-                this.pendingBlocks.put(new VariantKey(id, variant), settings.blocks);
-            }
-        });
+        this.pendingTypes.clear();
+        types.forEach((id, type) -> this.pendingTypes.put(id, pendingType(type, this.levelTypes.loaded().get(id))));
         VariantKey preferred = this.selected != null ? this.selected : lastSelected;
         List<VariantKey> usable = usableKeys();
         this.selected = usable.contains(preferred) ? preferred : usable.stream().findFirst().orElse(null);
     }
 
+    /**
+     * Edits starting from the given road type. Reset restores each variant to the baseline type's variant in the same
+     * place, or where the baseline has fewer variants, to the variant as it starts.
+     */
+    private static PendingType pendingType(RoadType type, @Nullable RoadType baseline) {
+        PendingType pending = new PendingType(type.selection());
+        for (int i = 0; i < type.variants().size(); i++) {
+            RoadType.Variant variant = type.variants().get(i);
+            RoadType.Variant base = baseline != null && i < baseline.variants().size() ? baseline.variants().get(i) : variant;
+            pending.variants.add(new PendingVariant(variant.settings(), variant.weight(), base.settings(), base.weight()));
+        }
+        return pending;
+    }
+
     /** The road type variants this dimension's roads can get, in the pickers' order. */
     private List<VariantKey> usableKeys() {
-        return this.pendingTypeText.keySet().stream()
-                .filter(key -> this.levelTypes != null && this.levelTypes.isUsable(key.typeId))
-                .toList();
+        List<VariantKey> keys = new ArrayList<>();
+        this.pendingTypes.forEach((id, type) -> {
+            if (this.levelTypes != null && this.levelTypes.isUsable(id)) {
+                for (int variant = 0; variant < type.variants.size(); variant++) {
+                    keys.add(new VariantKey(id, variant));
+                }
+            }
+        });
+        return keys;
+    }
+
+    private PendingVariant pendingVariant(VariantKey key) {
+        return this.pendingTypes.get(key.typeId).variants.get(key.variant);
     }
 
     private String pendingText(ITunableSetting setting) {
         return setting instanceof RoadSetting roadSetting
-                ? this.pendingTypeText.get(this.selected).get(roadSetting)
+                ? pendingVariant(this.selected).text.get(roadSetting)
                 : this.pendingGlobalText.get((GlobalSetting) setting);
     }
 
     private void setPendingText(ITunableSetting setting, String text) {
         if (setting instanceof RoadSetting roadSetting) {
-            this.pendingTypeText.get(this.selected).put(roadSetting, text);
+            pendingVariant(this.selected).text.put(roadSetting, text);
         } else {
             this.pendingGlobalText.put((GlobalSetting) setting, text);
         }
     }
 
-    /** The variant's settings as the level loaded them, which Reset restores. */
+    /** The variant's settings that Reset restores. */
     private RoadSettings baselineSettings(VariantKey key) {
-        return this.levelTypes.loaded().get(key.typeId).variants().get(key.variant).settings();
+        return pendingVariant(key).baseline;
     }
 
     /** The value Reset restores a setting to: the shown variant's baseline for road type settings, or the default. */
@@ -1578,25 +1867,33 @@ public class RoadDebugScreen extends Screen {
      * and its blocks are the same.
      */
     private boolean matches(VariantKey key, RoadSettings settings) {
-        Map<RoadSetting, String> text = this.pendingTypeText.get(key);
+        PendingVariant variant = pendingVariant(key);
         for (RoadSetting setting : RoadSetting.values()) {
-            Double value = parse(setting, text.get(setting));
+            Double value = parse(setting, variant.text.get(setting));
             if (value == null || !setting.format(value).equals(setting.format(setting.get(settings)))) {
                 return false;
             }
         }
-        return this.pendingBlocks.get(key).sameAs(settings.blocks);
+        return variant.blocks.sameAs(settings.blocks);
     }
 
-    /** Whether the variant's entered values or blocks differ from the road type as the level loaded it. */
+    /** Whether the variant's entered values, blocks, or weight differ from what Reset restores. */
     private boolean isEdited(VariantKey key) {
-        return this.levelTypes != null && !matches(key, baselineSettings(key));
+        PendingVariant variant = pendingVariant(key);
+        return !matches(key, variant.baseline) || !Objects.equals(parseWeight(variant.weight), variant.baselineWeight);
     }
 
-    /** Whether any of the road type's variants differ from the road type as the level loaded it. */
+    /**
+     * Whether the road type's biomes, priority, or variants differ from the road type as the level loaded it, including
+     * whether variants were added or removed.
+     */
     private boolean isTypeEdited(ResourceLocation typeId) {
-        RoadType type = this.baseTypes.get(typeId);
-        for (int variant = 0; variant < type.variants().size(); variant++) {
+        PendingType type = this.pendingTypes.get(typeId);
+        RoadType loaded = this.levelTypes == null ? null : this.levelTypes.loaded().get(typeId);
+        if (loaded == null || !sameSelection(type, loaded.selection()) || type.variants.size() != loaded.variants().size()) {
+            return true;
+        }
+        for (int variant = 0; variant < type.variants.size(); variant++) {
             if (isEdited(new VariantKey(typeId, variant))) {
                 return true;
             }
@@ -1604,19 +1901,78 @@ public class RoadDebugScreen extends Screen {
         return false;
     }
 
-    /** Whether any of the road type's variants have entered values that haven't been applied. */
+    /** Whether any of the road type's edits haven't been applied. */
     private boolean isUnapplied(ResourceLocation typeId) {
         RoadType applied = this.levelTypes == null ? null : this.levelTypes.current().get(typeId);
         if (applied == null) {
             return false;
         }
-        for (int variant = 0; variant < applied.variants().size(); variant++) {
-            VariantKey key = new VariantKey(typeId, variant);
-            if (this.pendingTypeText.containsKey(key) && !matches(key, applied.variants().get(variant).settings())) {
+        PendingType type = this.pendingTypes.get(typeId);
+        if (!sameSelection(type, applied.selection()) || type.variants.size() != applied.variants().size()) {
+            return true;
+        }
+        for (int variant = 0; variant < type.variants.size(); variant++) {
+            RoadType.Variant appliedVariant = applied.variants().get(variant);
+            if (!Objects.equals(parseWeight(type.variants.get(variant).weight), appliedVariant.weight())
+                    || !matches(new VariantKey(typeId, variant), appliedVariant.settings())) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Whether the road type's biomes and priority, as edited, are the given selection. */
+    private static boolean sameSelection(PendingType type, Optional<RoadType.Selection> selection) {
+        if (type.biomes.isPresent() != selection.isPresent()) {
+            return false;
+        }
+        return selection.isEmpty() || sameBiomes(type.biomes.get(), selection.get().biomes())
+                && Objects.equals(parsePriority(type.priority), selection.get().priority());
+    }
+
+    /** Whether two sets of biomes are the same tag, or list the same biomes in the same order. */
+    static boolean sameBiomes(HolderSet<Biome> a, HolderSet<Biome> b) {
+        if (a == b) {
+            return true;
+        }
+        if (a.unwrapKey().isPresent() || b.unwrapKey().isPresent()) {
+            return a.unwrapKey().equals(b.unwrapKey());
+        }
+        return a.stream().map(biome -> biome.unwrapKey()).toList().equals(b.stream().map(biome -> biome.unwrapKey()).toList());
+    }
+
+    /** A variant's share of its road type's roads, as a whole percentage, or "?" while any weight is invalid. */
+    private static String share(PendingType type, int variant) {
+        int total = 0;
+        for (PendingVariant other : type.variants) {
+            Integer weight = parseWeight(other.weight);
+            if (weight == null) {
+                return "?";
+            }
+            total += weight;
+        }
+        return Long.toString(Math.round(100.0 * parseWeight(type.variants.get(variant).weight) / total));
+    }
+
+    /** A weight as typed, or null if it isn't a whole number of at least 1. */
+    @Nullable
+    private static Integer parseWeight(String text) {
+        try {
+            int weight = Integer.parseInt(text.trim());
+            return weight >= 1 ? weight : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** A priority as typed, or null if it isn't a whole number. */
+    @Nullable
+    private static Integer parsePriority(String text) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Whether any global setting, or whether roads are placed, has been changed without being applied. */
@@ -1632,13 +1988,13 @@ public class RoadDebugScreen extends Screen {
 
     /** Whether anything on the road type or global tabs has been changed without being applied. */
     private boolean hasUnappliedChanges() {
-        return isGlobalUnapplied() || this.baseTypes.keySet().stream().anyMatch(this::isUnapplied);
+        return isGlobalUnapplied() || this.pendingTypes.keySet().stream().anyMatch(this::isUnapplied);
     }
 
     /** The name of a road type variant, as shown on the map and in messages. */
     private Component variantName(VariantKey key) {
-        RoadType type = this.baseTypes.get(key.typeId);
-        return RoadTypeNames.name(key.typeId, key.variant, type == null ? 1 : type.variants().size());
+        PendingType type = this.pendingTypes.get(key.typeId);
+        return RoadTypeNames.name(key.typeId, key.variant, type == null ? 1 : type.variants.size());
     }
 
     /**
@@ -1661,26 +2017,46 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Parses the settings entered for every road type variant, applied to copies of the road types.
+     * Builds every road type from its edits.
      *
      * @return The road types, or null if any value is invalid, which is reported in the status.
      */
     @Nullable
     private SortedMap<ResourceLocation, RoadType> parseTypes() {
         SortedMap<ResourceLocation, RoadType> types = new TreeMap<>();
-        this.baseTypes.forEach((id, type) -> types.put(id, type.copy()));
-        for (Map.Entry<VariantKey, Map<RoadSetting, String>> entry : this.pendingTypeText.entrySet()) {
-            VariantKey key = entry.getKey();
-            RoadSettings settings = types.get(key.typeId).variants().get(key.variant).settings();
-            for (RoadSetting setting : RoadSetting.values()) {
-                Double value = parse(setting, entry.getValue().get(setting));
-                if (value == null) {
-                    reportInvalid(Component.empty().append(variantName(key)).append(": ").append(Component.translatable(setting.nameKey())));
+        for (Map.Entry<ResourceLocation, PendingType> entry : this.pendingTypes.entrySet()) {
+            ResourceLocation id = entry.getKey();
+            PendingType type = entry.getValue();
+            Optional<RoadType.Selection> selection = Optional.empty();
+            if (type.biomes.isPresent()) {
+                Integer priority = parsePriority(type.priority);
+                if (priority == null) {
+                    reportInvalid(Component.literal(RoadTypeNames.name(id) + ": ").append(Component.translatable("yungsroads.screen.selection.priority")));
                     return null;
                 }
-                setting.set(settings, value);
+                selection = Optional.of(new RoadType.Selection(type.biomes.get(), priority));
             }
-            settings.blocks = this.pendingBlocks.get(key);
+            List<RoadType.Variant> variants = new ArrayList<>();
+            for (int i = 0; i < type.variants.size(); i++) {
+                VariantKey key = new VariantKey(id, i);
+                PendingVariant variant = type.variants.get(i);
+                Integer weight = parseWeight(variant.weight);
+                if (weight == null) {
+                    reportInvalid(Component.empty().append(variantName(key)).append(": ").append(Component.translatable("yungsroads.screen.selection.weight")));
+                    return null;
+                }
+                RoadSettings settings = new RoadSettings(variant.blocks);
+                for (RoadSetting setting : RoadSetting.values()) {
+                    Double value = parse(setting, variant.text.get(setting));
+                    if (value == null) {
+                        reportInvalid(Component.empty().append(variantName(key)).append(": ").append(Component.translatable(setting.nameKey())));
+                        return null;
+                    }
+                    setting.set(settings, value);
+                }
+                variants.add(new RoadType.Variant(weight, settings));
+            }
+            types.put(id, new RoadType(selection, variants));
         }
         return types;
     }
@@ -1690,21 +2066,16 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * The selected variant's settings as entered, or as applied if any entered value is invalid. Used to preview
+     * The selected variant's settings as entered, with any invalid value left at what Reset restores. Used to preview
      * terrain costs and to fill in the formulas.
      */
     private RoadSettings previewSettings() {
-        RoadType type = this.baseTypes.get(this.selected.typeId);
-        RoadSettings settings = type.variants().get(this.selected.variant).settings().copy();
-        Map<RoadSetting, String> text = this.pendingTypeText.get(this.selected);
+        PendingVariant variant = pendingVariant(this.selected);
+        RoadSettings settings = new RoadSettings(variant.blocks);
         for (RoadSetting setting : RoadSetting.values()) {
-            Double value = parse(setting, text.get(setting));
-            if (value == null) {
-                return type.variants().get(this.selected.variant).settings();
-            }
-            setting.set(settings, value);
+            Double value = parse(setting, variant.text.get(setting));
+            setting.set(settings, value != null ? value : setting.get(variant.baseline));
         }
-        settings.blocks = this.pendingBlocks.get(this.selected);
         return settings;
     }
 

@@ -22,7 +22,6 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 
 import javax.annotation.Nullable;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.WeakHashMap;
@@ -67,8 +66,8 @@ final class InspectPage implements DrawerPage {
     private final Supplier<RoadMapWidget.Preview> preview;
 
     /**
-     * The road type each road would be chosen now, with the votes that chose it, for explaining an inspected road's
-     * type. Found when a road is first inspected, since it samples biomes along the road.
+     * The road type each road would be chosen now, with each road type's share of its route, for explaining an
+     * inspected road's type. Found when a road is first inspected, since it samples biomes along the road.
      */
     private final Map<Road, RoadTypes.Choice> roadTypeChoices = new WeakHashMap<>();
 
@@ -228,7 +227,7 @@ final class InspectPage implements DrawerPage {
     }
 
     /**
-     * The road nearest the spot: its ends, its road type and variant, the biome votes that choose its type as counted
+     * The road nearest the spot: its ends, its road type and variant, each road type's share of its route as counted
      * with the road types in use now, and routing's costs at its node nearest the spot.
      */
     private void addRoad(ServerLevel level, Road road, Road.DebugNode node) {
@@ -243,10 +242,11 @@ final class InspectPage implements DrawerPage {
             TerrainCache terrain = new TerrainCache(generator.getTerrainSampler(), YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
             return generator.chooseRoadType(r.getStartPos(), r.getEndPos(), terrain);
         });
-        addLine(Component.translatable("yungsroads.inspect.votes"));
-        choice.votes().stream()
-                .sorted(Comparator.comparingInt(RoadTypes.Vote::votes).reversed())
-                .forEach(vote -> addLine(Component.translatable("yungsroads.inspect.vote", RoadTypeNames.name(vote.typeId()), vote.votes())));
+        addLine(Component.translatable("yungsroads.inspect.route_shares"));
+        for (RoadTypes.RouteShare share : choice.shares()) {
+            addLine(Component.translatable("yungsroads.inspect.route_share", RoadTypeNames.name(share.typeId()),
+                    Math.round(100.0 * share.samples() / choice.samples())));
+        }
         addLine(Component.translatable("yungsroads.map.node", String.format("%.0f", node.g), String.format("%.0f", node.h),
                 String.format("%.0f", node.g + node.h)));
     }
