@@ -49,7 +49,7 @@ public abstract class ServerLevelMixin extends Level implements IStructureRegion
     private void yungsroads_attachStructureRegionCache(MinecraftServer server, Executor executor,LevelStorageSource.LevelStorageAccess levelStorageAccess, ServerLevelData serverLevelData, ResourceKey resourceKey, LevelStem levelStem, ChunkProgressListener chunkProgressListener, boolean $$7, long $$8, List $$9, boolean $$10, RandomSequences $$11, CallbackInfo ci) {
         Path dimensionPath = levelStorageAccess.getDimensionPath(this.dimension());
         this.structureRegionCache = new StructureRegionCache((ServerLevel) (Object) this, dimensionPath);
-        if (YungsRoadsCommon.DEBUG_MODE) {
+        if (YungsRoadsCommon.DEBUG_MODE && this.structureRegionCache.getStructureRegionGenerator().hasRoadNetwork()) {
             this.liveRoadPlacer = new LiveRoadPlacer((ServerLevel) (Object) this, this.structureRegionCache, dimensionPath.resolve("roads"));
         }
     }

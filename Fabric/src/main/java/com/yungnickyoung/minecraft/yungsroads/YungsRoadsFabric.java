@@ -3,7 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads;
 import com.yungnickyoung.minecraft.yungsroads.module.BiomeModificationModuleFabric;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModuleFabric;
 import com.yungnickyoung.minecraft.yungsroads.module.LiveRoadModuleFabric;
-import com.yungnickyoung.minecraft.yungsroads.module.RoadTypeModuleFabric;
+import com.yungnickyoung.minecraft.yungsroads.module.RegistryModuleFabric;
 import net.fabricmc.api.ModInitializer;
 
 public class YungsRoadsFabric implements ModInitializer {
@@ -12,7 +12,7 @@ public class YungsRoadsFabric implements ModInitializer {
         YungsRoadsCommon.init();
 
         ConfigModuleFabric.init();
-        RoadTypeModuleFabric.init();
+        RegistryModuleFabric.init();
         BiomeModificationModuleFabric.init();
         LiveRoadModuleFabric.init();
     }

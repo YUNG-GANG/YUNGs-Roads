@@ -10,6 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -22,9 +23,12 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 /**
  * The road types a level's roads are generated with, and how each road's type is chosen.
+ * <p>
+ * The level's {@link RoadNetwork} sets which types its roads may use, and which type is the default.
  * <p>
  * The types are loaded from the datapack registry when the level is created. The tuning screen may replace them with
  * edited copies while the level runs. Thread-safe: the types are swapped as a whole, and never changed once in use.
@@ -32,8 +36,8 @@ import java.util.function.BiFunction;
 public final class RoadTypes {
     public static final ResourceKey<Registry<RoadType>> REGISTRY_KEY = ResourceKey.createRegistryKey(YungsRoadsCommon.id("road_type"));
 
-    /** The road type chosen wherever no other type's selection matches. Must always exist. */
-    public static final ResourceLocation DEFAULT_ID = YungsRoadsCommon.id("default");
+    /** The settings of roads whose road type no longer exists, in a level without a road network to say otherwise. */
+    private static final RoadSettings FALLBACK_SETTINGS = new RoadSettings(RoadBlocks.FALLBACK);
 
     /** How far apart the biomes along a road are sampled to choose its type, in blocks. */
     private static final int BIOME_SAMPLE_SPACING = 64;
@@ -44,19 +48,41 @@ public final class RoadTypes {
     /** The types in use, by id. Either the loaded types or ones applied from the tuning screen. */
     private volatile SortedMap<ResourceLocation, RoadType> current;
 
+    /** The types roads may be chosen from, besides the default type. Empty if the level has no road network. */
+    private final Set<ResourceLocation> allowed;
+
+    /** The type chosen wherever no allowed type's selection matches, or null if the level has no road network. */
+    @Nullable
+    private final ResourceLocation defaultId;
+
     /** Types roads were saved with that no longer exist, so each is only warned about once. */
     private final Set<ResourceLocation> warnedMissing = ConcurrentHashMap.newKeySet();
 
-    public RoadTypes(RegistryAccess registryAccess) {
+    public RoadTypes(RegistryAccess registryAccess, Optional<RoadNetwork> network) {
         SortedMap<ResourceLocation, RoadType> types = new TreeMap<>();
         registryAccess.registry(REGISTRY_KEY).ifPresent(registry ->
                 registry.entrySet().forEach(entry -> types.put(entry.getKey().location(), entry.getValue())));
-        if (!types.containsKey(DEFAULT_ID)) {
-            YungsRoadsCommon.LOGGER.error("The default road type {} is missing. Roads not matching another road type will use built-in settings.", DEFAULT_ID);
-            types.put(DEFAULT_ID, new RoadType(Optional.empty(), List.of(new RoadType.Variant(1, new RoadSettings(RoadBlocks.FALLBACK)))));
-        }
         this.loaded = Collections.unmodifiableSortedMap(types);
         this.current = this.loaded;
+        this.allowed = network
+                .map(roadNetwork -> roadNetwork.roadTypes().stream().map(RoadTypes::idOf).collect(Collectors.toUnmodifiableSet()))
+                .orElse(Set.of());
+        this.defaultId = network.map(roadNetwork -> idOf(roadNetwork.defaultRoadType())).orElse(null);
+    }
+
+    private static ResourceLocation idOf(Holder<RoadType> holder) {
+        return holder.unwrapKey().orElseThrow(() -> new IllegalStateException("Road type without an id: " + holder)).location();
+    }
+
+    /** The type chosen wherever no allowed type's selection matches, or null if the level has no road network. */
+    @Nullable
+    public ResourceLocation defaultId() {
+        return this.defaultId;
+    }
+
+    /** Whether the level's roads can get the type: whether it's in its road network's types, or its default type. */
+    public boolean isUsable(ResourceLocation typeId) {
+        return this.allowed.contains(typeId) || typeId.equals(this.defaultId);
     }
 
     /** The types as loaded from the registry, by id. */
@@ -81,7 +107,7 @@ public final class RoadTypes {
 
     /**
      * The settings of a road type's variant. A road saved with a type or variant that no longer exists uses the
-     * default type's first variant.
+     * default type's first variant, or built-in settings if the level no longer has a road network.
      */
     public RoadSettings settings(ResourceLocation typeId, int variant) {
         RoadType type = this.current.get(typeId);
@@ -89,15 +115,16 @@ public final class RoadTypes {
             if (this.warnedMissing.add(typeId)) {
                 YungsRoadsCommon.LOGGER.warn("Road type {} variant {} doesn't exist. Roads using it will use the default road type.", typeId, variant);
             }
-            return this.current.get(DEFAULT_ID).variants().get(0).settings();
+            RoadType defaultType = this.defaultId == null ? null : this.current.get(this.defaultId);
+            return defaultType == null ? FALLBACK_SETTINGS : defaultType.variants().get(0).settings();
         }
         return type.variants().get(variant).settings();
     }
 
     /**
      * Chooses the road type for a road between two positions, by sampling the biomes along the straight line between
-     * them. Each sample votes for the types whose selection matches its biome with the highest priority, or for the
-     * default type if none match. The type with the most votes wins, with ties going to the higher priority and then
+     * them. Each sample votes for the allowed types whose selection matches its biome with the highest priority, or for
+     * the default type if none match. The type with the most votes wins, with ties going to the higher priority and then
      * the lower id. If the type has several variants, one is picked at random by weight, seeded by the world seed and
      * the road's endpoints, so the same road always gets the same variant.
      * <p>
@@ -115,7 +142,7 @@ public final class RoadTypes {
             double t = s / (double) (samples - 1);
             int x = (int) Math.round(a.getX() + (b.getX() - a.getX()) * t);
             int z = (int) Math.round(a.getZ() + (b.getZ() - a.getZ()) * t);
-            for (ResourceLocation typeId : matchingTypes(types, biomeAt.apply(x, z))) {
+            for (ResourceLocation typeId : matchingTypes(types, this.allowed, this.defaultId, biomeAt.apply(x, z))) {
                 votes.merge(typeId, 1, Integer::sum);
             }
         }
@@ -133,13 +160,19 @@ public final class RoadTypes {
     }
 
     /**
-     * The types a biome votes for: those whose selection matches it with the highest priority, or the default type if
-     * none match.
+     * The types a biome votes for: the allowed ones whose selection matches it with the highest priority, or the
+     * default type if none match.
+     *
+     * @param allowed The types that may be voted for besides the default type.
      */
-    private static List<ResourceLocation> matchingTypes(SortedMap<ResourceLocation, RoadType> types, Holder<Biome> biome) {
+    private static List<ResourceLocation> matchingTypes(SortedMap<ResourceLocation, RoadType> types, Set<ResourceLocation> allowed,
+                                                        ResourceLocation defaultId, Holder<Biome> biome) {
         List<ResourceLocation> matching = new ArrayList<>();
         int bestPriority = Integer.MIN_VALUE;
         for (Map.Entry<ResourceLocation, RoadType> entry : types.entrySet()) {
+            if (!allowed.contains(entry.getKey()) && !entry.getKey().equals(defaultId)) {
+                continue;
+            }
             Optional<RoadType.Selection> selection = entry.getValue().selection();
             if (selection.isEmpty() || !selection.get().biomes().contains(biome)) {
                 continue;
@@ -153,7 +186,7 @@ public final class RoadTypes {
                 matching.add(entry.getKey());
             }
         }
-        return matching.isEmpty() ? List.of(DEFAULT_ID) : matching;
+        return matching.isEmpty() ? List.of(defaultId) : matching;
     }
 
     private static int pickVariant(RoadType type, long worldSeed, BlockPos a, BlockPos b) {

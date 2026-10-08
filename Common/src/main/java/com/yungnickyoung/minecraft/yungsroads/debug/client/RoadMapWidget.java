@@ -3,6 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadNetwork;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
@@ -20,20 +21,27 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -57,6 +65,10 @@ public class RoadMapWidget extends AbstractWidget {
     private static final int BRIDGE_OUTLINE_COLOR = 0xFFFFFFFF;
     private static final int ENDPOINT_COLOR = 0xFF40FF40;
     private static final int PLAYER_COLOR = 0xFFFF2020;
+    private static final int LABEL_BACKGROUND_COLOR = 0xA0000000;
+    private static final int NOTE_COLOR = 0xFFC0C0C0;
+    /** The widest the road network's tooltip and note get before wrapping, in pixels. Fits most file paths. */
+    private static final int NETWORK_TEXT_WIDTH = 340;
 
     /**
      * The road type whose costs color the terrain, so pending changes can be previewed before they're applied.
@@ -66,7 +78,11 @@ public class RoadMapWidget extends AbstractWidget {
     public record Preview(Component typeName, RoadSettings settings) {
     }
 
+    /** The road type to preview, or null if there's none, as in a dimension without a road network. */
     private final Supplier<Preview> preview;
+
+    /** The right and top edges of the road network label in the bottom left corner, as last drawn. */
+    private int networkLabelRight, networkLabelTop;
 
     /**
      * The road type each road would be chosen now, with the votes that chose it, for explaining a hovered road's type.
@@ -142,11 +158,98 @@ public class RoadMapWidget extends AbstractWidget {
             scale = Component.translatable("yungsroads.map.zoom_in", scale);
         }
         guiGraphics.drawString(font, scale, getX() + 4, getBottom() - 12, 0xFFFFFFFF);
+
+        Optional<RoadNetwork> network = generatorOf(level).getRoadNetwork();
+        renderNetworkLabel(guiGraphics, font, level, network.isPresent());
+        if (network.isEmpty()) {
+            renderNoNetworkNote(guiGraphics, font, level);
+        }
         guiGraphics.disableScissor();
 
         if (isMouseOver(mouseX, mouseY) && !this.dragging && !this.hoverInfoHidden) {
-            renderHoverInfo(guiGraphics, font, level, regions, mouseX, mouseY);
+            if (mouseX < this.networkLabelRight && mouseY >= this.networkLabelTop) {
+                renderNetworkInfo(guiGraphics, font, level, network.orElse(null), mouseX, mouseY);
+            } else {
+                renderHoverInfo(guiGraphics, font, level, regions, mouseX, mouseY);
+            }
         }
+    }
+
+    /**
+     * Names the dimension's road network in the bottom left corner, above the scale, clear of the help button in the
+     * top right. Hovering it shows the network's details.
+     */
+    private void renderNetworkLabel(GuiGraphics guiGraphics, Font font, ServerLevel level, boolean hasNetwork) {
+        Component label = Component.translatable(hasNetwork ? "yungsroads.map.network" : "yungsroads.map.no_network",
+                level.dimension().location().toString());
+        int x = getX() + 4;
+        int y = getBottom() - 26;
+        this.networkLabelRight = x + font.width(label) + 2;
+        this.networkLabelTop = y - 2;
+        guiGraphics.fill(x - 2, this.networkLabelTop, this.networkLabelRight, y + font.lineHeight + 1, LABEL_BACKGROUND_COLOR);
+        guiGraphics.drawString(font, label, x, y, 0xFFFFFFFF);
+    }
+
+    /** Explains, in the middle of the map, why there are no roads, and how to add them. */
+    private void renderNoNetworkNote(GuiGraphics guiGraphics, Font font, ServerLevel level) {
+        Component note = Component.translatable("yungsroads.map.no_network.text", networkFile(level));
+        int maxWidth = Math.min(getWidth() - 16, NETWORK_TEXT_WIDTH);
+        List<FormattedCharSequence> lines = new ArrayList<>();
+        for (String paragraph : note.getString().split("\n")) {
+            lines.addAll(font.split(Component.literal(paragraph), maxWidth));
+        }
+        int width = lines.stream().mapToInt(font::width).max().orElse(0);
+        int height = lines.size() * (font.lineHeight + 1);
+        int centerX = getX() + getWidth() / 2;
+        int y = getY() + (getHeight() - height) / 2;
+        guiGraphics.fill(centerX - width / 2 - 6, y - 6, centerX + width / 2 + 6, y + height + 5, LABEL_BACKGROUND_COLOR);
+        for (FormattedCharSequence line : lines) {
+            guiGraphics.drawCenteredString(font, line, centerX, y, NOTE_COLOR);
+            y += font.lineHeight + 1;
+        }
+    }
+
+    /**
+     * Describes the dimension's road network: the file it's from, the structures its roads connect, and the road types
+     * they can get. Read from the network as the level loaded it, since networks only load with the world.
+     */
+    private void renderNetworkInfo(GuiGraphics guiGraphics, Font font, ServerLevel level, @Nullable RoadNetwork network, int mouseX, int mouseY) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("yungsroads.map.network.title", level.dimension().location().toString()));
+        lines.add(Component.translatable("yungsroads.map.network.file", networkFile(level)));
+        if (network != null) {
+            lines.add(Component.translatable("yungsroads.map.network.structures",
+                    describe(network.structures(), holder -> holder.unwrapKey().map(key -> key.location().toString()).orElse("?"))));
+            lines.add(Component.translatable("yungsroads.map.network.road_types",
+                    describe(network.roadTypes(), holder -> holder.unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?"))));
+            lines.add(Component.translatable("yungsroads.map.network.default",
+                    network.defaultRoadType().unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?")));
+        }
+        lines.add(Component.translatable("yungsroads.map.network.reload").withStyle(style -> style.withColor(0xA0A0A0)));
+
+        List<FormattedCharSequence> wrapped = new ArrayList<>();
+        for (Component line : lines) {
+            wrapped.addAll(font.split(line, NETWORK_TEXT_WIDTH));
+        }
+        guiGraphics.renderTooltip(font, wrapped, mouseX, mouseY);
+    }
+
+    /** The file a dimension's road network is read from, relative to a datapack's root. */
+    private static String networkFile(ServerLevel level) {
+        ResourceLocation id = level.dimension().location();
+        return "data/" + id.getNamespace() + "/yungsroads/road_network/" + id.getPath() + ".json";
+    }
+
+    /** A set's members, after the tag they come from if it's a tag. */
+    private static <T> String describe(HolderSet<T> set, Function<Holder<T>, String> name) {
+        String members = set.size() == 0
+                ? Component.translatable("yungsroads.map.network.none").getString()
+                : set.stream().map(name).collect(Collectors.joining(", "));
+        return set.unwrapKey().map(tag -> "#" + tag.location() + ": " + members).orElse(members);
+    }
+
+    private static StructureRegionGenerator generatorOf(ServerLevel level) {
+        return ((IStructureRegionCacheProvider) level).getStructureRegionCache().getStructureRegionGenerator();
     }
 
     /**
@@ -155,7 +258,8 @@ public class RoadMapWidget extends AbstractWidget {
      * @return Whether terrain is shown at the current zoom level.
      */
     private boolean renderTerrain(GuiGraphics guiGraphics, ServerLevel level) {
-        if (RoadDebugClient.terrainLayer == TerrainTiles.Layer.NONE) {
+        Preview preview = this.preview.get();
+        if (RoadDebugClient.terrainLayer == TerrainTiles.Layer.NONE || preview == null) {
             return false;
         }
         TerrainTiles tiles = RoadDebugClient.terrainTiles(level, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
@@ -185,7 +289,7 @@ public class RoadMapWidget extends AbstractWidget {
                 Math.max(Math.abs(a[0] - centerTileX), Math.abs(a[1] - centerTileZ)),
                 Math.max(Math.abs(b[0] - centerTileX), Math.abs(b[1] - centerTileZ))));
 
-        RoadSettings settings = this.preview.get().settings();
+        RoadSettings settings = preview.settings();
         float pixelScale = (float) (step / this.blocksPerPixel);
         for (int[] tile : visible) {
             var texture = tiles.texture(tile[0], tile[1], RoadDebugClient.terrainLayer, settings);
@@ -255,11 +359,11 @@ public class RoadMapWidget extends AbstractWidget {
         TerrainTiles tiles = RoadDebugClient.terrainTiles(level, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
         Double height = tiles.heightAt(x, z);
         Double grade = tiles.gradeAt(x, z);
-        if (height != null && grade != null) {
+        Preview preview = this.preview.get();
+        if (height != null && grade != null && preview != null) {
             if (height.isNaN()) {
                 lines.add(Component.translatable("yungsroads.map.ocean"));
             } else {
-                Preview preview = this.preview.get();
                 RoadSettings settings = preview.settings();
                 lines.add(Component.translatable(tiles.isWater(height) ? "yungsroads.map.height_water" : "yungsroads.map.height",
                         String.format("%.1f", height), String.format("%.2f", grade)));
@@ -318,7 +422,7 @@ public class RoadMapWidget extends AbstractWidget {
         lines.add(Component.translatable("yungsroads.map.road_type", RoadTypeNames.name(road.roadType, road.variant, variantCount)));
 
         RoadTypes.Choice choice = this.roadTypeChoices.computeIfAbsent(road, r -> {
-            StructureRegionGenerator generator = ((IStructureRegionCacheProvider) level).getStructureRegionCache().getStructureRegionGenerator();
+            StructureRegionGenerator generator = generatorOf(level);
             TerrainCache terrain = new TerrainCache(generator.getTerrainSampler(), YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
             return generator.chooseRoadType(r.getStartPos(), r.getEndPos(), terrain);
         });

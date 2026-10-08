@@ -1,21 +1,13 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
 import com.yungnickyoung.minecraft.yungsroads.world.config.ITunableSetting;
-import net.minecraft.core.HolderSet;
-import net.minecraft.world.level.levelgen.structure.Structure;
 
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ToDoubleFunction;
 
 public class ConfigModule {
-    public General general = new General();
     public Advanced advanced = new Advanced();
     public Debug debug = new Debug();
-
-    public static class General {
-        public String structuresString = "[#minecraft:village]";
-        public HolderSet<Structure> structures; // Evaluated at runtime, after registries are loaded
-    }
 
     public static class Debug {
         public boolean enableExtraDebugF3Info = false;

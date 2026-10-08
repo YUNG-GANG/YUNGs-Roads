@@ -37,6 +37,10 @@ public class RoadFeature extends Feature<NoneFeatureConfiguration> {
         }
 
         IStructureRegionCacheProvider provider = (IStructureRegionCacheProvider) serverLevel;
+        if (!provider.getStructureRegionCache().getStructureRegionGenerator().hasRoadNetwork()) {
+            return false;
+        }
+
         LiveRoadPlacer liveRoadPlacer = provider.getLiveRoadPlacer();
         ChunkPos chunkPos = new ChunkPos(context.origin());
 

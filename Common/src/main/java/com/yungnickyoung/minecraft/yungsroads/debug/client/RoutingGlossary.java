@@ -45,6 +45,7 @@ final class RoutingGlossary {
         JITTER("jitter"),
         LAND_BRIDGE("land_bridge"),
         ROAD_TYPE("road_type"),
+        ROAD_NETWORK("road_network"),
         VARIANT("variant");
 
         private final String key;

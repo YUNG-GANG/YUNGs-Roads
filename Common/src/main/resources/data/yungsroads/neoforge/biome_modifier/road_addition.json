@@ -1,6 +1,8 @@
 {
   "type": "neoforge:add_features",
-  "biomes": "#minecraft:is_overworld",
+  "biomes": {
+    "type": "neoforge:any"
+  },
   "features": [
     "yungsroads:road"
   ],

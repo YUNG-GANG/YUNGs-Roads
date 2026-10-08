@@ -1,0 +1,5 @@
+{
+  "structures": "#minecraft:village",
+  "road_types": "#yungsroads:overworld",
+  "default_road_type": "yungsroads:default"
+}

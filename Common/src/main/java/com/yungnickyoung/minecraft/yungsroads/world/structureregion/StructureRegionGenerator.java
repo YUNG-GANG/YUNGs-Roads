@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.world.structureregion;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadNetwork;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AStarRoadGenerator;
@@ -8,13 +9,13 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.generator.AbstractRoadG
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainSampler;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderSet;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.levelgen.structure.Structure;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Class for generating new StructureRegions.
@@ -27,17 +28,23 @@ public class StructureRegionGenerator {
     /** The minimum straight-line distance between two structures connected by a road, in blocks. */
     public static final int MIN_ROAD_LENGTH = 50;
 
+    /** Locates the structures roads connect, or null if the dimension has no road network. */
+    @Nullable
     private final StructureLocator structureLocator;
     private final TerrainSampler terrainSampler;
     private final AbstractRoadGenerator roadGenerator;
     private final RoadTypes roadTypes;
+    private final Optional<RoadNetwork> roadNetwork;
     private final long worldSeed;
 
     public StructureRegionGenerator(ServerLevel serverLevel) {
         this.terrainSampler = new TerrainSampler(serverLevel);
-        this.structureLocator = new StructureLocator(serverLevel, this.terrainSampler, YungsRoadsCommon.CONFIG.general.structures);
+        this.roadNetwork = RoadNetwork.of(serverLevel);
+        this.structureLocator = this.roadNetwork
+                .map(network -> new StructureLocator(serverLevel, this.terrainSampler, network.structures()))
+                .orElse(null);
         this.roadGenerator = new AStarRoadGenerator();
-        this.roadTypes = new RoadTypes(serverLevel.registryAccess());
+        this.roadTypes = new RoadTypes(serverLevel.registryAccess(), this.roadNetwork);
         this.worldSeed = serverLevel.getSeed();
     }
 
@@ -54,6 +61,10 @@ public class StructureRegionGenerator {
      * to agree on the graph.
      */
     public StructureRegion generateRegion(long regionKey) {
+        if (this.structureLocator == null) {
+            return new StructureRegion(regionKey);
+        }
+
         StructureRegionPos regionPos = new StructureRegionPos(regionKey);
         ChunkPos regionMin = regionPos.getMinChunkPosInRegion();
         ChunkPos regionMax = regionPos.getMaxChunkPosInRegion();
@@ -151,7 +162,13 @@ public class StructureRegionGenerator {
         return this.roadTypes;
     }
 
-    public void setEndpointStructures(HolderSet<Structure> endpointStructures) {
-        this.structureLocator.setEndpointStructures(endpointStructures);
+    /** Whether the dimension has a road network. Dimensions without one have no roads. */
+    public boolean hasRoadNetwork() {
+        return this.roadNetwork.isPresent();
+    }
+
+    /** The dimension's road network, as loaded with the level. Empty if the dimension has no roads. */
+    public Optional<RoadNetwork> getRoadNetwork() {
+        return this.roadNetwork;
     }
 }

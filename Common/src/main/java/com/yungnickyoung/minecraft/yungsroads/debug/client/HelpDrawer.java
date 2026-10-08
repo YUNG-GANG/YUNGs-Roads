@@ -35,6 +35,7 @@ final class HelpDrawer {
     enum Section {
         OVERVIEW("overview"),
         ROAD_TYPES("road_types"),
+        ROAD_NETWORKS("road_networks"),
         ROUTING("routing"),
         SHAPING("shaping"),
         GLOBAL("global"),

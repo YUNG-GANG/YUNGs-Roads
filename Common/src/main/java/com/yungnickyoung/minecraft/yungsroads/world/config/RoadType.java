@@ -18,8 +18,8 @@ import java.util.Optional;
  * <p>
  * A road type has either one set of settings, or several weighted variants that roads of the type are split between.
  *
- * @param selection Which biomes the type is chosen for. The default type may leave it out, and is chosen wherever no
- *                  other type's selection matches.
+ * @param selection Which biomes the type is chosen for. A type without one is only chosen as a road network's default
+ *                  type, wherever no other type's selection matches.
  * @param variants The type's settings, as one or more variants. A file with plain {@code settings} has one variant.
  */
 public record RoadType(Optional<Selection> selection, List<Variant> variants) {
@@ -35,7 +35,7 @@ public record RoadType(Optional<Selection> selection, List<Variant> variants) {
         variants = List.copyOf(variants);
     }
 
-    /** The type's priority when its selection overlaps another's. The default type without a selection always loses ties. */
+    /** The type's priority when its selection overlaps another's. A type without a selection always loses ties. */
     public int priority() {
         return this.selection.map(Selection::priority).orElse(Integer.MIN_VALUE);
     }

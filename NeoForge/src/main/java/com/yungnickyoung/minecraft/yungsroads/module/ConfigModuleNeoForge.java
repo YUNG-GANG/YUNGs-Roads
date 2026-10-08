@@ -1,28 +1,13 @@
 package com.yungnickyoung.minecraft.yungsroads.module;
 
-
-import com.google.common.collect.Lists;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.config.YRConfigNeoForge;
-import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
-import net.minecraft.core.Holder;
-import net.minecraft.core.HolderSet;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.levelgen.structure.Structure;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 
 public class ConfigModuleNeoForge {
     public static void init(IEventBus eventBus, ModContainer container) {
@@ -37,15 +22,6 @@ public class ConfigModuleNeoForge {
             return;
         }
         bakeConfig();
-        YungsRoadsCommon.CONFIG.general.structures = parseStructureStringList(
-                YRConfigNeoForge.general.structures.get(),
-                event.getLevel());
-        if (event.getLevel() instanceof IStructureRegionCacheProvider stuctureRegionCacheProvider) {
-            stuctureRegionCacheProvider
-                    .getStructureRegionCache()
-                    .getStructureRegionGenerator()
-                    .setEndpointStructures(YungsRoadsCommon.CONFIG.general.structures);
-        }
     }
 
     private static void onConfigChange(ModConfigEvent event) {
@@ -69,8 +45,6 @@ public class ConfigModuleNeoForge {
 
     /** Bakes the settings that need a world restart to change. */
     private static void bakeWorldConfig() {
-        YungsRoadsCommon.CONFIG.general.structuresString = YRConfigNeoForge.general.structures.get();
-
         YungsRoadsCommon.CONFIG.advanced.nodeStepDistance = YRConfigNeoForge.advanced.nodeStepDistance.get();
         YungsRoadsCommon.CONFIG.advanced.heuristicWeight = YRConfigNeoForge.advanced.heuristicWeight.get();
     }
@@ -93,61 +67,5 @@ public class ConfigModuleNeoForge {
         YRConfigNeoForge.debug.placeRoads.set(debug.placeRoads);
 
         YRConfigNeoForge.SPEC.save();
-    }
-
-    private static HolderSet<Structure> parseStructureStringList(String listString, LevelAccessor levelAccessor) {
-        int strLen = listString.length();
-
-        List<String> listOfStructuresAsStrings = new ArrayList<>();
-
-        if (strLen < 2 || listString.charAt(0) != '[' || listString.charAt(strLen - 1) != ']') {
-            // Invalid string. Use default.
-            YungsRoadsCommon.LOGGER.error("INVALID VALUE FOR SETTING 'Valid Structures'. Using [#minecraft:village] instead...");
-            listOfStructuresAsStrings.add("#minecraft:village");
-        } else {
-            // Parse valid string.
-            listOfStructuresAsStrings = Lists.newArrayList(listString.substring(1, strLen - 1).split(",\\s*"));
-        }
-
-        // Create list of holders from strings
-        List<Holder<Structure>> holders = new ArrayList<>();
-        Registry<Structure> registry = levelAccessor.registryAccess().registry(Registries.STRUCTURE).orElse(null);
-        if (registry == null) {
-            YungsRoadsCommon.LOGGER.error("Could not get structure registry!");
-            return HolderSet.direct(holders);
-        }
-
-        listOfStructuresAsStrings.forEach(structureString -> {
-            // Fetch the structure from the registry.
-            // The method used depends on whether the string passed in is a tag or resource location.
-            if (structureString.startsWith("#")) {
-                ResourceLocation resourceLocation = ResourceLocation.tryParse(structureString.substring(1));
-                if (resourceLocation == null) {
-                    YungsRoadsCommon.LOGGER.error("Found invalid structure tag {}", structureString);
-                } else {
-                    Optional<HolderSet.Named<Structure>> optional = registry.getTag(TagKey.create(Registries.STRUCTURE, resourceLocation));
-                    if (optional.isPresent()) {
-                        holders.addAll(optional.get().stream().toList());
-                    } else {
-                        YungsRoadsCommon.LOGGER.error("Found invalid structure tag {}", structureString);
-                    }
-                }
-            } else {
-                ResourceLocation resourceLocation = ResourceLocation.tryParse(structureString);
-                if (resourceLocation == null) {
-                    YungsRoadsCommon.LOGGER.error("Found invalid structure id {}", structureString);
-                } else {
-                    Optional<Structure> optional = registry.getOptional(resourceLocation);
-                    if (optional.isPresent()) {
-                        holders.add(Holder.direct(optional.get()));
-                    } else {
-                        YungsRoadsCommon.LOGGER.error("Found invalid structure id {}", structureString);
-                    }
-                }
-
-            }
-
-        });
-        return HolderSet.direct(holders);
     }
 }

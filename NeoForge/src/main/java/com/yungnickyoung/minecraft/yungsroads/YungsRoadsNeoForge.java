@@ -3,7 +3,7 @@ package com.yungnickyoung.minecraft.yungsroads;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModuleNeoForge;
 import com.yungnickyoung.minecraft.yungsroads.module.DebugModuleNeoForge;
 import com.yungnickyoung.minecraft.yungsroads.module.LiveRoadModuleNeoForge;
-import com.yungnickyoung.minecraft.yungsroads.module.RoadTypeModuleNeoForge;
+import com.yungnickyoung.minecraft.yungsroads.module.RegistryModuleNeoForge;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -15,7 +15,7 @@ public class YungsRoadsNeoForge {
         YungsRoadsCommon.init();
 
         ConfigModuleNeoForge.init(eventBus, container);
-        RoadTypeModuleNeoForge.init(eventBus);
+        RegistryModuleNeoForge.init(eventBus);
         LiveRoadModuleNeoForge.init();
 
         // The debug module uses client-only classes, so it must not be loaded on dedicated servers

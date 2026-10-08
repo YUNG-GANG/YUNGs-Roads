@@ -30,7 +30,7 @@ public record RoadBlocks(List<RoadSurfaceConfig> surfaces, BlockStateRandomizer 
                     BlockStateRandomizer.CODEC.optionalFieldOf("tunnel_lining_blockstates").forGetter(RoadBlocks::tunnelLiningBlockStates))
             .apply(instance, RoadBlocks::new));
 
-    /** Only used if the default road type is missing, so roads can still be placed. */
+    /** Only used for roads whose road type no longer exists, in a dimension that no longer has a road network. */
     public static final RoadBlocks FALLBACK = new RoadBlocks(List.of(RoadSurfaceConfig.FALLBACK),
             new BlockStateRandomizer(Blocks.OAK_PLANKS.defaultBlockState()), Optional.empty(), Optional.empty());
 }

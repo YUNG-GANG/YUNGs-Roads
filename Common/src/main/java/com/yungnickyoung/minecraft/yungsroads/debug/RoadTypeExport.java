@@ -100,6 +100,11 @@ public final class RoadTypeExport {
             readme.append(paragraph).append("\n\n");
         }
 
+        readme.append("## ").append(text("yungsroads.help.road_networks.title")).append("\n\n");
+        for (String paragraph : text("yungsroads.help.road_networks.text").split("\n")) {
+            readme.append(paragraph).append("\n\n");
+        }
+
         readme.append("## ").append(text("yungsroads.docs.format.title")).append("\n\n");
         readme.append(text("yungsroads.docs.format.text")).append("\n\n");
         readme.append("""

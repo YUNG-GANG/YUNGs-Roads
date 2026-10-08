@@ -8,6 +8,7 @@ import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.GlobalSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
+import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.config.ITunableSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.road.placement.LiveRoadPlacer;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
@@ -133,7 +134,12 @@ public class RoadDebugScreen extends Screen {
     private final Map<GlobalSetting, String> pendingGlobalText = new EnumMap<>(GlobalSetting.class);
     private ConfigModule.Debug pendingDebug = new ConfigModule.Debug();
 
-    /** The road type variant whose settings are shown. */
+    /** The road types of the level the fields were loaded from, for which of them its roads can get. */
+    @Nullable
+    private RoadTypes levelTypes;
+
+    /** The road type variant whose settings are shown, or null if the dimension has no road types to tune. */
+    @Nullable
     private VariantKey selected;
 
     /** Each setting's slider and text box, for showing its tooltip when either is hovered. */
@@ -208,6 +214,14 @@ public class RoadDebugScreen extends Screen {
             for (RoadSetting setting : RoadSetting.values()) {
                 addSettingRow(setting, x, contentWidth, rowY);
             }
+        } else {
+            for (Tab settingsTab : List.of(Tab.ROUTING, Tab.SHAPING)) {
+                MultiLineTextWidget noNetworkNote = new MultiLineTextWidget(x, CONTENT_Y, Component.translatable("yungsroads.screen.no_network"), this.font)
+                        .setMaxWidth(contentWidth)
+                        .setColor(0xFFA0A0A0);
+                addScrollingWidget(settingsTab, noNetworkNote, CONTENT_Y);
+                rowY.put(settingsTab, CONTENT_Y + noNetworkNote.getHeight());
+            }
         }
         // The global tab says where its settings are saved, since unlike the other settings tabs, it isn't for a road type
         MultiLineTextWidget globalNote = new MultiLineTextWidget(x, CONTENT_Y, Component.translatable("yungsroads.screen.global.note"), this.font)
@@ -278,7 +292,7 @@ public class RoadDebugScreen extends Screen {
 
         // The help button sits over the map, so it takes clicks before the map does, but is drawn after it. Moved to the
         // help page's edge as the page slides out.
-        this.helpButton = addWidget(Button.builder(Component.literal("?"), button -> this.help.toggle(this.tab.helpSection))
+        this.helpButton = addWidget(Button.builder(Component.literal("?"), button -> this.help.toggle(helpSection()))
                 .bounds(helpButtonX(), MARGIN + 2, HELP_BUTTON_SIZE, HELP_BUTTON_SIZE)
                 .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.help.tooltip")))
                 .build());
@@ -289,17 +303,22 @@ public class RoadDebugScreen extends Screen {
         selectTab(this.tab);
     }
 
-    /** The picker for which road type variant's settings are shown. */
+    /**
+     * The picker for which road type variant's settings are shown. Lists only the road types this dimension's roads
+     * can get, since changes to the others wouldn't show here.
+     */
     private CycleButton<VariantKey> roadTypeButton(int x, int y, int width) {
+        Component defaultName = Component.literal(this.levelTypes == null || this.levelTypes.defaultId() == null
+                ? "-" : RoadTypeNames.name(this.levelTypes.defaultId()));
         return CycleButton.<VariantKey>builder(key -> {
                     RoadType type = this.baseTypes.get(key.typeId);
                     Component name = RoadTypeNames.shortName(key.typeId, key.variant, type == null ? 1 : type.variants().size());
                     return Component.translatable("yungsroads.screen.road_type", name);
                 })
-                .withValues(List.copyOf(this.pendingTypeText.keySet()))
+                .withValues(usableKeys())
                 .withInitialValue(this.selected)
                 .displayOnlyValue()
-                .withTooltip(key -> Tooltip.create(Component.translatable("yungsroads.screen.road_type.tooltip")))
+                .withTooltip(key -> Tooltip.create(Component.translatable("yungsroads.screen.road_type.tooltip", defaultName)))
                 .create(x, y, width, 16, Component.translatable("yungsroads.glossary.road_type"), (button, key) -> {
                     this.selected = key;
                     lastSelected = key;
@@ -370,20 +389,29 @@ public class RoadDebugScreen extends Screen {
         this.unscrolledY.put(widget, y);
     }
 
+    /**
+     * The help page's section for the current tab. The road type tabs of a dimension without a road network have
+     * nothing to tune, so they open at the section on road networks instead.
+     */
+    private HelpDrawer.Section helpSection() {
+        boolean roadTypeTab = this.tab == Tab.ROUTING || this.tab == Tab.SHAPING;
+        return roadTypeTab && this.selected == null ? HelpDrawer.Section.ROAD_NETWORKS : this.tab.helpSection;
+    }
+
     private void selectTab(Tab tab) {
         this.tab = tab;
         this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == tab));
         // A hidden text box must not keep receiving key presses
         setFocused(null);
         if (this.help.isOpen()) {
-            this.help.showSection(tab.helpSection);
+            this.help.showSection(helpSection());
         }
     }
 
     @Override
     public void tick() {
         ServerLevel level = RoadDebugClient.serverLevel();
-        if (level == null || this.selected == null) {
+        if (level == null) {
             onClose();
             return;
         }
@@ -732,7 +760,8 @@ public class RoadDebugScreen extends Screen {
         if (level == null) {
             return;
         }
-        loadTypes(RoadTuning.roadTypesOf(level).loaded());
+        this.levelTypes = RoadTuning.roadTypesOf(level);
+        loadTypes(this.levelTypes.loaded());
         ConfigModule.Advanced defaults = new ConfigModule.Advanced();
         for (GlobalSetting setting : GlobalSetting.values()) {
             this.pendingGlobalText.put(setting, setting.format(setting.get(defaults)));
@@ -746,6 +775,10 @@ public class RoadDebugScreen extends Screen {
     /** Copies the selected road type, with any unapplied changes, to the clipboard as a datapack file. */
     private void copyJson() {
         ServerLevel level = RoadDebugClient.serverLevel();
+        if (this.selected == null) {
+            showLocalStatus(Component.translatable("yungsroads.screen.no_network"));
+            return;
+        }
         SortedMap<ResourceLocation, RoadType> types = parseTypes();
         if (level == null || types == null || this.minecraft == null) {
             return;
@@ -755,14 +788,18 @@ public class RoadDebugScreen extends Screen {
     }
 
     private void loadPendingFromLevel(ServerLevel level) {
-        loadTypes(RoadTuning.roadTypesOf(level).current());
+        this.levelTypes = RoadTuning.roadTypesOf(level);
+        loadTypes(this.levelTypes.current());
         for (GlobalSetting setting : GlobalSetting.values()) {
             this.pendingGlobalText.put(setting, setting.format(setting.get(YungsRoadsCommon.CONFIG.advanced)));
         }
         this.pendingDebug = YungsRoadsCommon.CONFIG.debug.copy();
     }
 
-    /** Loads the fields of every road type variant from the given types, keeping the selected variant if it exists. */
+    /**
+     * Loads the fields of every road type variant from the given types, keeping the selected variant if this dimension
+     * can still use it.
+     */
     private void loadTypes(Map<ResourceLocation, RoadType> types) {
         this.baseTypes = new TreeMap<>();
         types.forEach((id, type) -> this.baseTypes.put(id, type.copy()));
@@ -778,9 +815,15 @@ public class RoadDebugScreen extends Screen {
             }
         });
         VariantKey preferred = this.selected != null ? this.selected : lastSelected;
-        this.selected = this.pendingTypeText.containsKey(preferred)
-                ? preferred
-                : this.pendingTypeText.keySet().stream().findFirst().orElse(null);
+        List<VariantKey> usable = usableKeys();
+        this.selected = usable.contains(preferred) ? preferred : usable.stream().findFirst().orElse(null);
+    }
+
+    /** The road type variants this dimension's roads can get, in the picker's order. */
+    private List<VariantKey> usableKeys() {
+        return this.pendingTypeText.keySet().stream()
+                .filter(key -> this.levelTypes != null && this.levelTypes.isUsable(key.typeId))
+                .toList();
     }
 
     private String pendingText(ITunableSetting setting) {
@@ -881,7 +924,11 @@ public class RoadDebugScreen extends Screen {
         return advanced;
     }
 
+    @Nullable
     private RoadMapWidget.Preview mapPreview() {
+        if (this.selected == null) {
+            return null;
+        }
         return new RoadMapWidget.Preview(variantName(this.selected), previewSettings());
     }
 
