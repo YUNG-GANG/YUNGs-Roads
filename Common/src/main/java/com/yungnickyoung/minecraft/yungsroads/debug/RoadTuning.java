@@ -28,7 +28,6 @@ import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 /**
  * Applies road settings to a running world for tuning: regenerates the roads near the player with the new settings,
@@ -217,22 +216,31 @@ public final class RoadTuning {
         status = Component.translatable("yungsroads.status.reverted");
     }
 
-    /**
-     * Saves the applied settings: the global settings to the config file, and the road types
-     * that differ from the ones the level loaded with to the world's tuned road type datapack.
-     * See {@link RoadTypeExport#writeWorldDatapack}.
-     */
-    public static void save(ServerLevel level) {
-        Services.PLATFORM.saveRoadSettings();
+    /** Saves the applied global settings, and whether roads are placed, to the config file. */
+    public static void saveGlobal() {
         try {
-            List<ResourceLocation> saved = RoadTypeExport.writeWorldDatapack(level.getServer(), roadTypesOf(level));
-            status = saved.isEmpty()
-                    ? Component.translatable("yungsroads.status.saved_no_types")
-                    : Component.translatable("yungsroads.status.saved",
-                            saved.stream().map(ResourceLocation::toString).collect(Collectors.joining(", ")), RoadTypeExport.DATAPACK_NAME);
+            Services.PLATFORM.saveRoadSettings();
+            status = Component.translatable("yungsroads.status.saved_config");
+        } catch (RuntimeException e) {
+            YungsRoadsCommon.LOGGER.error("Unable to save road settings", e);
+            status = Component.translatable("yungsroads.status.save_config_failed", String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * Saves a road type, as applied, to the world's tuned road type datapack. See {@link RoadTypeExport#writeWorldDatapack}.
+     */
+    public static void saveRoadType(ServerLevel level, ResourceLocation typeId) {
+        RoadType type = roadTypesOf(level).current().get(typeId);
+        if (type == null) {
+            return;
+        }
+        try {
+            RoadTypeExport.writeWorldDatapack(level.getServer(), typeId, type);
+            status = Component.translatable("yungsroads.status.saved_road_type", typeId.toString(), RoadTypeExport.DATAPACK_NAME);
         } catch (IOException | RuntimeException e) {
-            YungsRoadsCommon.LOGGER.error("Unable to save road types", e);
-            status = Component.translatable("yungsroads.status.save_failed", String.valueOf(e.getMessage()));
+            YungsRoadsCommon.LOGGER.error("Unable to save road type {}", typeId, e);
+            status = Component.translatable("yungsroads.status.save_road_type_failed", String.valueOf(e.getMessage()));
         }
     }
 

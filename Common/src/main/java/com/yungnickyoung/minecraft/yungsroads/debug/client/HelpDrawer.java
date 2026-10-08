@@ -72,6 +72,7 @@ final class HelpDrawer {
     private long toggledAt = 0;
     private int scroll = 0;
     private int maxScroll = 0;
+    private final ScrollBar scrollBar = new ScrollBar(1);
 
     /** The page's lines, laid out for {@link #laidOutWidth}. */
     private final List<Line> lines = new ArrayList<>();
@@ -141,6 +142,27 @@ final class HelpDrawer {
         return true;
     }
 
+    /** Starts dragging the scroll bar if it was clicked, jumping there if the click was off its thumb. */
+    void mouseClicked(double mouseX, double mouseY) {
+        int offset = this.scrollBar.mouseClicked(mouseX, mouseY, this.scroll);
+        if (offset >= 0) {
+            this.scroll = offset;
+        }
+    }
+
+    /** @return Whether the scroll bar is being dragged, and so took the drag. */
+    boolean mouseDragged(double mouseY) {
+        if (!this.scrollBar.isDragging()) {
+            return false;
+        }
+        this.scroll = this.scrollBar.mouseDragged(mouseY);
+        return true;
+    }
+
+    void mouseReleased() {
+        this.scrollBar.mouseReleased();
+    }
+
     /**
      * Draws the page, and the definition of any highlighted term under the mouse.
      *
@@ -189,7 +211,9 @@ final class HelpDrawer {
             }
         }
         guiGraphics.disableScissor();
-        renderScrollbar(guiGraphics, screenWidth - 4, contentTop, contentBottom);
+        // Laid out each frame, since the page slides in and out
+        this.scrollBar.layOut(screenWidth - 4, contentTop, contentBottom, contentBottom - contentTop, contentBottom - contentTop + this.maxScroll);
+        this.scrollBar.render(guiGraphics, this.scroll, mouseX, mouseY);
 
         if (hovered != null && hovered.getHoverEvent() != null) {
             Component text = hovered.getHoverEvent().getValue(HoverEvent.Action.SHOW_TEXT);

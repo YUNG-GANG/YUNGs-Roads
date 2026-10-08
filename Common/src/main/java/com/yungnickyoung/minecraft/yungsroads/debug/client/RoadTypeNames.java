@@ -22,11 +22,4 @@ final class RoadTypeNames {
                 ? Component.translatable("yungsroads.screen.road_type.variant", name(typeId), variant + 1, variantCount)
                 : Component.literal(name(typeId));
     }
-
-    /** Like {@link #name(ResourceLocation, int, int)}, but shorter, for the road type picker. */
-    static Component shortName(ResourceLocation typeId, int variant, int variantCount) {
-        return variantCount > 1
-                ? Component.translatable("yungsroads.screen.road_type.variant_short", name(typeId), variant + 1, variantCount)
-                : Component.literal(name(typeId));
-    }
 }

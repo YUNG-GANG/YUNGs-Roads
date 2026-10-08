@@ -1,5 +1,6 @@
 package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeExport;
@@ -54,9 +55,11 @@ import java.util.function.ToDoubleFunction;
  * Screen for tuning road generation in a running world. Settings are edited in a side panel and applied to the roads
  * around the player, and a map shows the result next to the terrain that routing sees.
  * <p>
- * Routing and shaping settings belong to a road type, picked at the top of their tabs, and are saved to a datapack.
- * Global settings are saved to the config file, and apply to every road type. Every road type's edits are kept until
- * they're applied, so several can be changed at once.
+ * The Road Type tab walks through tuning a road type: pick an existing road type and variant as the baseline, edit its
+ * routing and shaping settings, apply them to preview the roads, then export the road type as a datapack file. Global
+ * settings have their own tab, since they apply to every road type and are saved to the config file instead. View
+ * options only change what's drawn, so they take effect right away. Every road type's edits are kept until they're
+ * applied, so several can be changed at once.
  */
 public class RoadDebugScreen extends Screen {
     /** The lang entry of the global tab's Place roads option. Also listed in the help page. */
@@ -66,38 +69,63 @@ public class RoadDebugScreen extends Screen {
 
     private static final int PANEL_WIDTH = 200;
     private static final int MARGIN = 6;
-    /** The top of each tab's content, below the tab buttons. */
-    private static final int CONTENT_Y = MARGIN + 22;
+    private static final int TAB_HEIGHT = 20;
+    /** The bottom of the tabs, where each tab's content starts. */
+    private static final int TABS_BOTTOM = MARGIN + TAB_HEIGHT;
+    private static final int SUB_TAB_HEIGHT = 14;
+    private static final int BUTTON_HEIGHT = 16;
+    private static final int STEP_HEIGHT = 12;
     private static final int ROW_HEIGHT = 18;
     private static final int CHECKBOX_ROW_HEIGHT = 20;
     private static final int VALUE_BOX_WIDTH = 40;
     private static final int HELP_BUTTON_SIZE = 16;
     private static final int PANEL_COLOR = 0xE0101010;
+    private static final int DIVIDER_COLOR = 0xFF505050;
+    private static final int NOTE_COLOR = 0xFFA0A0A0;
+    private static final int STEP_COLOR = 0xFFC0C0C0;
+    private static final int STEP_BADGE_COLOR = 0xFF3A6EA5;
     private static final int INVALID_TEXT_COLOR = 0xFFFF5050;
     private static final int VALID_TEXT_COLOR = 0xFFE0E0E0;
+    /** Marks values and road types that differ from what Reset restores. */
+    private static final int EDITED_COLOR = 0xFFFFD050;
 
     private enum Tab {
-        ROUTING("routing", HelpDrawer.Section.ROUTING),
-        SHAPING("shaping", HelpDrawer.Section.SHAPING),
-        GLOBAL("global", HelpDrawer.Section.GLOBAL),
-        VIEW("view", HelpDrawer.Section.VIEW);
+        ROAD_TYPE("road_type"),
+        GLOBAL("global"),
+        VIEW("view");
 
         final Component displayName;
-        /** The help page's section about the tab. */
+
+        Tab(String id) {
+            this.displayName = Component.translatable("yungsroads.screen.tab." + id);
+        }
+    }
+
+    /** A page of settings or options. The road type tab has a page for each group of settings, the others one each. */
+    private enum Page {
+        ROUTING(Tab.ROAD_TYPE, "routing", HelpDrawer.Section.ROUTING),
+        SHAPING(Tab.ROAD_TYPE, "shaping", HelpDrawer.Section.SHAPING),
+        GLOBAL(Tab.GLOBAL, "global", HelpDrawer.Section.GLOBAL),
+        VIEW(Tab.VIEW, "view", HelpDrawer.Section.VIEW);
+
+        final Tab tab;
+        final Component displayName;
+        /** The help page's section about the page. */
         final HelpDrawer.Section helpSection;
 
-        Tab(String id, HelpDrawer.Section helpSection) {
+        Page(Tab tab, String id, HelpDrawer.Section helpSection) {
+            this.tab = tab;
             this.displayName = Component.translatable("yungsroads.screen.tab." + id);
             this.helpSection = helpSection;
         }
 
-        /** Whether the tab's content scrolls, since its settings and formulas can be taller than the panel. */
+        /** Whether the page's content scrolls, since its settings and formulas can be taller than the panel. */
         boolean scrolls() {
             return this != VIEW;
         }
 
-        /** The tab a setting is edited on. */
-        static Tab of(ITunableSetting setting) {
+        /** The page a setting is edited on. */
+        static Page of(ITunableSetting setting) {
             if (setting instanceof GlobalSetting) {
                 return GLOBAL;
             }
@@ -112,12 +140,22 @@ public class RoadDebugScreen extends Screen {
     private record VariantKey(ResourceLocation typeId, int variant) {
     }
 
+    /** A numbered step of a tab's workflow, drawn as a label above its widgets. A number of 0 draws no number. */
+    private record Step(Tab tab, int number, Component text, int y) {
+    }
+
     /** The road type variant last edited, so it's still selected when the screen is opened again. */
     @Nullable
     private static VariantKey lastSelected;
 
-    private Tab tab = Tab.ROUTING;
+    private Tab tab = Tab.ROAD_TYPE;
+    /** The road type tab's page, kept while other tabs are shown. */
+    private Page roadTypePage = Page.ROUTING;
+    /** Widgets shown whenever their tab is, such as the road type pickers and action buttons. */
     private final Map<Tab, List<AbstractWidget>> tabWidgets = new EnumMap<>(Tab.class);
+    /** Widgets shown on their page, scrolling with it if it scrolls. */
+    private final Map<Page, List<AbstractWidget>> pageWidgets = new EnumMap<>(Page.class);
+    private final List<Step> steps = new ArrayList<>();
 
     /**
      * The road types whose settings are being edited, as they were when the fields were loaded. The edited numeric
@@ -126,7 +164,7 @@ public class RoadDebugScreen extends Screen {
     private SortedMap<ResourceLocation, RoadType> baseTypes = new TreeMap<>();
 
     /**
-     * Values as edited on the settings tabs, for every road type variant and for the global settings. Kept outside the
+     * Values as edited on the settings pages, for every road type variant and for the global settings. Kept outside the
      * widgets so they survive the widgets being rebuilt, such as when the window is resized or another road type is
      * picked. Not applied until the Apply button is pressed.
      */
@@ -134,7 +172,7 @@ public class RoadDebugScreen extends Screen {
     private final Map<GlobalSetting, String> pendingGlobalText = new EnumMap<>(GlobalSetting.class);
     private ConfigModule.Debug pendingDebug = new ConfigModule.Debug();
 
-    /** The road types of the level the fields were loaded from, for which of them its roads can get. */
+    /** The road types of the level the fields were loaded from: as loaded, as applied, and which its roads can get. */
     @Nullable
     private RoadTypes levelTypes;
 
@@ -145,17 +183,37 @@ public class RoadDebugScreen extends Screen {
     /** Each setting's slider and text box, for showing its tooltip when either is hovered. */
     private final Map<ITunableSetting, List<AbstractWidget>> settingRows = new HashMap<>();
 
-    /** Where each settings tab's formulas start, below its settings. */
-    private final Map<Tab, Integer> formulaY = new EnumMap<>(Tab.class);
-    /** How far each scrolling tab is scrolled down, in pixels. Kept across rebuilds. */
-    private final Map<Tab, Integer> scroll = new EnumMap<>(Tab.class);
-    /** The furthest each scrolling tab could scroll when it was last rendered. */
-    private final Map<Tab, Integer> maxScroll = new EnumMap<>(Tab.class);
-    /** The y of each widget on a scrolling tab when the tab isn't scrolled. */
+    /** The top of each page's content, below its tab's header. */
+    private final Map<Page, Integer> pageTop = new EnumMap<>(Page.class);
+    /** Where each settings page's formulas start, below its settings. */
+    private final Map<Page, Integer> formulaY = new EnumMap<>(Page.class);
+    /** How far each scrolling page is scrolled down, in pixels. Kept across rebuilds. */
+    private final Map<Page, Integer> scroll = new EnumMap<>(Page.class);
+    /** The furthest each scrolling page could scroll when it was last rendered. */
+    private final Map<Page, Integer> maxScroll = new EnumMap<>(Page.class);
+    /** The shown page's scroll bar, laid out for it each frame. Scrolls by whole rows, like the mouse wheel. */
+    private final ScrollBar scrollBar = new ScrollBar(ROW_HEIGHT);
+    /** The y of each widget on a scrolling page when the page isn't scrolled. */
     private final Map<AbstractWidget, Integer> unscrolledY = new HashMap<>();
-    private Button applyButton;
-    private Button revertButton;
+    /** The top of the action buttons at the bottom of the panel, with their step labels. The status is drawn above. */
+    private int footerTop;
+
+    /** The Apply and Undo buttons, which the road type and global tabs each have. */
+    private final List<Button> applyButtons = new ArrayList<>();
+    private final List<Button> revertButtons = new ArrayList<>();
+    /** The buttons that export the applied road type, which are disabled while it has unapplied changes. */
+    private final List<Button> exportButtons = new ArrayList<>();
+    private Button saveConfigButton;
     private Button helpButton;
+    @Nullable
+    private Dropdown<ResourceLocation> roadTypeDropdown;
+    @Nullable
+    private Dropdown<VariantKey> variantDropdown;
+    /** Whether the export buttons were last given the tooltip saying to apply first, so it's only replaced when that changes. */
+    @Nullable
+    private Boolean exportBlocked;
+    @Nullable
+    private Boolean saveConfigBlocked;
     /** Kept across rebuilds, so the map's position and zoom aren't reset. */
     private final RoadMapWidget map = new RoadMapWidget(0, 0, 0, 0, this::mapPreview);
     private HelpDrawer help;
@@ -182,58 +240,51 @@ public class RoadDebugScreen extends Screen {
             this.help = new HelpDrawer(this.font);
         }
         this.tabWidgets.clear();
+        this.pageWidgets.clear();
+        this.steps.clear();
         this.settingRows.clear();
         this.unscrolledY.clear();
+        this.applyButtons.clear();
+        this.revertButtons.clear();
+        this.exportButtons.clear();
+        this.exportBlocked = null;
+        this.saveConfigBlocked = null;
+        this.roadTypeDropdown = null;
+        this.variantDropdown = null;
         int x = MARGIN;
         int contentWidth = PANEL_WIDTH - MARGIN * 2;
 
-        // Tabs, each fitting its label, with the remaining width shared between them
-        int labelsWidth = 0;
+        // Tabs, sharing the panel's width, with the last taking any width left over from rounding
+        int tabWidth = contentWidth / Tab.values().length;
         for (Tab t : Tab.values()) {
-            labelsWidth += this.font.width(t.displayName);
+            int width = t.ordinal() == Tab.values().length - 1 ? contentWidth - tabWidth * t.ordinal() : tabWidth;
+            addRenderableWidget(new PanelTab(x + tabWidth * t.ordinal(), MARGIN, width, TAB_HEIGHT, t.displayName, false,
+                    () -> this.tab == t, () -> selectTab(t)));
         }
-        int spareWidth = (contentWidth - labelsWidth) / Tab.values().length;
-        int tabX = x;
-        for (Tab t : Tab.values()) {
-            // The last tab takes any width left over from rounding
-            int tabWidth = t.ordinal() == Tab.values().length - 1 ? x + contentWidth - tabX : this.font.width(t.displayName) + spareWidth;
-            addRenderableWidget(Button.builder(t.displayName, button -> selectTab(t))
-                    .bounds(tabX, MARGIN, tabWidth - 2, 16)
-                    .build());
-            tabX += tabWidth;
-        }
+
+        initFooters(x, contentWidth);
+        initRoadTypeHeader(x, contentWidth);
+        int otherTop = TABS_BOTTOM + 6;
+        this.pageTop.put(Page.GLOBAL, otherTop);
+        this.pageTop.put(Page.VIEW, otherTop);
 
         // Road type and global settings, each a slider for quick changes with a text box for exact values, or a checkbox
         // for a toggle. Routing changes are previewed on the map's terrain right away, but only applied to roads on Apply.
-        Map<Tab, Integer> rowY = new EnumMap<>(Tab.class);
+        Map<Page, Integer> rowY = new EnumMap<>(Page.class);
         if (this.selected != null) {
-            for (Tab settingsTab : List.of(Tab.ROUTING, Tab.SHAPING)) {
-                addScrollingWidget(settingsTab, roadTypeButton(x, CONTENT_Y, contentWidth), CONTENT_Y);
-                rowY.put(settingsTab, CONTENT_Y + ROW_HEIGHT + 4);
-            }
             for (RoadSetting setting : RoadSetting.values()) {
                 addSettingRow(setting, x, contentWidth, rowY);
             }
-        } else {
-            for (Tab settingsTab : List.of(Tab.ROUTING, Tab.SHAPING)) {
-                MultiLineTextWidget noNetworkNote = new MultiLineTextWidget(x, CONTENT_Y, Component.translatable("yungsroads.screen.no_network"), this.font)
-                        .setMaxWidth(contentWidth)
-                        .setColor(0xFFA0A0A0);
-                addScrollingWidget(settingsTab, noNetworkNote, CONTENT_Y);
-                rowY.put(settingsTab, CONTENT_Y + noNetworkNote.getHeight());
-            }
         }
-        // The global tab says where its settings are saved, since unlike the other settings tabs, it isn't for a road type
-        MultiLineTextWidget globalNote = new MultiLineTextWidget(x, CONTENT_Y, Component.translatable("yungsroads.screen.global.note"), this.font)
-                .setMaxWidth(contentWidth)
-                .setColor(0xFFA0A0A0);
-        addScrollingWidget(Tab.GLOBAL, globalNote, CONTENT_Y);
-        rowY.put(Tab.GLOBAL, CONTENT_Y + globalNote.getHeight() + 6);
+        // The global page says where its settings are saved, since unlike the road type's, they're for every road type
+        MultiLineTextWidget globalNote = note("yungsroads.screen.global.note", x, otherTop, contentWidth);
+        addScrollingWidget(Page.GLOBAL, globalNote, otherTop);
+        rowY.put(Page.GLOBAL, otherTop + globalNote.getHeight() + 6);
         for (GlobalSetting setting : GlobalSetting.values()) {
             addSettingRow(setting, x, contentWidth, rowY);
         }
-        int placeRoadsY = rowY.get(Tab.GLOBAL) + 2;
-        addScrollingWidget(Tab.GLOBAL, Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
+        int placeRoadsY = rowY.get(Page.GLOBAL) + 2;
+        addScrollingWidget(Page.GLOBAL, Checkbox.builder(Component.translatable(PLACE_ROADS_KEY), this.font)
                 .pos(x, placeRoadsY)
                 .maxWidth(contentWidth)
                 .selected(this.pendingDebug.placeRoads)
@@ -241,11 +292,12 @@ public class RoadDebugScreen extends Screen {
                         .append(Component.translatable("yungsroads.screen.applied_with_apply"))))
                 .onValueChange((box, value) -> this.pendingDebug.placeRoads = value)
                 .build(), placeRoadsY);
-        rowY.put(Tab.GLOBAL, placeRoadsY + CHECKBOX_ROW_HEIGHT);
-        rowY.forEach((settingsTab, y) -> this.formulaY.put(settingsTab, y + 6));
+        rowY.put(Page.GLOBAL, placeRoadsY + CHECKBOX_ROW_HEIGHT);
+        rowY.forEach((page, y) -> this.formulaY.put(page, y + 6));
 
-        // View options. These only affect what's drawn, so they take effect immediately.
-        int y = CONTENT_Y;
+        // View options. These only affect what's drawn, so they take effect immediately, which the page says up front.
+        MultiLineTextWidget viewNote = addPageWidget(Page.VIEW, note("yungsroads.screen.view.note", x, otherTop, contentWidth));
+        int y = otherTop + viewNote.getHeight() + 6;
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(0), RoadDebugClient.showWorldOverlay, value -> RoadDebugClient.showWorldOverlay = value);
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(1), RoadDebugClient.showPreviousRoads, value -> RoadDebugClient.showPreviousRoads = value);
         y = addViewCheckbox(x, y, contentWidth, VIEW_OPTIONS.get(2), RoadDebugClient.showNodes, value -> RoadDebugClient.showNodes = value);
@@ -258,36 +310,12 @@ public class RoadDebugScreen extends Screen {
                 .withValues(TerrainTiles.Layer.values())
                 .withInitialValue(RoadDebugClient.terrainLayer)
                 .withTooltip(layer -> Tooltip.create(Component.translatable("yungsroads.screen.view.terrain.tooltip")))
-                .create(x, y, contentWidth, 16, Component.translatable("yungsroads.screen.view.terrain"),
+                .create(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.screen.view.terrain"),
                         (button, layer) -> RoadDebugClient.terrainLayer = layer);
-        addTabWidget(Tab.VIEW, terrainButton);
+        addPageWidget(Page.VIEW, terrainButton);
         y += ROW_HEIGHT;
-        addTabWidget(Tab.VIEW, Button.builder(Component.translatable("yungsroads.screen.view.center_map"), button -> this.map.recenter())
-                .bounds(x, y, contentWidth, 16)
-                .build());
-
-        // Actions
-        int buttonWidth = (contentWidth - 4) / 2;
-        int actionsY = this.height - MARGIN - 56;
-        this.applyButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.apply"), button -> apply())
-                .bounds(x, actionsY, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.apply.tooltip", RoadTuning.REGENERATE_RADIUS)))
-                .build());
-        this.revertButton = addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.revert"), button -> revert())
-                .bounds(x + buttonWidth + 4, actionsY, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.revert.tooltip")))
-                .build());
-        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.reset"), button -> reset())
-                .bounds(x, actionsY + 20, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.reset.tooltip")))
-                .build());
-        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.save"), button -> save())
-                .bounds(x + buttonWidth + 4, actionsY + 20, buttonWidth, 16)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.save.tooltip")))
-                .build());
-        addRenderableWidget(Button.builder(Component.translatable("yungsroads.screen.copy_json"), button -> copyJson())
-                .bounds(x, actionsY + 40, contentWidth, 16)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.copy_json.tooltip")))
+        addPageWidget(Page.VIEW, Button.builder(Component.translatable("yungsroads.screen.view.center_map"), button -> this.map.recenter())
+                .bounds(x, y, contentWidth, BUTTON_HEIGHT)
                 .build());
 
         // The help button sits over the map, so it takes clicks before the map does, but is drawn after it. Moved to the
@@ -300,36 +328,147 @@ public class RoadDebugScreen extends Screen {
         addRenderableWidget(this.map);
         addRenderableOnly(this.helpButton);
 
-        selectTab(this.tab);
+        updateVisibility();
     }
 
     /**
-     * The picker for which road type variant's settings are shown. Lists only the road types this dimension's roads
-     * can get, since changes to the others wouldn't show here.
+     * The road type tab's header: step 1 picks the road type and variant to start from, and step 2 picks which of its
+     * settings are shown. Without a road network, a note says there's nothing to tune instead.
      */
-    private CycleButton<VariantKey> roadTypeButton(int x, int y, int width) {
-        Component defaultName = Component.literal(this.levelTypes == null || this.levelTypes.defaultId() == null
-                ? "-" : RoadTypeNames.name(this.levelTypes.defaultId()));
-        return CycleButton.<VariantKey>builder(key -> {
-                    RoadType type = this.baseTypes.get(key.typeId);
-                    Component name = RoadTypeNames.shortName(key.typeId, key.variant, type == null ? 1 : type.variants().size());
-                    return Component.translatable("yungsroads.screen.road_type", name);
-                })
-                .withValues(usableKeys())
-                .withInitialValue(this.selected)
-                .displayOnlyValue()
-                .withTooltip(key -> Tooltip.create(Component.translatable("yungsroads.screen.road_type.tooltip", defaultName)))
-                .create(x, y, width, 16, Component.translatable("yungsroads.glossary.road_type"), (button, key) -> {
-                    this.selected = key;
-                    lastSelected = key;
-                    this.rebuildPending = true;
-                });
+    private void initRoadTypeHeader(int x, int contentWidth) {
+        int y = TABS_BOTTOM + 4;
+        if (this.selected == null || this.levelTypes == null) {
+            int noteBottom = y + addTabWidget(Tab.ROAD_TYPE, note("yungsroads.screen.no_network", x, y, contentWidth)).getHeight();
+            this.pageTop.put(Page.ROUTING, noteBottom);
+            this.pageTop.put(Page.SHAPING, noteBottom);
+            return;
+        }
+
+        this.steps.add(new Step(Tab.ROAD_TYPE, 1, Component.translatable("yungsroads.screen.step.start"), y));
+        y += STEP_HEIGHT;
+        ResourceLocation defaultId = this.levelTypes.defaultId();
+        Component defaultName = Component.literal(defaultId == null ? "-" : RoadTypeNames.name(defaultId));
+        List<ResourceLocation> typeIds = usableKeys().stream().map(VariantKey::typeId).distinct().toList();
+        this.roadTypeDropdown = new Dropdown<>(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.glossary.road_type"),
+                typeIds, this.selected.typeId, this::roadTypeLabel, typeId -> select(new VariantKey(typeId, 0)));
+        this.roadTypeDropdown.setTooltip(Tooltip.create(Component.translatable("yungsroads.screen.road_type.tooltip", defaultName)));
+        addTabWidget(Tab.ROAD_TYPE, this.roadTypeDropdown);
+        y += BUTTON_HEIGHT + 2;
+
+        RoadType type = this.baseTypes.get(this.selected.typeId);
+        List<VariantKey> variants = new ArrayList<>();
+        for (int variant = 0; variant < type.variants().size(); variant++) {
+            variants.add(new VariantKey(this.selected.typeId, variant));
+        }
+        this.variantDropdown = new Dropdown<>(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.screen.variant.name"),
+                variants, this.selected, this::variantLabel, this::select);
+        this.variantDropdown.active = variants.size() > 1;
+        this.variantDropdown.setTooltip(Tooltip.create(Component.translatable(variants.size() > 1
+                ? "yungsroads.screen.variant.tooltip" : "yungsroads.screen.variant.only.tooltip")));
+        addTabWidget(Tab.ROAD_TYPE, this.variantDropdown);
+        y += BUTTON_HEIGHT + 6;
+
+        this.steps.add(new Step(Tab.ROAD_TYPE, 2, Component.translatable("yungsroads.screen.step.edit"), y));
+        y += STEP_HEIGHT;
+        int subTabWidth = contentWidth / 2;
+        for (Page page : List.of(Page.ROUTING, Page.SHAPING)) {
+            int subTabX = x + (page == Page.ROUTING ? 0 : subTabWidth);
+            addTabWidget(Tab.ROAD_TYPE, new PanelTab(subTabX, y, page == Page.ROUTING ? subTabWidth : contentWidth - subTabWidth,
+                    SUB_TAB_HEIGHT, page.displayName, true, () -> this.roadTypePage == page, () -> selectPage(page)));
+        }
+        y += SUB_TAB_HEIGHT + 4;
+        this.pageTop.put(Page.ROUTING, y);
+        this.pageTop.put(Page.SHAPING, y);
     }
 
-    private void addSettingRow(ITunableSetting setting, int x, int contentWidth, Map<Tab, Integer> rowY) {
-        Tab settingTab = Tab.of(setting);
-        int y = rowY.getOrDefault(settingTab, CONTENT_Y);
-        rowY.put(settingTab, y + ROW_HEIGHT);
+    /**
+     * The action buttons at the bottom of the road type and global tabs: a row to preview changes in this world, and a
+     * row to save them, each with its step label. The view tab has none, since its options take effect immediately.
+     */
+    private void initFooters(int x, int contentWidth) {
+        int saveRowY = this.height - MARGIN - BUTTON_HEIGHT;
+        int saveStepY = saveRowY - STEP_HEIGHT;
+        int previewRowY = saveStepY - 4 - BUTTON_HEIGHT;
+        int previewStepY = previewRowY - STEP_HEIGHT;
+        this.footerTop = previewStepY;
+
+        int thirdWidth = (contentWidth - 8) / 3;
+        int halfWidth = (contentWidth - 4) / 2;
+        for (Tab footerTab : List.of(Tab.ROAD_TYPE, Tab.GLOBAL)) {
+            boolean roadType = footerTab == Tab.ROAD_TYPE;
+            this.steps.add(new Step(footerTab, roadType ? 3 : 0, Component.translatable("yungsroads.screen.step.preview"), previewStepY));
+            this.applyButtons.add(addTabWidget(footerTab, Button.builder(Component.translatable("yungsroads.screen.apply"), button -> apply())
+                    .bounds(x, previewRowY, thirdWidth, BUTTON_HEIGHT)
+                    .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.apply.tooltip", RoadTuning.REGENERATE_RADIUS)))
+                    .build()));
+            this.revertButtons.add(addTabWidget(footerTab, Button.builder(Component.translatable("yungsroads.screen.revert"), button -> revert())
+                    .bounds(x + thirdWidth + 4, previewRowY, thirdWidth, BUTTON_HEIGHT)
+                    .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.revert.tooltip")))
+                    .build()));
+            Button reset = addTabWidget(footerTab, Button.builder(Component.translatable("yungsroads.screen.reset"),
+                            button -> {
+                                if (roadType) {
+                                    resetVariant();
+                                } else {
+                                    resetGlobal();
+                                }
+                            })
+                    .bounds(x + (thirdWidth + 4) * 2, previewRowY, contentWidth - (thirdWidth + 4) * 2, BUTTON_HEIGHT)
+                    .tooltip(Tooltip.create(Component.translatable(roadType ? "yungsroads.screen.reset.road_type.tooltip" : "yungsroads.screen.reset.global.tooltip")))
+                    .build());
+            reset.active = !roadType || this.selected != null;
+        }
+
+        this.steps.add(new Step(Tab.ROAD_TYPE, 4, Component.translatable("yungsroads.screen.step.export"), saveStepY));
+        this.exportButtons.add(addTabWidget(Tab.ROAD_TYPE, Button.builder(Component.translatable("yungsroads.screen.copy_json"), button -> copyJson())
+                .bounds(x, saveRowY, halfWidth, BUTTON_HEIGHT)
+                .build()));
+        this.exportButtons.add(addTabWidget(Tab.ROAD_TYPE, Button.builder(Component.translatable("yungsroads.screen.save_datapack"), button -> saveRoadType())
+                .bounds(x + halfWidth + 4, saveRowY, contentWidth - halfWidth - 4, BUTTON_HEIGHT)
+                .build()));
+
+        this.steps.add(new Step(Tab.GLOBAL, 0, Component.translatable("yungsroads.screen.step.save_global"), saveStepY));
+        this.saveConfigButton = addTabWidget(Tab.GLOBAL, Button.builder(Component.translatable("yungsroads.screen.save_config"), button -> saveGlobal())
+                .bounds(x, saveRowY, contentWidth, BUTTON_HEIGHT)
+                .build());
+    }
+
+    /** The road type picker's label for a road type, marking the road network's default and road types with edits. */
+    private Component roadTypeLabel(ResourceLocation typeId) {
+        MutableComponent label = Component.literal(RoadTypeNames.name(typeId));
+        if (this.levelTypes != null && typeId.equals(this.levelTypes.defaultId())) {
+            label.append(Component.literal(" ").append(Component.translatable("yungsroads.screen.road_type.default_marker")).withColor(NOTE_COLOR));
+        }
+        if (isTypeEdited(typeId)) {
+            label.append(Component.literal(" ").append(Component.translatable("yungsroads.screen.edited_marker")).withColor(EDITED_COLOR));
+        }
+        return label;
+    }
+
+    /** The variant picker's label for a variant, with its weight, marking variants with edits. */
+    private Component variantLabel(VariantKey key) {
+        RoadType type = this.baseTypes.get(key.typeId);
+        if (type.variants().size() == 1) {
+            return Component.translatable("yungsroads.screen.variant.only");
+        }
+        MutableComponent label = Component.translatable("yungsroads.screen.variant", key.variant + 1, type.variants().size(),
+                type.variants().get(key.variant).weight());
+        if (isEdited(key)) {
+            label.append(Component.literal(" ").append(Component.translatable("yungsroads.screen.edited_marker")).withColor(EDITED_COLOR));
+        }
+        return label;
+    }
+
+    private void select(VariantKey key) {
+        this.selected = key;
+        lastSelected = key;
+        this.rebuildPending = true;
+    }
+
+    private void addSettingRow(ITunableSetting setting, int x, int contentWidth, Map<Page, Integer> rowY) {
+        Page page = Page.of(setting);
+        int y = rowY.getOrDefault(page, this.pageTop.get(page));
+        rowY.put(page, y + ROW_HEIGHT);
         Component name = Component.translatable(setting.nameKey());
         if (setting.isToggle()) {
             Double value = parse(setting, pendingText(setting));
@@ -340,25 +479,26 @@ public class RoadDebugScreen extends Screen {
                     .onValueChange((box, selected) -> setPendingText(setting, selected ? "1" : "0"))
                     .build();
             this.settingRows.put(setting, List.of(checkbox));
-            addScrollingWidget(settingTab, checkbox, y);
+            addScrollingWidget(page, checkbox, y);
             return;
         }
         int sliderWidth = contentWidth - VALUE_BOX_WIDTH - 4;
         EditBox box = new EditBox(this.font, x + sliderWidth + 4, y + 1, VALUE_BOX_WIDTH, 14, name);
-        SettingSlider slider = new SettingSlider(x, y, sliderWidth, 16, setting, name, box);
+        SettingSlider slider = new SettingSlider(x, y, sliderWidth, BUTTON_HEIGHT, setting, name, box);
         box.setMaxLength(12);
         box.setResponder(value -> {
             setPendingText(setting, value);
             Double parsed = parse(setting, value);
-            box.setTextColor(parsed == null ? INVALID_TEXT_COLOR : VALID_TEXT_COLOR);
+            box.setTextColor(parsed == null ? INVALID_TEXT_COLOR
+                    : setting.format(parsed).equals(setting.format(resetValue(setting))) ? VALID_TEXT_COLOR : EDITED_COLOR);
             if (parsed != null) {
                 slider.show(parsed);
             }
         });
         box.setValue(pendingText(setting));
         this.settingRows.put(setting, List.of(slider, box));
-        addScrollingWidget(settingTab, slider, y);
-        addScrollingWidget(settingTab, box, y + 1);
+        addScrollingWidget(page, slider, y);
+        addScrollingWidget(page, box, y + 1);
     }
 
     private int addViewCheckbox(int x, int y, int width, String option, boolean selected, Consumer<Boolean> onChange) {
@@ -370,37 +510,72 @@ public class RoadDebugScreen extends Screen {
                 .tooltip(Tooltip.create(Component.translatable(key + ".description")))
                 .onValueChange((box, value) -> onChange.accept(value))
                 .build();
-        addTabWidget(Tab.VIEW, checkbox);
+        addPageWidget(Page.VIEW, checkbox);
         return y + CHECKBOX_ROW_HEIGHT;
     }
 
-    private void addTabWidget(Tab tab, AbstractWidget widget) {
+    /** A note explaining a tab or page. */
+    private MultiLineTextWidget note(String key, int x, int y, int width) {
+        return new MultiLineTextWidget(x, y, Component.translatable(key), this.font)
+                .setMaxWidth(width)
+                .setColor(NOTE_COLOR);
+    }
+
+    private <T extends AbstractWidget> T addTabWidget(Tab tab, T widget) {
         addRenderableWidget(widget);
         this.tabWidgets.computeIfAbsent(tab, t -> new ArrayList<>()).add(widget);
+        return widget;
+    }
+
+    private <T extends AbstractWidget> T addPageWidget(Page page, T widget) {
+        addRenderableWidget(widget);
+        this.pageWidgets.computeIfAbsent(page, p -> new ArrayList<>()).add(widget);
+        return widget;
     }
 
     /**
-     * Adds a widget to a scrolling tab.
+     * Adds a widget to a scrolling page.
      *
-     * @param y The widget's y when the tab isn't scrolled.
+     * @param y The widget's y when the page isn't scrolled.
      */
-    private void addScrollingWidget(Tab tab, AbstractWidget widget, int y) {
-        addTabWidget(tab, widget);
+    private void addScrollingWidget(Page page, AbstractWidget widget, int y) {
+        addPageWidget(page, widget);
         this.unscrolledY.put(widget, y);
     }
 
+    /** The page shown: the road type tab's selected page, or the other tabs' only page. */
+    private Page page() {
+        return switch (this.tab) {
+            case ROAD_TYPE -> this.roadTypePage;
+            case GLOBAL -> Page.GLOBAL;
+            case VIEW -> Page.VIEW;
+        };
+    }
+
     /**
-     * The help page's section for the current tab. The road type tabs of a dimension without a road network have
-     * nothing to tune, so they open at the section on road networks instead.
+     * The help page's section for the shown page. The road type tab of a dimension without a road network has nothing
+     * to tune, so it opens at the section on road networks instead.
      */
     private HelpDrawer.Section helpSection() {
-        boolean roadTypeTab = this.tab == Tab.ROUTING || this.tab == Tab.SHAPING;
-        return roadTypeTab && this.selected == null ? HelpDrawer.Section.ROAD_NETWORKS : this.tab.helpSection;
+        return this.tab == Tab.ROAD_TYPE && this.selected == null ? HelpDrawer.Section.ROAD_NETWORKS : page().helpSection;
     }
 
     private void selectTab(Tab tab) {
         this.tab = tab;
-        this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == tab));
+        updateVisibility();
+    }
+
+    private void selectPage(Page page) {
+        this.roadTypePage = page;
+        updateVisibility();
+    }
+
+    /** Shows only the widgets of the selected tab and page. */
+    private void updateVisibility() {
+        Page page = page();
+        this.tabWidgets.forEach((t, widgets) -> widgets.forEach(widget -> widget.visible = t == this.tab));
+        this.pageWidgets.forEach((p, widgets) -> widgets.forEach(widget -> widget.visible = p == page));
+        closeDropdowns();
         // A hidden text box must not keep receiving key presses
         setFocused(null);
         if (this.help.isOpen()) {
@@ -419,8 +594,33 @@ public class RoadDebugScreen extends Screen {
             this.rebuildPending = false;
             rebuildWidgets();
         }
-        this.applyButton.active = !RoadTuning.isBusy();
-        this.revertButton.active = RoadTuning.canRevert(level);
+        boolean busy = RoadTuning.isBusy();
+        this.applyButtons.forEach(button -> button.active = !busy);
+        boolean canRevert = RoadTuning.canRevert(level);
+        this.revertButtons.forEach(button -> button.active = canRevert);
+
+        // Exports are of the applied settings, so they match what's been previewed in the world
+        boolean exportBlocked = this.selected != null && isUnapplied(this.selected.typeId);
+        for (Button button : this.exportButtons) {
+            button.active = this.selected != null && !exportBlocked && !busy;
+        }
+        if (this.selected != null && !Boolean.valueOf(exportBlocked).equals(this.exportBlocked)) {
+            this.exportBlocked = exportBlocked;
+            Component name = Component.literal(RoadTypeNames.name(this.selected.typeId));
+            this.exportButtons.get(0).setTooltip(Tooltip.create(exportBlocked
+                    ? Component.translatable("yungsroads.screen.apply_first.road_type")
+                    : Component.translatable("yungsroads.screen.copy_json.tooltip", name)));
+            this.exportButtons.get(1).setTooltip(Tooltip.create(exportBlocked
+                    ? Component.translatable("yungsroads.screen.apply_first.road_type")
+                    : Component.translatable("yungsroads.screen.save_datapack.tooltip", name, RoadTypeExport.DATAPACK_NAME)));
+        }
+        boolean saveConfigBlocked = isGlobalUnapplied();
+        this.saveConfigButton.active = !saveConfigBlocked && !busy;
+        if (!Boolean.valueOf(saveConfigBlocked).equals(this.saveConfigBlocked)) {
+            this.saveConfigBlocked = saveConfigBlocked;
+            this.saveConfigButton.setTooltip(Tooltip.create(Component.translatable(saveConfigBlocked
+                    ? "yungsroads.screen.apply_first.global" : "yungsroads.screen.save_config.tooltip")));
+        }
     }
 
     @Override
@@ -433,23 +633,30 @@ public class RoadDebugScreen extends Screen {
         if (placer != null && placer.pendingChunkCount() > 0) {
             statusLines.add(Component.translatable("yungsroads.screen.refreshing", placer.pendingChunkCount()));
         }
+        if (this.tab != Tab.VIEW && hasUnappliedChanges()) {
+            statusLines.add(Component.translatable("yungsroads.screen.unapplied").withColor(EDITED_COLOR));
+        }
         List<FormattedCharSequence> wrapped = new ArrayList<>();
         for (Component line : statusLines) {
             if (!line.getString().isEmpty()) {
                 wrapped.addAll(this.font.split(line, PANEL_WIDTH - MARGIN * 2));
             }
         }
-        int statusTop = this.applyButton.getY() - 4 - wrapped.size() * 10;
+        int footerTop = this.tab == Tab.VIEW ? this.height - MARGIN : this.footerTop;
+        int statusTop = footerTop - 6 - wrapped.size() * 10;
 
-        List<Component> formulas = this.selected == null ? List.of() : formulas(this.tab, previewSettings(), previewGlobal());
-        if (this.tab.scrolls()) {
-            layOutScrollingTab(statusTop, formulas);
+        Page page = page();
+        List<Component> formulas = formulas(page);
+        if (page.scrolls()) {
+            layOutScrollingPage(page, statusTop, formulas);
         }
 
-        // Nothing under the help page reacts to the mouse
+        // Nothing under the help page or an open dropdown list reacts to the mouse
         boolean overHelp = this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth());
-        int widgetMouseX = overHelp ? -1 : mouseX;
-        int widgetMouseY = overHelp ? -1 : mouseY;
+        Dropdown<?> openDropdown = openDropdown();
+        boolean covered = overHelp || openDropdown != null && openDropdown.isMouseOverList(mouseX, mouseY);
+        int widgetMouseX = covered ? -1 : mouseX;
+        int widgetMouseY = covered ? -1 : mouseY;
         this.helpButton.setX(helpButtonX());
         // The help button's tooltip shows instead of the map's
         this.map.setHoverInfoHidden(this.helpButton.isMouseOver(widgetMouseX, widgetMouseY));
@@ -461,13 +668,60 @@ public class RoadDebugScreen extends Screen {
             y += 10;
         }
 
-        if (this.tab.scrolls()) {
-            int formulaTop = this.formulaY.get(this.tab) - this.scroll.getOrDefault(this.tab, 0);
+        if (page.scrolls()) {
+            int formulaTop = this.formulaY.get(page) - this.scroll.getOrDefault(page, 0);
             renderFormula(guiGraphics, widgetMouseX, widgetMouseY, formulaTop, statusTop, formulas);
-            renderScrollbar(guiGraphics, statusTop);
+            renderScrollbar(guiGraphics, statusTop, widgetMouseX, widgetMouseY);
         }
-        renderSettingTooltip(guiGraphics, widgetMouseX, widgetMouseY);
+        if (openDropdown == null) {
+            renderSettingTooltip(guiGraphics, widgetMouseX, widgetMouseY);
+        }
         this.help.render(guiGraphics, this.width, this.height, mapWidth(), mouseX, mouseY);
+        if (openDropdown != null) {
+            openDropdown.renderList(guiGraphics, mouseX, mouseY);
+        }
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // Leave the world visible around the panel and map, rather than blurring it like most screens
+        guiGraphics.fill(0, 0, PANEL_WIDTH, this.height, PANEL_COLOR);
+
+        // As under vanilla's tabs, a line runs along the bottom of the tabs, except under the selected one
+        int selectedLeft = MARGIN + this.tab.ordinal() * ((PANEL_WIDTH - MARGIN * 2) / Tab.values().length);
+        int selectedRight = this.tab.ordinal() == Tab.values().length - 1
+                ? PANEL_WIDTH - MARGIN
+                : selectedLeft + (PANEL_WIDTH - MARGIN * 2) / Tab.values().length;
+        RenderSystem.enableBlend();
+        guiGraphics.blit(Screen.HEADER_SEPARATOR, 0, TABS_BOTTOM - 2, 0.0F, 0.0F, selectedLeft, 2, 32, 2);
+        guiGraphics.blit(Screen.HEADER_SEPARATOR, selectedRight, TABS_BOTTOM - 2, 0.0F, 0.0F, PANEL_WIDTH - selectedRight, 2, 32, 2);
+        RenderSystem.disableBlend();
+
+        for (Step step : this.steps) {
+            if (step.tab == this.tab) {
+                renderStep(guiGraphics, step);
+            }
+        }
+        if (this.tab == Tab.ROAD_TYPE && this.selected != null) {
+            // Underlines the sub-tabs, so the selected one's underline reads as part of a row
+            int y = this.pageTop.get(Page.ROUTING) - 5;
+            guiGraphics.fill(MARGIN, y, PANEL_WIDTH - MARGIN, y + 1, DIVIDER_COLOR);
+        }
+        if (this.tab != Tab.VIEW) {
+            guiGraphics.fill(MARGIN, this.footerTop - 3, PANEL_WIDTH - MARGIN, this.footerTop - 2, DIVIDER_COLOR);
+        }
+    }
+
+    /** Draws a step's label, after a badge with its number if it has one. */
+    private void renderStep(GuiGraphics guiGraphics, Step step) {
+        int x = MARGIN;
+        if (step.number > 0) {
+            guiGraphics.fill(x, step.y, x + 9, step.y + 9, STEP_BADGE_COLOR);
+            String number = String.valueOf(step.number);
+            guiGraphics.drawString(this.font, number, x + 5 - this.font.width(number) / 2, step.y + 1, 0xFFFFFFFF, false);
+            x += 13;
+        }
+        guiGraphics.drawString(this.font, step.text, x, step.y + 1, STEP_COLOR, false);
     }
 
     /** The message shown above the action buttons: the latest of this screen's and the server's. */
@@ -500,13 +754,19 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * The formulas explaining how a tab's settings are used, with the given settings' values filled in.
+     * The formulas explaining how a page's settings are used, with the entered values filled in. The road type pages
+     * have none without a road type to tune.
      */
-    private static List<Component> formulas(Tab tab, RoadSettings settings, ConfigModule.Advanced global) {
+    private List<Component> formulas(Page page) {
+        if (page == Page.VIEW || page.tab == Tab.ROAD_TYPE && this.selected == null) {
+            return List.of();
+        }
+        RoadSettings settings = page.tab == Tab.ROAD_TYPE ? previewSettings() : null;
+        ConfigModule.Advanced global = previewGlobal();
         ToDoubleFunction<ITunableSetting> valueOf = setting -> setting instanceof RoadSetting roadSetting
                 ? roadSetting.get(settings)
                 : ((GlobalSetting) setting).get(global);
-        return switch (tab) {
+        return switch (page) {
             case ROUTING -> List.of(
                     formulaTitle("yungsroads.formula.routing.title"),
                     formulaLine(valueOf, "yungsroads.formula.step_cost", RoadSetting.SLOPE_WEIGHT, RoadSetting.FREE_GRADE),
@@ -528,20 +788,21 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Keeps the current tab's scroll within its settings and formulas, moves its widgets to match, and shows only the
-     * widgets that fit between the tab buttons and the given bottom, so none are shown cut off.
+     * Keeps a page's scroll within its settings and formulas, moves its widgets to match, and shows only the widgets
+     * that fit between the page's top and the given bottom, so none are shown cut off.
      */
-    private void layOutScrollingTab(int bottom, List<Component> formulas) {
-        int contentBottom = this.formulaY.getOrDefault(this.tab, CONTENT_Y) + formulasHeight(formulas);
-        // Scrolling is by whole rows, so the top row always sits right below the tab buttons instead of being hidden
+    private void layOutScrollingPage(Page page, int bottom, List<Component> formulas) {
+        int top = this.pageTop.get(page);
+        int contentBottom = this.formulaY.getOrDefault(page, top) + formulasHeight(formulas);
+        // Scrolling is by whole rows, so the top row always sits right at the page's top instead of being hidden
         int max = Mth.positiveCeilDiv(Math.max(0, contentBottom - bottom), ROW_HEIGHT) * ROW_HEIGHT;
-        int offset = Mth.clamp(this.scroll.getOrDefault(this.tab, 0), 0, max);
-        this.maxScroll.put(this.tab, max);
-        this.scroll.put(this.tab, offset);
-        for (AbstractWidget widget : this.tabWidgets.getOrDefault(this.tab, List.of())) {
+        int offset = Mth.clamp(this.scroll.getOrDefault(page, 0), 0, max);
+        this.maxScroll.put(page, max);
+        this.scroll.put(page, offset);
+        for (AbstractWidget widget : this.pageWidgets.getOrDefault(page, List.of())) {
             int y = this.unscrolledY.get(widget) - offset;
             widget.setY(y);
-            widget.visible = y >= CONTENT_Y && y + widget.getHeight() <= bottom;
+            widget.visible = y >= top && y + widget.getHeight() <= bottom;
             // A hidden text box must not keep receiving key presses
             if (!widget.visible && getFocused() == widget) {
                 setFocused(null);
@@ -549,46 +810,109 @@ public class RoadDebugScreen extends Screen {
         }
     }
 
-    /** Draws a scrollbar at the panel's right edge, if the current tab's content doesn't fit. */
-    private void renderScrollbar(GuiGraphics guiGraphics, int bottom) {
-        int max = this.maxScroll.getOrDefault(this.tab, 0);
-        if (max <= 0) {
-            return;
+    /** Lays out and draws the scroll bar at the panel's right edge, shown if the shown page's content doesn't fit. */
+    private void renderScrollbar(GuiGraphics guiGraphics, int bottom, int mouseX, int mouseY) {
+        Page page = page();
+        int top = this.pageTop.get(page);
+        this.scrollBar.layOut(PANEL_WIDTH - 3, top, bottom, bottom - top, bottom - top + this.maxScroll.getOrDefault(page, 0));
+        this.scrollBar.render(guiGraphics, this.scroll.getOrDefault(page, 0), mouseX, mouseY);
+    }
+
+    @Nullable
+    private Dropdown<?> openDropdown() {
+        if (this.roadTypeDropdown != null && this.roadTypeDropdown.isOpen()) {
+            return this.roadTypeDropdown;
         }
-        int x = PANEL_WIDTH - 3;
-        int trackHeight = bottom - CONTENT_Y;
-        int thumbHeight = Math.max(8, trackHeight * trackHeight / (trackHeight + max));
-        int thumbY = CONTENT_Y + (trackHeight - thumbHeight) * this.scroll.getOrDefault(this.tab, 0) / max;
-        guiGraphics.fill(x, CONTENT_Y, x + 2, bottom, 0x40FFFFFF);
-        guiGraphics.fill(x, thumbY, x + 2, thumbY + thumbHeight, 0xC0FFFFFF);
+        if (this.variantDropdown != null && this.variantDropdown.isOpen()) {
+            return this.variantDropdown;
+        }
+        return null;
+    }
+
+    private void closeDropdowns() {
+        if (this.roadTypeDropdown != null) {
+            this.roadTypeDropdown.close();
+        }
+        if (this.variantDropdown != null) {
+            this.variantDropdown.close();
+        }
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // An open dropdown list covers whatever is under it, so it takes the click, even one outside it to close it
+        Dropdown<?> openDropdown = openDropdown();
+        if (openDropdown != null) {
+            return openDropdown.listClicked(mouseX, mouseY);
+        }
         if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
-            // The help page has nothing to click, but nothing under it may be clicked either
+            // Only the help page's scroll bar can be clicked, but nothing under the page may be clicked either
             setFocused(null);
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                this.help.mouseClicked(mouseX, mouseY);
+            }
             return true;
+        }
+        Page page = page();
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && page.scrolls()) {
+            int offset = this.scrollBar.mouseClicked(mouseX, mouseY, this.scroll.getOrDefault(page, 0));
+            if (offset >= 0) {
+                this.scroll.put(page, offset);
+                setFocused(null);
+                return true;
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        Dropdown<?> openDropdown = openDropdown();
+        if (openDropdown != null && openDropdown.listDragged(mouseY)) {
+            return true;
+        }
+        if (this.help.mouseDragged(mouseY)) {
+            return true;
+        }
+        if (this.scrollBar.isDragging()) {
+            this.scroll.put(page(), this.scrollBar.mouseDragged(mouseY));
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        Dropdown<?> openDropdown = openDropdown();
+        if (openDropdown != null) {
+            openDropdown.listReleased();
+        }
+        this.help.mouseReleased();
+        this.scrollBar.mouseReleased();
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        Dropdown<?> openDropdown = openDropdown();
+        if (openDropdown != null) {
+            return openDropdown.listScrolled(mouseX, mouseY, scrollY) || mouseX < PANEL_WIDTH;
+        }
         if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
             return this.help.mouseScrolled(scrollY);
         }
-        if (mouseX < PANEL_WIDTH && this.tab.scrolls()) {
-            int offset = this.scroll.getOrDefault(this.tab, 0) - (int) Math.round(scrollY * ROW_HEIGHT);
-            this.scroll.put(this.tab, Mth.clamp(offset, 0, this.maxScroll.getOrDefault(this.tab, 0)));
+        Page page = page();
+        if (mouseX < PANEL_WIDTH && page.scrolls()) {
+            int offset = this.scroll.getOrDefault(page, 0) - (int) Math.round(scrollY * ROW_HEIGHT);
+            this.scroll.put(page, Mth.clamp(offset, 0, this.maxScroll.getOrDefault(page, 0)));
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     /**
-     * Shows the hovered setting's description and the definitions of its terms. Hidden while dragging, so the map's
-     * preview stays visible, and while the help page is open, since it describes every setting.
+     * Shows the hovered setting's description, its baseline value, and the definitions of its terms. Hidden while
+     * dragging, so the map's preview stays visible, and while the help page is open, since it describes every setting.
      */
     private void renderSettingTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         if (this.minecraft == null || this.minecraft.mouseHandler.isLeftPressed() || this.help.isOpen()) {
@@ -602,14 +926,22 @@ public class RoadDebugScreen extends Screen {
             ITunableSetting setting = row.getKey();
             Language language = Language.getInstance();
             String details = setting.isToggle()
-                    ? "\n" + language.getOrDefault("yungsroads.screen.default").formatted(
-                            language.getOrDefault(setting.defaultValue() != 0 ? "yungsroads.screen.on" : "yungsroads.screen.off"))
+                    ? "\n" + language.getOrDefault("yungsroads.screen.default").formatted(onOff(language, setting.defaultValue()))
                     : "\n" + language.getOrDefault("yungsroads.screen.range").formatted(setting.format(setting.min()), setting.format(setting.max()))
                     + "\n" + language.getOrDefault("yungsroads.screen.default").formatted(setting.format(setting.defaultValue()));
+            if (setting instanceof RoadSetting && this.selected != null) {
+                double baseline = resetValue(setting);
+                details += "\n" + language.getOrDefault("yungsroads.screen.baseline").formatted(
+                        RoadTypeNames.name(this.selected.typeId), setting.isToggle() ? onOff(language, baseline) : setting.format(baseline));
+            }
             Component text = RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details);
             renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
             return;
         }
+    }
+
+    private static String onOff(Language language, double value) {
+        return language.getOrDefault(value != 0 ? "yungsroads.screen.on" : "yungsroads.screen.off");
     }
 
     /**
@@ -624,13 +956,14 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Explains how a tab's settings are used, with the entered values filled in. Highlighted words and values show
-     * their definitions when hovered, unless the help page is open. Formulas scrolled above the content area or that
+     * Explains how a page's settings are used, with the entered values filled in. Highlighted words and values show
+     * their definitions when hovered, unless the help page is open. Formulas scrolled above the page's top or that
      * don't fit above the status text are left out whole, so none are shown cut off.
      *
-     * @param top Where the first formula starts, which is above the content area when the tab is scrolled.
+     * @param top Where the first formula starts, which is above the page's top when the page is scrolled.
      */
     private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
+        int pageTop = this.pageTop.get(page());
         int x = MARGIN;
         int y = top;
         Style hovered = null;
@@ -639,7 +972,7 @@ public class RoadDebugScreen extends Screen {
             if (y + lines.size() * (this.font.lineHeight + 1) - 1 > bottom) {
                 break;
             }
-            if (y < CONTENT_Y) {
+            if (y < pageTop) {
                 y += lines.size() * (this.font.lineHeight + 1) + 2;
                 continue;
             }
@@ -691,14 +1024,12 @@ public class RoadDebugScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // Leave the world visible around the panel and map, rather than blurring it like most screens
-        guiGraphics.fill(0, 0, PANEL_WIDTH, this.height, PANEL_COLOR);
-    }
-
-    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Escape closes the help page before the screen
+        // Escape closes an open dropdown list or the help page before the screen
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && openDropdown() != null) {
+            closeDropdowns();
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.help.isOpen()) {
             this.help.close();
             return true;
@@ -745,23 +1076,21 @@ public class RoadDebugScreen extends Screen {
                 }));
     }
 
-    private void save() {
-        ServerLevel level = RoadDebugClient.serverLevel();
-        if (level != null) {
-            level.getServer().execute(() -> RoadTuning.save(level));
-        }
-    }
-
-    /**
-     * Resets the road types to the settings the level loaded with, and the global settings to their defaults.
-     */
-    private void reset() {
-        ServerLevel level = RoadDebugClient.serverLevel();
-        if (level == null) {
+    /** Resets the shown variant's settings to the road type as the level loaded it. */
+    private void resetVariant() {
+        if (this.selected == null || this.levelTypes == null) {
             return;
         }
-        this.levelTypes = RoadTuning.roadTypesOf(level);
-        loadTypes(this.levelTypes.loaded());
+        RoadSettings baseline = baselineSettings(this.selected);
+        Map<RoadSetting, String> text = this.pendingTypeText.get(this.selected);
+        for (RoadSetting setting : RoadSetting.values()) {
+            text.put(setting, setting.format(setting.get(baseline)));
+        }
+        rebuildWidgets();
+    }
+
+    /** Resets the global settings, including whether roads are placed, to their defaults. */
+    private void resetGlobal() {
         ConfigModule.Advanced defaults = new ConfigModule.Advanced();
         for (GlobalSetting setting : GlobalSetting.values()) {
             this.pendingGlobalText.put(setting, setting.format(setting.get(defaults)));
@@ -772,19 +1101,32 @@ public class RoadDebugScreen extends Screen {
         rebuildWidgets();
     }
 
-    /** Copies the selected road type, with any unapplied changes, to the clipboard as a datapack file. */
+    /** Copies the shown road type, as applied, to the clipboard as a datapack file. */
     private void copyJson() {
         ServerLevel level = RoadDebugClient.serverLevel();
-        if (this.selected == null) {
-            showLocalStatus(Component.translatable("yungsroads.screen.no_network"));
+        if (level == null || this.selected == null || this.levelTypes == null || this.minecraft == null) {
             return;
         }
-        SortedMap<ResourceLocation, RoadType> types = parseTypes();
-        if (level == null || types == null || this.minecraft == null) {
-            return;
-        }
-        this.minecraft.keyboardHandler.setClipboard(RoadTypeExport.toJson(types.get(this.selected.typeId), level.registryAccess()));
+        RoadType type = this.levelTypes.current().get(this.selected.typeId);
+        this.minecraft.keyboardHandler.setClipboard(RoadTypeExport.toJson(type, level.registryAccess()));
         showLocalStatus(Component.translatable("yungsroads.screen.copied", this.selected.typeId.toString()));
+    }
+
+    /** Saves the shown road type, as applied, to the world's tuned road type datapack. */
+    private void saveRoadType() {
+        ServerLevel level = RoadDebugClient.serverLevel();
+        if (level != null && this.selected != null) {
+            ResourceLocation typeId = this.selected.typeId;
+            level.getServer().execute(() -> RoadTuning.saveRoadType(level, typeId));
+        }
+    }
+
+    /** Saves the applied global settings to the config file. */
+    private void saveGlobal() {
+        ServerLevel level = RoadDebugClient.serverLevel();
+        if (level != null) {
+            level.getServer().execute(RoadTuning::saveGlobal);
+        }
     }
 
     private void loadPendingFromLevel(ServerLevel level) {
@@ -819,7 +1161,7 @@ public class RoadDebugScreen extends Screen {
         this.selected = usable.contains(preferred) ? preferred : usable.stream().findFirst().orElse(null);
     }
 
-    /** The road type variants this dimension's roads can get, in the picker's order. */
+    /** The road type variants this dimension's roads can get, in the pickers' order. */
     private List<VariantKey> usableKeys() {
         return this.pendingTypeText.keySet().stream()
                 .filter(key -> this.levelTypes != null && this.levelTypes.isUsable(key.typeId))
@@ -840,7 +1182,77 @@ public class RoadDebugScreen extends Screen {
         }
     }
 
-    /** The name of a road type variant, as shown in the picker and on the map. */
+    /** The variant's settings as the level loaded them, which Reset restores. */
+    private RoadSettings baselineSettings(VariantKey key) {
+        return this.levelTypes.loaded().get(key.typeId).variants().get(key.variant).settings();
+    }
+
+    /** The value Reset restores a setting to: the shown variant's baseline for road type settings, or the default. */
+    private double resetValue(ITunableSetting setting) {
+        return setting instanceof RoadSetting roadSetting && this.selected != null
+                ? roadSetting.get(baselineSettings(this.selected))
+                : setting.defaultValue();
+    }
+
+    /** Whether the entered values are all valid and the same as the given settings, as each setting shows them. */
+    private boolean matches(Map<RoadSetting, String> text, RoadSettings settings) {
+        for (RoadSetting setting : RoadSetting.values()) {
+            Double value = parse(setting, text.get(setting));
+            if (value == null || !setting.format(value).equals(setting.format(setting.get(settings)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Whether the variant's entered values differ from the road type as the level loaded it. */
+    private boolean isEdited(VariantKey key) {
+        return this.levelTypes != null && !matches(this.pendingTypeText.get(key), baselineSettings(key));
+    }
+
+    /** Whether any of the road type's variants differ from the road type as the level loaded it. */
+    private boolean isTypeEdited(ResourceLocation typeId) {
+        RoadType type = this.baseTypes.get(typeId);
+        for (int variant = 0; variant < type.variants().size(); variant++) {
+            if (isEdited(new VariantKey(typeId, variant))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether any of the road type's variants have entered values that haven't been applied. */
+    private boolean isUnapplied(ResourceLocation typeId) {
+        RoadType applied = this.levelTypes == null ? null : this.levelTypes.current().get(typeId);
+        if (applied == null) {
+            return false;
+        }
+        for (int variant = 0; variant < applied.variants().size(); variant++) {
+            Map<RoadSetting, String> text = this.pendingTypeText.get(new VariantKey(typeId, variant));
+            if (text != null && !matches(text, applied.variants().get(variant).settings())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether any global setting, or whether roads are placed, has been changed without being applied. */
+    private boolean isGlobalUnapplied() {
+        for (GlobalSetting setting : GlobalSetting.values()) {
+            Double value = parse(setting, this.pendingGlobalText.get(setting));
+            if (value == null || !setting.format(value).equals(setting.format(setting.get(YungsRoadsCommon.CONFIG.advanced)))) {
+                return true;
+            }
+        }
+        return this.pendingDebug.placeRoads != YungsRoadsCommon.CONFIG.debug.placeRoads;
+    }
+
+    /** Whether anything on the road type or global tabs has been changed without being applied. */
+    private boolean hasUnappliedChanges() {
+        return isGlobalUnapplied() || this.baseTypes.keySet().stream().anyMatch(this::isUnapplied);
+    }
+
+    /** The name of a road type variant, as shown on the map and in messages. */
     private Component variantName(VariantKey key) {
         RoadType type = this.baseTypes.get(key.typeId);
         return RoadTypeNames.name(key.typeId, key.variant, type == null ? 1 : type.variants().size());

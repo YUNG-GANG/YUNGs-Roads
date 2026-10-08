@@ -24,10 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Exports road types edited on the tuning screen as datapack files, so they can be used in other worlds and modpacks.
@@ -42,32 +39,18 @@ public final class RoadTypeExport {
     }
 
     /**
-     * Writes each road type in use that differs from the one the level loaded with to the world's tuned road type
-     * datapack, with a README describing the format and every setting. A road type's file replaces any saved before.
-     * Vanilla enables new datapacks in a world's datapacks folder when the world loads, so the road types are used from
-     * the next time it loads.
-     *
-     * @return The ids of the road types written. If none were, and the datapack doesn't exist yet, it isn't created.
+     * Writes a road type to the world's tuned road type datapack, with a README describing the format and every setting.
+     * The file replaces any saved before for the same id, and overrides the road type of that id in this world. Vanilla
+     * enables new datapacks in a world's datapacks folder when the world loads, so the road type is used from the next
+     * time it loads.
      */
-    public static List<ResourceLocation> writeWorldDatapack(MinecraftServer server, RoadTypes roadTypes) throws IOException {
+    public static void writeWorldDatapack(MinecraftServer server, ResourceLocation id, RoadType roadType) throws IOException {
         Path pack = server.getWorldPath(LevelResource.DATAPACK_DIR).resolve(DATAPACK_NAME);
-        List<ResourceLocation> written = new ArrayList<>();
-        for (Map.Entry<ResourceLocation, RoadType> entry : roadTypes.current().entrySet()) {
-            RoadType loaded = roadTypes.loaded().get(entry.getKey());
-            if (loaded != null && entry.getValue().sameAs(loaded)) {
-                continue;
-            }
-            ResourceLocation id = entry.getKey();
-            Path file = pack.resolve("data").resolve(id.getNamespace())
-                    .resolve(Registries.elementsDirPath(RoadTypes.REGISTRY_KEY))
-                    .resolve(id.getPath() + ".json");
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, toJson(entry.getValue(), server.registryAccess()), StandardCharsets.UTF_8);
-            written.add(id);
-        }
-        if (written.isEmpty() && !Files.exists(pack)) {
-            return written;
-        }
+        Path file = pack.resolve("data").resolve(id.getNamespace())
+                .resolve(Registries.elementsDirPath(RoadTypes.REGISTRY_KEY))
+                .resolve(id.getPath() + ".json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, toJson(roadType, server.registryAccess()), StandardCharsets.UTF_8);
 
         JsonObject packInfo = new JsonObject();
         packInfo.addProperty("pack_format", SharedConstants.getCurrentVersion().getPackVersion(PackType.SERVER_DATA));
@@ -76,7 +59,6 @@ public final class RoadTypeExport {
         mcmeta.add("pack", packInfo);
         Files.writeString(pack.resolve("pack.mcmeta"), GSON.toJson(mcmeta) + "\n", StandardCharsets.UTF_8);
         Files.writeString(pack.resolve("README.md"), readme(), StandardCharsets.UTF_8);
-        return written;
     }
 
     /** The road type as the contents of its datapack file. */
