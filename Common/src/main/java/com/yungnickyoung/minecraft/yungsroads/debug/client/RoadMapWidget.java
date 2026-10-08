@@ -4,17 +4,13 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadNetwork;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadType;
-import com.yungnickyoung.minecraft.yungsroads.world.config.RoadTypes;
 import com.yungnickyoung.minecraft.yungsroads.world.road.Road;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.IStructureRegionCacheProvider;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegion;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionCache;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionGenerator;
 import com.yungnickyoung.minecraft.yungsroads.world.structureregion.StructureRegionPos;
-import com.yungnickyoung.minecraft.yungsroads.world.terrain.TerrainCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,16 +33,17 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
  * A top-down map of the roads and terrain around the player. Drag to pan, scroll to zoom, and right-click to teleport.
+ * <p>
+ * The spot under the cursor, or a spot pinned by clicking, is inspected: the inspect page describes it, with the road
+ * nearest it, which the map highlights. A line in the corner gives the hovered spot's position and height at a glance.
  */
 public class RoadMapWidget extends AbstractWidget {
     private static final double MIN_BLOCKS_PER_PIXEL = 0.25;
@@ -55,8 +52,10 @@ public class RoadMapWidget extends AbstractWidget {
     /** Terrain isn't sampled when tiles would be smaller than this on screen, since there would be too many. */
     private static final double MIN_TILE_PIXELS = 24;
 
-    /** How close the cursor must be to a node to show its info, in pixels. */
+    /** How close an inspected spot must be to a node to inspect its road, in pixels. Also how close a click unpins. */
     private static final double HOVER_DISTANCE = 6;
+    /** How far the mouse can move while pressed and still count as a click rather than a drag, in pixels. */
+    private static final double CLICK_DISTANCE = 3;
 
     private static final int BACKGROUND_COLOR = 0xFF101418;
     private static final int REGION_BORDER_COLOR = 0xA0FFFFFF;
@@ -67,7 +66,8 @@ public class RoadMapWidget extends AbstractWidget {
     private static final int PLAYER_COLOR = 0xFFFF2020;
     private static final int LABEL_BACKGROUND_COLOR = 0xA0000000;
     private static final int NOTE_COLOR = 0xFFC0C0C0;
-    /** The widest the road network's tooltip and note get before wrapping, in pixels. Fits most file paths. */
+    private static final int INSPECTED_COLOR = 0xFFFFD030;
+    /** The widest the no road network note gets before wrapping, in pixels. Fits most file paths. */
     private static final int NETWORK_TEXT_WIDTH = 340;
 
     /**
@@ -78,28 +78,55 @@ public class RoadMapWidget extends AbstractWidget {
     public record Preview(Component typeName, RoadSettings settings) {
     }
 
+    /**
+     * A spot on the map being inspected, with the road nearest it if any is close.
+     *
+     * @param pinned Whether the spot was pinned by clicking, rather than being under the cursor.
+     * @param node   The road's node nearest the spot, or null if no road is close.
+     */
+    public record Inspection(int x, int z, boolean pinned, @Nullable Road road, @Nullable Road.DebugNode node) {
+    }
+
+    private record Spot(int x, int z) {
+    }
+
     /** The road type to preview, or null if there's none, as in a dimension without a road network. */
     private final Supplier<Preview> preview;
-
-    /** The right and top edges of the road network label in the bottom left corner, as last drawn. */
-    private int networkLabelRight, networkLabelTop;
-
-    /**
-     * The road type each road would be chosen now, with the votes that chose it, for explaining a hovered road's type.
-     * Found when a road is first hovered.
-     */
-    private final Map<Road, RoadTypes.Choice> roadTypeChoices = new WeakHashMap<>();
+    /** Called when a spot is pinned, so it can be shown. */
+    private final Runnable onPin;
 
     private double centerX, centerZ;
     private double blocksPerPixel = 4;
     private boolean followPlayer = true;
     private boolean dragging = false;
-    /** Whether the hover info is hidden, such as while a widget drawn over the map is hovered. */
+    /** Where the mouse was pressed, and whether it has since moved far enough to be a drag rather than a click. */
+    private double pressX, pressY;
+    private boolean moved = false;
+    /** Whether hovering is ignored, such as while a widget drawn over the map is hovered. */
     private boolean hoverInfoHidden = false;
 
-    public RoadMapWidget(int x, int y, int width, int height, Supplier<Preview> preview) {
+    @Nullable
+    private Spot pinned;
+    /** The spot under the cursor when the map was last drawn, or null if the cursor wasn't over the map. */
+    @Nullable
+    private Spot hovered;
+    @Nullable
+    private Inspection inspection;
+
+    public RoadMapWidget(int x, int y, int width, int height, Supplier<Preview> preview, Runnable onPin) {
         super(x, y, width, height, Component.translatable("yungsroads.screen.title"));
         this.preview = preview;
+        this.onPin = onPin;
+    }
+
+    /** The pinned spot, or else the spot under the cursor, as of when the map was last drawn. Null if neither. */
+    @Nullable
+    public Inspection inspection() {
+        return this.inspection;
+    }
+
+    public void unpin() {
+        this.pinned = null;
     }
 
     @Override
@@ -121,6 +148,11 @@ public class RoadMapWidget extends AbstractWidget {
 
         boolean terrainShown = renderTerrain(guiGraphics, level);
         List<StructureRegion> regions = visibleRegions(level);
+        this.hovered = isMouseOver(mouseX, mouseY) && !this.dragging && !this.hoverInfoHidden
+                ? new Spot(Mth.floor(toWorldX(mouseX)), Mth.floor(toWorldZ(mouseY)))
+                : null;
+        this.inspection = inspect(this.pinned != null ? this.pinned : this.hovered, this.pinned != null, regions);
+        Road inspectedRoad = this.inspection == null ? null : this.inspection.road();
         if (RoadDebugClient.showRegionBorders) {
             renderRegionBorders(guiGraphics);
         }
@@ -134,6 +166,9 @@ public class RoadMapWidget extends AbstractWidget {
         }
         for (StructureRegion region : regions) {
             for (Road road : region.getRoads()) {
+                if (road == inspectedRoad) {
+                    renderRoute(guiGraphics, road, INSPECTED_COLOR, 6f, false);
+                }
                 renderRoute(guiGraphics, road, RoadOverlayRenderer.roadColor(road), 2f, true);
                 if (RoadDebugClient.showNodes) {
                     for (Road.DebugNode node : road.nodes) {
@@ -150,6 +185,9 @@ public class RoadMapWidget extends AbstractWidget {
             }
         }
         renderPlayer(guiGraphics, minecraft);
+        if (this.pinned != null) {
+            renderPin(guiGraphics, toScreenX(this.pinned.x + 0.5), toScreenY(this.pinned.z + 0.5));
+        }
         guiGraphics.flush();
 
         Font font = minecraft.font;
@@ -164,29 +202,74 @@ public class RoadMapWidget extends AbstractWidget {
         if (network.isEmpty()) {
             renderNoNetworkNote(guiGraphics, font, level);
         }
-        guiGraphics.disableScissor();
-
-        if (isMouseOver(mouseX, mouseY) && !this.dragging && !this.hoverInfoHidden) {
-            if (mouseX < this.networkLabelRight && mouseY >= this.networkLabelTop) {
-                renderNetworkInfo(guiGraphics, font, level, network.orElse(null), mouseX, mouseY);
-            } else {
-                renderHoverInfo(guiGraphics, font, level, regions, mouseX, mouseY);
-            }
+        if (this.hovered != null) {
+            renderReadout(guiGraphics, font, level, this.hovered);
         }
+        guiGraphics.disableScissor();
     }
 
     /**
-     * Names the dimension's road network in the bottom left corner, above the scale, clear of the help button in the
-     * top right. Hovering it shows the network's details.
+     * Gives the hovered spot's position and height in the bottom right corner, so the map tells something at a glance
+     * while the inspect page is closed.
      */
+    private void renderReadout(GuiGraphics guiGraphics, Font font, ServerLevel level, Spot spot) {
+        Component readout = Component.translatable("yungsroads.map.coordinates", spot.x, spot.z);
+        Double height = RoadDebugClient.terrainTiles(level, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance).heightAt(spot.x, spot.z);
+        if (height != null) {
+            readout = height.isNaN()
+                    ? Component.translatable("yungsroads.map.readout_ocean", readout)
+                    : Component.translatable("yungsroads.map.readout", readout, String.format("%.0f", height));
+        }
+        int x = getRight() - 4 - font.width(readout);
+        int y = getBottom() - 12;
+        guiGraphics.fill(x - 2, y - 2, getRight() - 2, y + font.lineHeight + 1, LABEL_BACKGROUND_COLOR);
+        guiGraphics.drawString(font, readout, x, y, 0xFFFFFFFF);
+    }
+
+    /** Marks the pinned spot with a ring, so the spot itself stays visible. */
+    private static void renderPin(GuiGraphics guiGraphics, float x, float y) {
+        int ix = Math.round(x);
+        int iy = Math.round(y);
+        guiGraphics.fill(ix - 5, iy - 5, ix + 5, iy + 5, 0xFF000000);
+        guiGraphics.fill(ix - 4, iy - 4, ix + 4, iy + 4, INSPECTED_COLOR);
+        guiGraphics.fill(ix - 2, iy - 2, ix + 2, iy + 2, 0xFF000000);
+    }
+
+    /** The spot to inspect, with the road nearest it, or null if there's no spot. */
+    @Nullable
+    private Inspection inspect(@Nullable Spot spot, boolean pinned, List<StructureRegion> regions) {
+        if (spot == null) {
+            return null;
+        }
+        float spotX = toScreenX(spot.x + 0.5);
+        float spotY = toScreenY(spot.z + 0.5);
+        Road.DebugNode nearestNode = null;
+        Road nearestRoad = null;
+        double closestDistSq = HOVER_DISTANCE * HOVER_DISTANCE;
+        for (StructureRegion region : regions) {
+            for (Road road : region.getRoads()) {
+                for (Road.DebugNode node : road.nodes) {
+                    double dx = toScreenX(node.jitteredPos.getX()) - spotX;
+                    double dy = toScreenY(node.jitteredPos.getZ()) - spotY;
+                    double distSq = dx * dx + dy * dy;
+                    if (distSq < closestDistSq) {
+                        closestDistSq = distSq;
+                        nearestNode = node;
+                        nearestRoad = road;
+                    }
+                }
+            }
+        }
+        return new Inspection(spot.x, spot.z, pinned, nearestRoad, nearestNode);
+    }
+
+    /** Names the dimension's road network in the bottom left corner, above the scale. The inspect page details it. */
     private void renderNetworkLabel(GuiGraphics guiGraphics, Font font, ServerLevel level, boolean hasNetwork) {
         Component label = Component.translatable(hasNetwork ? "yungsroads.map.network" : "yungsroads.map.no_network",
                 level.dimension().location().toString());
         int x = getX() + 4;
         int y = getBottom() - 26;
-        this.networkLabelRight = x + font.width(label) + 2;
-        this.networkLabelTop = y - 2;
-        guiGraphics.fill(x - 2, this.networkLabelTop, this.networkLabelRight, y + font.lineHeight + 1, LABEL_BACKGROUND_COLOR);
+        guiGraphics.fill(x - 2, y - 2, x + font.width(label) + 2, y + font.lineHeight + 1, LABEL_BACKGROUND_COLOR);
         guiGraphics.drawString(font, label, x, y, 0xFFFFFFFF);
     }
 
@@ -209,46 +292,21 @@ public class RoadMapWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * Describes the dimension's road network: the file it's from, the structures its roads connect, and the road types
-     * they can get. Read from the network as the level loaded it, since networks only load with the world.
-     */
-    private void renderNetworkInfo(GuiGraphics guiGraphics, Font font, ServerLevel level, @Nullable RoadNetwork network, int mouseX, int mouseY) {
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("yungsroads.map.network.title", level.dimension().location().toString()));
-        lines.add(Component.translatable("yungsroads.map.network.file", networkFile(level)));
-        if (network != null) {
-            lines.add(Component.translatable("yungsroads.map.network.structures",
-                    describe(network.structures(), holder -> holder.unwrapKey().map(key -> key.location().toString()).orElse("?"))));
-            lines.add(Component.translatable("yungsroads.map.network.road_types",
-                    describe(network.roadTypes(), holder -> holder.unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?"))));
-            lines.add(Component.translatable("yungsroads.map.network.default",
-                    network.defaultRoadType().unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?")));
-        }
-        lines.add(Component.translatable("yungsroads.map.network.reload").withStyle(style -> style.withColor(0xA0A0A0)));
-
-        List<FormattedCharSequence> wrapped = new ArrayList<>();
-        for (Component line : lines) {
-            wrapped.addAll(font.split(line, NETWORK_TEXT_WIDTH));
-        }
-        guiGraphics.renderTooltip(font, wrapped, mouseX, mouseY);
-    }
-
     /** The file a dimension's road network is read from, relative to a datapack's root. */
-    private static String networkFile(ServerLevel level) {
+    static String networkFile(ServerLevel level) {
         ResourceLocation id = level.dimension().location();
         return "data/" + id.getNamespace() + "/yungsroads/road_network/" + id.getPath() + ".json";
     }
 
     /** A set's members, after the tag they come from if it's a tag. */
-    private static <T> String describe(HolderSet<T> set, Function<Holder<T>, String> name) {
+    static <T> String describe(HolderSet<T> set, Function<Holder<T>, String> name) {
         String members = set.size() == 0
                 ? Component.translatable("yungsroads.map.network.none").getString()
                 : set.stream().map(name).collect(Collectors.joining(", "));
         return set.unwrapKey().map(tag -> "#" + tag.location() + ": " + members).orElse(members);
     }
 
-    private static StructureRegionGenerator generatorOf(ServerLevel level) {
+    static StructureRegionGenerator generatorOf(ServerLevel level) {
         return ((IStructureRegionCacheProvider) level).getStructureRegionCache().getStructureRegionGenerator();
     }
 
@@ -350,89 +408,10 @@ public class RoadMapWidget extends AbstractWidget {
         fillAround(guiGraphics, x, y, 3, PLAYER_COLOR);
     }
 
-    private void renderHoverInfo(GuiGraphics guiGraphics, Font font, ServerLevel level, List<StructureRegion> regions, int mouseX, int mouseY) {
-        int x = Mth.floor(toWorldX(mouseX));
-        int z = Mth.floor(toWorldZ(mouseY));
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("yungsroads.map.coordinates", x, z));
-
-        TerrainTiles tiles = RoadDebugClient.terrainTiles(level, YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
-        Double height = tiles.heightAt(x, z);
-        Double grade = tiles.gradeAt(x, z);
-        Preview preview = this.preview.get();
-        if (height != null && grade != null && preview != null) {
-            if (height.isNaN()) {
-                lines.add(Component.translatable("yungsroads.map.ocean"));
-            } else {
-                RoadSettings settings = preview.settings();
-                lines.add(Component.translatable(tiles.isWater(height) ? "yungsroads.map.height_water" : "yungsroads.map.height",
-                        String.format("%.1f", height), String.format("%.2f", grade)));
-                lines.add(Component.translatable("yungsroads.map.costs_for", preview.typeName()).withStyle(style -> style.withColor(0xA0A0A0)));
-                if (tiles.isWater(height)) {
-                    lines.add(Component.translatable("yungsroads.map.bridge_only",
-                            RoadSetting.MAX_BRIDGE_LENGTH.format(settings.maxBridgeLength)));
-                    lines.add(Component.translatable("yungsroads.map.bridge_cost",
-                            RoadSetting.WATER_WEIGHT.format(settings.waterWeight), RoadSetting.WATER_WEIGHT.format(1 + settings.waterWeight)));
-                } else if (grade > settings.maxGrade) {
-                    lines.add(Component.translatable("yungsroads.map.too_steep", RoadSetting.MAX_GRADE.format(settings.maxGrade)));
-                } else {
-                    lines.add(Component.translatable("yungsroads.map.step_cost",
-                            RoadSetting.SLOPE_WEIGHT.format(settings.slopeWeight), String.format("%.2f", grade),
-                            RoadSetting.FREE_GRADE.format(settings.freeGrade), String.format("%.1f", tiles.stepCost(grade, settings))));
-                }
-            }
-        }
-
-        Road.DebugNode hoveredNode = null;
-        Road hoveredRoad = null;
-        double closestDistSq = HOVER_DISTANCE * HOVER_DISTANCE;
-        for (StructureRegion region : regions) {
-            for (Road road : region.getRoads()) {
-                for (Road.DebugNode node : road.nodes) {
-                    double dx = toScreenX(node.jitteredPos.getX()) - mouseX;
-                    double dy = toScreenY(node.jitteredPos.getZ()) - mouseY;
-                    double distSq = dx * dx + dy * dy;
-                    if (distSq < closestDistSq) {
-                        closestDistSq = distSq;
-                        hoveredNode = node;
-                        hoveredRoad = road;
-                    }
-                }
-            }
-        }
-        if (hoveredNode != null) {
-            lines.add(Component.translatable("yungsroads.map.node", String.format("%.0f", hoveredNode.g),
-                    String.format("%.0f", hoveredNode.h), String.format("%.0f", hoveredNode.g + hoveredNode.h)));
-            lines.add(Component.translatable("yungsroads.map.road",
-                    hoveredRoad.getStartPos().toShortString(), hoveredRoad.getEndPos().toShortString(), hoveredRoad.nodes.size()));
-            addRoadTypeLines(lines, level, hoveredRoad);
-        }
-        lines.add(Component.translatable("yungsroads.map.teleport").withStyle(style -> style.withColor(0xA0A0A0)));
-        guiGraphics.renderComponentTooltip(font, lines, mouseX, mouseY);
-    }
-
     /**
-     * Describes the road's type and variant, and the biome votes that choose its type, as counted with the road types
-     * in use now.
+     * Loaded regions with roads that could be on the map. Doesn't generate any, but starts loading those already saved,
+     * which are shown once they've loaded.
      */
-    private void addRoadTypeLines(List<Component> lines, ServerLevel level, Road road) {
-        RoadTypes roadTypes = RoadTuning.roadTypesOf(level);
-        RoadType type = roadTypes.current().get(road.roadType);
-        int variantCount = type == null ? 1 : type.variants().size();
-        lines.add(Component.translatable("yungsroads.map.road_type", RoadTypeNames.name(road.roadType, road.variant, variantCount)));
-
-        RoadTypes.Choice choice = this.roadTypeChoices.computeIfAbsent(road, r -> {
-            StructureRegionGenerator generator = generatorOf(level);
-            TerrainCache terrain = new TerrainCache(generator.getTerrainSampler(), YungsRoadsCommon.CONFIG.advanced.nodeStepDistance);
-            return generator.chooseRoadType(r.getStartPos(), r.getEndPos(), terrain);
-        });
-        String votes = choice.votes().stream()
-                .map(vote -> RoadTypeNames.name(vote.typeId()) + " " + vote.votes())
-                .collect(Collectors.joining(", "));
-        lines.add(Component.translatable("yungsroads.map.votes", votes));
-    }
-
-    /** Loaded regions with roads that could be on the map. Doesn't load or generate any. */
     private List<StructureRegion> visibleRegions(ServerLevel level) {
         StructureRegionCache cache = ((IStructureRegionCacheProvider) level).getStructureRegionCache();
         List<StructureRegion> regions = new ArrayList<>();
@@ -441,6 +420,8 @@ public class RoadMapWidget extends AbstractWidget {
             StructureRegion region = cache.getRegionIfLoaded(regionKey);
             if (region != null) {
                 regions.add(region);
+            } else {
+                cache.loadSavedRegionAsync(regionKey);
             }
         }
         return regions;
@@ -453,6 +434,9 @@ public class RoadMapWidget extends AbstractWidget {
         }
         if (button == 0) {
             this.dragging = true;
+            this.pressX = mouseX;
+            this.pressY = mouseY;
+            this.moved = false;
             return true;
         }
         if (button == 1) {
@@ -466,15 +450,35 @@ public class RoadMapWidget extends AbstractWidget {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0 && this.dragging) {
             this.dragging = false;
+            if (!this.moved) {
+                pinOrUnpin(mouseX, mouseY);
+            }
             return true;
         }
         return false;
+    }
+
+    /** Pins the clicked spot, or unpins it if the pin was clicked. */
+    private void pinOrUnpin(double mouseX, double mouseY) {
+        if (this.pinned != null) {
+            double dx = toScreenX(this.pinned.x + 0.5) - mouseX;
+            double dy = toScreenY(this.pinned.z + 0.5) - mouseY;
+            if (dx * dx + dy * dy <= HOVER_DISTANCE * HOVER_DISTANCE) {
+                this.pinned = null;
+                return;
+            }
+        }
+        this.pinned = new Spot(Mth.floor(toWorldX(mouseX)), Mth.floor(toWorldZ(mouseY)));
+        this.onPin.run();
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (!this.dragging) {
             return false;
+        }
+        if (!this.moved && Math.hypot(mouseX - this.pressX, mouseY - this.pressY) > CLICK_DISTANCE) {
+            this.moved = true;
         }
         this.followPlayer = false;
         this.centerX -= dragX * this.blocksPerPixel;
@@ -498,7 +502,7 @@ public class RoadMapWidget extends AbstractWidget {
         return true;
     }
 
-    /** Hides the hover info, such as while a widget drawn over the map is hovered, so their tooltips don't overlap. */
+    /** Ignores the cursor, such as while a widget drawn over the map is hovered, so the map doesn't inspect under it. */
     public void setHoverInfoHidden(boolean hidden) {
         this.hoverInfoHidden = hidden;
     }

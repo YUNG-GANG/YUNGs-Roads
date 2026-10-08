@@ -7,6 +7,7 @@ import com.yungnickyoung.minecraft.yungsroads.world.road.RoadCenter;
 import com.yungnickyoung.minecraft.yungsroads.world.road.generator.LatticePathfinder;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongList;
+import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,6 +40,9 @@ public class StructureRegionCache {
      * blocking unrelated regions.
      */
     private final ConcurrentHashMap<Long, CompletableFuture<StructureRegion>> cache = new ConcurrentHashMap<>();
+
+    /** The regions {@link #loadSavedRegionAsync} has looked for, so it doesn't check the disk again every frame. */
+    private final Set<Long> savedLoadsRequested = ConcurrentHashMap.newKeySet();
 
     public StructureRegionCache(ServerLevel level, Path dimensionPath) {
         this.structureRegionGenerator = new StructureRegionGenerator(level);
@@ -82,6 +87,25 @@ public class StructureRegionCache {
     public StructureRegion getRegionIfLoaded(long regionKey) {
         CompletableFuture<StructureRegion> future = this.cache.get(regionKey);
         return future != null && future.isDone() && !future.isCompletedExceptionally() ? future.join() : null;
+    }
+
+    /**
+     * Loads the region in the background if it's saved but not loaded yet, for debug displays that show roads without
+     * generating any. Regions are only loaded when a chunk near them generates, so after a world loads, roads in chunks
+     * that generated earlier wouldn't be shown otherwise. Each region is only looked for once.
+     */
+    public void loadSavedRegionAsync(long regionKey) {
+        if (this.cache.containsKey(regionKey) || !this.savedLoadsRequested.add(regionKey)) {
+            return;
+        }
+        if (!Files.exists(this.savePath.resolve(new StructureRegionPos(regionKey).getFileName()))) {
+            return;
+        }
+        CompletableFuture.runAsync(() -> getRegion(regionKey), Util.backgroundExecutor())
+                .exceptionally(e -> {
+                    YungsRoadsCommon.LOGGER.warn("Unable to load structure region {}", new StructureRegionPos(regionKey), e);
+                    return null;
+                });
     }
 
     /**

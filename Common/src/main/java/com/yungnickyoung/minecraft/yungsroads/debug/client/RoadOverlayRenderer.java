@@ -219,10 +219,12 @@ public final class RoadOverlayRenderer {
         List<StructureRegion> regions = new ArrayList<>();
         for (long regionKey : StructureRegionCache.regionKeysNearArea(
                 (int) cameraPos.x - range, (int) cameraPos.z - range, (int) cameraPos.x + range, (int) cameraPos.z + range)) {
-            // Don't trigger generation from the render thread
+            // Don't trigger generation from the render thread, but show roads already saved once they've loaded
             StructureRegion region = cache.getRegionIfLoaded(regionKey);
             if (region != null) {
                 regions.add(region);
+            } else {
+                cache.loadSavedRegionAsync(regionKey);
             }
         }
         return regions;

@@ -78,7 +78,10 @@ public class RoadDebugScreen extends Screen {
     private static final int ROW_HEIGHT = 18;
     private static final int CHECKBOX_ROW_HEIGHT = 20;
     private static final int VALUE_BOX_WIDTH = 40;
-    private static final int HELP_BUTTON_SIZE = 16;
+    private static final int TOOLTIP_WIDTH = 220;
+    private static final int DRAWER_TAB_GAP = 4;
+    /** The least space kept between a tooltip and the screen's top and bottom. */
+    private static final int TOOLTIP_MARGIN = 4;
     private static final int PANEL_COLOR = 0xE0101010;
     private static final int DIVIDER_COLOR = 0xFF505050;
     private static final int NOTE_COLOR = 0xFFA0A0A0;
@@ -103,17 +106,17 @@ public class RoadDebugScreen extends Screen {
 
     /** A page of settings or options. The road type tab has a page for each group of settings, the others one each. */
     private enum Page {
-        ROUTING(Tab.ROAD_TYPE, "routing", HelpDrawer.Section.ROUTING),
-        SHAPING(Tab.ROAD_TYPE, "shaping", HelpDrawer.Section.SHAPING),
-        GLOBAL(Tab.GLOBAL, "global", HelpDrawer.Section.GLOBAL),
-        VIEW(Tab.VIEW, "view", HelpDrawer.Section.VIEW);
+        ROUTING(Tab.ROAD_TYPE, "routing", HelpPage.Section.ROUTING),
+        SHAPING(Tab.ROAD_TYPE, "shaping", HelpPage.Section.SHAPING),
+        GLOBAL(Tab.GLOBAL, "global", HelpPage.Section.GLOBAL),
+        VIEW(Tab.VIEW, "view", HelpPage.Section.VIEW);
 
         final Tab tab;
         final Component displayName;
         /** The help page's section about the page. */
-        final HelpDrawer.Section helpSection;
+        final HelpPage.Section helpSection;
 
-        Page(Tab tab, String id, HelpDrawer.Section helpSection) {
+        Page(Tab tab, String id, HelpPage.Section helpSection) {
             this.tab = tab;
             this.displayName = Component.translatable("yungsroads.screen.tab." + id);
             this.helpSection = helpSection;
@@ -204,7 +207,9 @@ public class RoadDebugScreen extends Screen {
     /** The buttons that export the applied road type, which are disabled while it has unapplied changes. */
     private final List<Button> exportButtons = new ArrayList<>();
     private Button saveConfigButton;
-    private Button helpButton;
+    /** The tabs that open the side drawer's pages, stacked at its left edge. */
+    private DrawerTab helpTab;
+    private DrawerTab inspectTab;
     @Nullable
     private Dropdown<ResourceLocation> roadTypeDropdown;
     @Nullable
@@ -215,8 +220,11 @@ public class RoadDebugScreen extends Screen {
     @Nullable
     private Boolean saveConfigBlocked;
     /** Kept across rebuilds, so the map's position and zoom aren't reset. */
-    private final RoadMapWidget map = new RoadMapWidget(0, 0, 0, 0, this::mapPreview);
-    private HelpDrawer help;
+    private final RoadMapWidget map = new RoadMapWidget(0, 0, 0, 0, this::mapPreview, this::showInspectPage);
+    /** The drawer over the map's right side, showing the help page or the inspect page. Kept across rebuilds. */
+    private SideDrawer drawer;
+    private HelpPage helpPage;
+    private InspectPage inspectPage;
 
     /** A message about something done on this screen, shown until the server's status next changes. */
     @Nullable
@@ -236,8 +244,10 @@ public class RoadDebugScreen extends Screen {
 
     @Override
     protected void init() {
-        if (this.help == null) {
-            this.help = new HelpDrawer(this.font);
+        if (this.drawer == null) {
+            this.helpPage = new HelpPage(this.font);
+            this.inspectPage = new InspectPage(this.font, this.map, this::mapPreview);
+            this.drawer = new SideDrawer(this.font, this.helpPage);
         }
         this.tabWidgets.clear();
         this.pageWidgets.clear();
@@ -318,15 +328,16 @@ public class RoadDebugScreen extends Screen {
                 .bounds(x, y, contentWidth, BUTTON_HEIGHT)
                 .build());
 
-        // The help button sits over the map, so it takes clicks before the map does, but is drawn after it. Moved to the
-        // help page's edge as the page slides out.
-        this.helpButton = addWidget(Button.builder(Component.literal("?"), button -> this.help.toggle(helpSection()))
-                .bounds(helpButtonX(), MARGIN + 2, HELP_BUTTON_SIZE, HELP_BUTTON_SIZE)
-                .tooltip(Tooltip.create(Component.translatable("yungsroads.screen.help.tooltip")))
-                .build());
+        // The drawer's tabs sit over the map, so they take clicks before the map does, and are drawn after the map and
+        // the drawer. Moved with the drawer's edge as it slides out.
+        this.helpTab = addWidget(new DrawerTab(this.helpPage.tabName(), () -> this.drawer.isShowing(this.helpPage), true, this::toggleHelp));
+        this.helpTab.setTooltip(Tooltip.create(Component.translatable("yungsroads.screen.help.tooltip")));
+        this.inspectTab = addWidget(new DrawerTab(this.inspectPage.tabName(), () -> this.drawer.isShowing(this.inspectPage), false,
+                () -> this.drawer.toggle(this.inspectPage, mapWidth())));
+        this.inspectTab.setTooltip(Tooltip.create(Component.translatable("yungsroads.screen.inspect.tooltip")));
+        positionDrawerTabs();
         this.map.setRectangle(mapWidth(), this.height - MARGIN * 2, PANEL_WIDTH + MARGIN, MARGIN);
         addRenderableWidget(this.map);
-        addRenderableOnly(this.helpButton);
 
         updateVisibility();
     }
@@ -556,8 +567,8 @@ public class RoadDebugScreen extends Screen {
      * The help page's section for the shown page. The road type tab of a dimension without a road network has nothing
      * to tune, so it opens at the section on road networks instead.
      */
-    private HelpDrawer.Section helpSection() {
-        return this.tab == Tab.ROAD_TYPE && this.selected == null ? HelpDrawer.Section.ROAD_NETWORKS : page().helpSection;
+    private HelpPage.Section helpSection() {
+        return this.tab == Tab.ROAD_TYPE && this.selected == null ? HelpPage.Section.ROAD_NETWORKS : page().helpSection;
     }
 
     private void selectTab(Tab tab) {
@@ -578,8 +589,8 @@ public class RoadDebugScreen extends Screen {
         closeDropdowns();
         // A hidden text box must not keep receiving key presses
         setFocused(null);
-        if (this.help.isOpen()) {
-            this.help.showSection(helpSection());
+        if (this.drawer.isShowing(this.helpPage)) {
+            this.helpPage.showSection(helpSection());
         }
     }
 
@@ -651,15 +662,15 @@ public class RoadDebugScreen extends Screen {
             layOutScrollingPage(page, statusTop, formulas);
         }
 
-        // Nothing under the help page or an open dropdown list reacts to the mouse
-        boolean overHelp = this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth());
+        // Nothing under the drawer or an open dropdown list reacts to the mouse
+        boolean overHelp = this.drawer.isMouseOver(mouseX, mouseY, this.width, mapWidth());
         Dropdown<?> openDropdown = openDropdown();
         boolean covered = overHelp || openDropdown != null && openDropdown.isMouseOverList(mouseX, mouseY);
         int widgetMouseX = covered ? -1 : mouseX;
         int widgetMouseY = covered ? -1 : mouseY;
-        this.helpButton.setX(helpButtonX());
-        // The help button's tooltip shows instead of the map's
-        this.map.setHoverInfoHidden(this.helpButton.isMouseOver(widgetMouseX, widgetMouseY));
+        positionDrawerTabs();
+        // The map doesn't inspect what's under the drawer's tabs
+        this.map.setHoverInfoHidden(this.helpTab.isMouseOver(widgetMouseX, widgetMouseY) || this.inspectTab.isMouseOver(widgetMouseX, widgetMouseY));
         super.render(guiGraphics, widgetMouseX, widgetMouseY, partialTick);
 
         int y = statusTop;
@@ -668,17 +679,28 @@ public class RoadDebugScreen extends Screen {
             y += 10;
         }
 
+        Component tooltip = null;
         if (page.scrolls()) {
             int formulaTop = this.formulaY.get(page) - this.scroll.getOrDefault(page, 0);
-            renderFormula(guiGraphics, widgetMouseX, widgetMouseY, formulaTop, statusTop, formulas);
+            tooltip = renderFormula(guiGraphics, widgetMouseX, widgetMouseY, formulaTop, statusTop, formulas);
             renderScrollbar(guiGraphics, statusTop, widgetMouseX, widgetMouseY);
         }
-        if (openDropdown == null) {
-            renderSettingTooltip(guiGraphics, widgetMouseX, widgetMouseY);
+        if (tooltip == null) {
+            tooltip = settingTooltip();
         }
-        this.help.render(guiGraphics, this.width, this.height, mapWidth(), mouseX, mouseY);
+        this.drawer.render(guiGraphics, this.width, this.height, mapWidth(), mouseX, mouseY);
+        guiGraphics.pose().pushPose();
+        // Above the drawer, which is drawn raised
+        guiGraphics.pose().translate(0, 0, 300);
+        this.helpTab.render(guiGraphics, openDropdown != null ? -1 : mouseX, mouseY, partialTick);
+        this.inspectTab.render(guiGraphics, openDropdown != null ? -1 : mouseX, mouseY, partialTick);
+        guiGraphics.pose().popPose();
+        // Tooltips are drawn over the drawer, which is too wide to leave room beside it at large GUI scales.
+        // They only show while hovering, so covering the page for a moment is better than hiding them.
         if (openDropdown != null) {
             openDropdown.renderList(guiGraphics, mouseX, mouseY);
+        } else if (tooltip != null) {
+            renderTooltipBesidePanel(guiGraphics, tooltip, mouseX, mouseY);
         }
     }
 
@@ -739,18 +761,35 @@ public class RoadDebugScreen extends Screen {
         this.serverStatusAtLocal = RoadTuning.status();
     }
 
-    /** The width of the map, which fills the screen right of the settings panel. The help page slides over it. */
+    /** The width of the map, which fills the screen right of the settings panel. The drawer slides over it. */
     private int mapWidth() {
         return this.width - PANEL_WIDTH - MARGIN * 2;
     }
 
-    /** The help button sits in the map's top right corner, or beside the help page's edge while it's out. */
-    private int helpButtonX() {
-        int closedX = this.width - MARGIN - HELP_BUTTON_SIZE - 2;
-        if (this.help == null || !this.help.isVisible()) {
-            return closedX;
+    /**
+     * Stacks the drawer's tabs at its left edge, which is the screen's right edge while it's closed, centered vertically
+     * where they're seen whatever the map shows at its corners.
+     */
+    private void positionDrawerTabs() {
+        int x = this.drawer.left(this.width, mapWidth()) - DrawerTab.WIDTH;
+        int y = (this.height - this.helpTab.getHeight() - DRAWER_TAB_GAP - this.inspectTab.getHeight()) / 2;
+        this.helpTab.setPosition(x, y);
+        this.inspectTab.setPosition(x, y + this.helpTab.getHeight() + DRAWER_TAB_GAP);
+    }
+
+    private void toggleHelp() {
+        boolean opening = !this.drawer.isShowing(this.helpPage);
+        this.drawer.toggle(this.helpPage, mapWidth());
+        if (opening) {
+            // The first time, help starts at the top, introducing the screen, rather than at the shown tab's section
+            this.helpPage.showSection(DrawerTab.hasHelpBeenOpened() ? helpSection() : HelpPage.Section.OVERVIEW);
+            DrawerTab.markHelpOpened();
         }
-        return Math.min(closedX, this.help.left(this.width, mapWidth()) - HELP_BUTTON_SIZE - 4);
+    }
+
+    /** Shows the inspect page, such as when a spot is pinned on the map. */
+    private void showInspectPage() {
+        this.drawer.open(this.inspectPage, mapWidth());
     }
 
     /**
@@ -845,11 +884,15 @@ public class RoadDebugScreen extends Screen {
         if (openDropdown != null) {
             return openDropdown.listClicked(mouseX, mouseY);
         }
-        if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
-            // Only the help page's scroll bar can be clicked, but nothing under the page may be clicked either
+        // The drawer's tabs are drawn over everything, so they take the click first
+        if (this.helpTab.mouseClicked(mouseX, mouseY, button) || this.inspectTab.mouseClicked(mouseX, mouseY, button)) {
+            return true;
+        }
+        if (this.drawer.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
+            // Nothing under the drawer may be clicked
             setFocused(null);
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-                this.help.mouseClicked(mouseX, mouseY);
+                this.drawer.mouseClicked(mouseX, mouseY);
             }
             return true;
         }
@@ -871,7 +914,7 @@ public class RoadDebugScreen extends Screen {
         if (openDropdown != null && openDropdown.listDragged(mouseY)) {
             return true;
         }
-        if (this.help.mouseDragged(mouseY)) {
+        if (this.drawer.mouseDragged(mouseY)) {
             return true;
         }
         if (this.scrollBar.isDragging()) {
@@ -887,7 +930,7 @@ public class RoadDebugScreen extends Screen {
         if (openDropdown != null) {
             openDropdown.listReleased();
         }
-        this.help.mouseReleased();
+        this.drawer.mouseReleased();
         this.scrollBar.mouseReleased();
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -898,8 +941,9 @@ public class RoadDebugScreen extends Screen {
         if (openDropdown != null) {
             return openDropdown.listScrolled(mouseX, mouseY, scrollY) || mouseX < PANEL_WIDTH;
         }
-        if (this.help.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
-            return this.help.mouseScrolled(scrollY);
+        if (this.drawer.isMouseOver(mouseX, mouseY, this.width, mapWidth())) {
+            this.drawer.mouseScrolled(scrollY);
+            return true;
         }
         Page page = page();
         if (mouseX < PANEL_WIDTH && page.scrolls()) {
@@ -911,12 +955,13 @@ public class RoadDebugScreen extends Screen {
     }
 
     /**
-     * Shows the hovered setting's description, its baseline value, and the definitions of its terms. Hidden while
-     * dragging, so the map's preview stays visible, and while the help page is open, since it describes every setting.
+     * The hovered setting's description, its baseline value, and the definitions of its terms, or null if no setting
+     * is hovered. Hidden while dragging, so the map's preview stays visible.
      */
-    private void renderSettingTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (this.minecraft == null || this.minecraft.mouseHandler.isLeftPressed() || this.help.isOpen()) {
-            return;
+    @Nullable
+    private Component settingTooltip() {
+        if (this.minecraft == null || this.minecraft.mouseHandler.isLeftPressed()) {
+            return null;
         }
         for (Map.Entry<ITunableSetting, List<AbstractWidget>> row : this.settingRows.entrySet()) {
             // Hidden widgets keep the hover state they had when last rendered
@@ -934,10 +979,9 @@ public class RoadDebugScreen extends Screen {
                 details += "\n" + language.getOrDefault("yungsroads.screen.baseline").formatted(
                         RoadTypeNames.name(this.selected.typeId), setting.isToggle() ? onOff(language, baseline) : setting.format(baseline));
             }
-            Component text = RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details);
-            renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
-            return;
+            return RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details, this::tooltipFits);
         }
+        return null;
     }
 
     private static String onOff(Language language, double value) {
@@ -949,20 +993,31 @@ public class RoadDebugScreen extends Screen {
      * placement, this never covers the panel, so the settings and formulas stay readable.
      */
     private void renderTooltipBesidePanel(GuiGraphics guiGraphics, Component text, int mouseX, int mouseY) {
-        guiGraphics.renderTooltip(this.font, this.font.split(text, 220),
+        guiGraphics.renderTooltip(this.font, this.font.split(text, TOOLTIP_WIDTH),
                 (screenWidth, screenHeight, x, y, width, height) ->
-                        new Vector2i(PANEL_WIDTH + 12, Mth.clamp(y - 12, 4, screenHeight - height - 4)),
+                        new Vector2i(PANEL_WIDTH + 12, Mth.clamp(y - 12, TOOLTIP_MARGIN, screenHeight - height - TOOLTIP_MARGIN)),
                 mouseX, mouseY);
     }
 
     /**
+     * Whether a tooltip of the given text fits on screen. Vanilla draws each line 10 pixels tall, with 2 fewer for the
+     * last, inside a 4 pixel frame.
+     */
+    private boolean tooltipFits(Component text) {
+        int height = this.font.split(text, TOOLTIP_WIDTH).size() * 10 - 2 + 8;
+        return height <= this.height - TOOLTIP_MARGIN * 2;
+    }
+
+    /**
      * Explains how a page's settings are used, with the entered values filled in. Highlighted words and values show
-     * their definitions when hovered, unless the help page is open. Formulas scrolled above the page's top or that
-     * don't fit above the status text are left out whole, so none are shown cut off.
+     * their definitions when hovered. Formulas scrolled above the page's top or that don't fit above the status text
+     * are left out whole, so none are shown cut off.
      *
      * @param top Where the first formula starts, which is above the page's top when the page is scrolled.
+     * @return The definition of the highlighted word or value under the mouse, or null if there isn't one.
      */
-    private void renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
+    @Nullable
+    private Component renderFormula(GuiGraphics guiGraphics, int mouseX, int mouseY, int top, int bottom, List<Component> paragraphs) {
         int pageTop = this.pageTop.get(page());
         int x = MARGIN;
         int y = top;
@@ -985,12 +1040,7 @@ public class RoadDebugScreen extends Screen {
             }
             y += 2;
         }
-        if (hovered != null && hovered.getHoverEvent() != null && !this.help.isOpen()) {
-            Component text = hovered.getHoverEvent().getValue(HoverEvent.Action.SHOW_TEXT);
-            if (text != null) {
-                renderTooltipBesidePanel(guiGraphics, text, mouseX, mouseY);
-            }
-        }
+        return hovered == null || hovered.getHoverEvent() == null ? null : hovered.getHoverEvent().getValue(HoverEvent.Action.SHOW_TEXT);
     }
 
     /** The height of the given formulas, as drawn by {@link #renderFormula}. */
@@ -1025,13 +1075,13 @@ public class RoadDebugScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Escape closes an open dropdown list or the help page before the screen
+        // Escape closes an open dropdown list or the drawer before the screen
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && openDropdown() != null) {
             closeDropdowns();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.help.isOpen()) {
-            this.help.close();
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.drawer.isOpen()) {
+            this.drawer.close();
             return true;
         }
         // The open key also closes the screen, unless it's being typed into a text box
