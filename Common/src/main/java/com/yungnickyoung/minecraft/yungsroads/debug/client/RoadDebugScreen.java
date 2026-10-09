@@ -7,6 +7,7 @@ import com.yungnickyoung.minecraft.yungsapi.api.world.randomize.BlockStateRandom
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeExport;
+import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeNames;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule;
 import com.yungnickyoung.minecraft.yungsroads.module.ConfigModule.GlobalSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadBlocks;
@@ -466,7 +467,7 @@ public class RoadDebugScreen extends Screen {
         this.steps.add(new Step(Tab.ROAD_TYPE, 1, Component.translatable("yungsroads.screen.step.start"), y));
         y += STEP_HEIGHT;
         ResourceLocation defaultId = this.levelTypes.defaultId();
-        Component defaultName = Component.literal(defaultId == null ? "-" : RoadTypeNames.name(defaultId));
+        Component defaultName = defaultId == null ? Component.literal("-") : RoadTypeNames.styledName(defaultId);
         List<ResourceLocation> typeIds = usableKeys().stream().map(VariantKey::typeId).distinct().toList();
         this.roadTypeDropdown = new Dropdown<>(x, y, contentWidth, BUTTON_HEIGHT, Component.translatable("yungsroads.glossary.road_type"),
                 typeIds, this.selected.typeId, this::roadTypeLabel, typeId -> select(new VariantKey(typeId, 0)));
@@ -558,7 +559,7 @@ public class RoadDebugScreen extends Screen {
 
     /** The road type picker's label for a road type, marking the road network's default and road types with edits. */
     private Component roadTypeLabel(ResourceLocation typeId) {
-        MutableComponent label = Component.literal(RoadTypeNames.name(typeId));
+        MutableComponent label = Component.empty().append(RoadTypeNames.styledName(typeId));
         if (this.levelTypes != null && typeId.equals(this.levelTypes.defaultId())) {
             label.append(Component.literal(" ").append(Component.translatable("yungsroads.screen.road_type.default_marker")).withColor(NOTE_COLOR));
         }
@@ -775,7 +776,7 @@ public class RoadDebugScreen extends Screen {
                 .map(tag -> List.of(new ExtraCodecs.TagOrElementLocation(tag.location(), true)))
                 .orElseGet(() -> set.stream().flatMap(biome -> biome.unwrapKey().stream())
                         .map(key -> new ExtraCodecs.TagOrElementLocation(key.location(), false)).toList()));
-        this.minecraft.setScreen(BlockListScreen.biomes(this, Component.translatable("yungsroads.screen.selection.biomes.dialog", RoadTypeNames.name(typeId)),
+        this.minecraft.setScreen(BlockListScreen.biomes(this, Component.translatable("yungsroads.screen.selection.biomes.dialog", RoadTypeNames.styledName(typeId)),
                 Component.translatable("yungsroads.screen.selection.biomes.description"),
                 Component.translatable(typeId.equals(this.levelTypes.defaultId()) ? "yungsroads.screen.selection.biomes.none_option.default"
                         : "yungsroads.screen.selection.biomes.none_option.unused"),
@@ -1181,7 +1182,7 @@ public class RoadDebugScreen extends Screen {
         }
         if (this.selected != null && !Boolean.valueOf(exportBlocked).equals(this.exportBlocked)) {
             this.exportBlocked = exportBlocked;
-            Component name = Component.literal(RoadTypeNames.name(this.selected.typeId));
+            Component name = RoadTypeNames.styledName(this.selected.typeId);
             this.exportButtons.get(0).setTooltip(Tooltip.create(exportBlocked
                     ? Component.translatable("yungsroads.screen.apply_first.road_type")
                     : Component.translatable("yungsroads.screen.copy_json.tooltip", name)));
@@ -1569,12 +1570,13 @@ public class RoadDebugScreen extends Screen {
                     ? "\n" + language.getOrDefault("yungsroads.screen.default").formatted(onOff(language, setting.defaultValue()))
                     : "\n" + language.getOrDefault("yungsroads.screen.range").formatted(setting.format(setting.min()), setting.format(setting.max()))
                     + "\n" + language.getOrDefault("yungsroads.screen.default").formatted(setting.format(setting.defaultValue()));
+            MutableComponent text = Component.literal(language.getOrDefault(setting.descriptionKey()) + details);
             if (setting instanceof RoadSetting && this.selected != null) {
                 double baseline = resetValue(setting);
-                details += "\n" + language.getOrDefault("yungsroads.screen.baseline").formatted(
-                        RoadTypeNames.name(this.selected.typeId), setting.isToggle() ? onOff(language, baseline) : setting.format(baseline));
+                text.append("\n").append(Component.translatable("yungsroads.screen.baseline", RoadTypeNames.styledName(this.selected.typeId),
+                        setting.isToggle() ? onOff(language, baseline) : setting.format(baseline)));
             }
-            return RoutingGlossary.withDefinitions(language.getOrDefault(setting.descriptionKey()) + details, this::tooltipFits);
+            return RoutingGlossary.withDefinitions(text, this::tooltipFits);
         }
         for (Map.Entry<AbstractWidget, String> option : this.optionTooltips.entrySet()) {
             if (option.getKey().visible && option.getKey().isHovered()) {
@@ -1758,7 +1760,7 @@ public class RoadDebugScreen extends Screen {
         }
         RoadType type = this.levelTypes.current().get(this.selected.typeId);
         this.minecraft.keyboardHandler.setClipboard(RoadTypeExport.toJson(type, level.registryAccess()));
-        showLocalStatus(Component.translatable("yungsroads.screen.copied", this.selected.typeId.toString()));
+        showLocalStatus(Component.translatable("yungsroads.screen.copied", RoadTypeNames.styledId(this.selected.typeId)));
     }
 
     /**
@@ -2031,7 +2033,8 @@ public class RoadDebugScreen extends Screen {
             if (type.biomes.isPresent()) {
                 Integer priority = parsePriority(type.priority);
                 if (priority == null) {
-                    reportInvalid(Component.literal(RoadTypeNames.name(id) + ": ").append(Component.translatable("yungsroads.screen.selection.priority")));
+                    reportInvalid(Component.empty().append(RoadTypeNames.styledName(id)).append(": ")
+                            .append(Component.translatable("yungsroads.screen.selection.priority")));
                     return null;
                 }
                 selection = Optional.of(new RoadType.Selection(type.biomes.get(), priority));

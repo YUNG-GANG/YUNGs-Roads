@@ -272,8 +272,8 @@ public final class RoadTuning {
         try {
             RoadTypeExport.writeWorldDatapack(level.getServer(), saveId, type);
             status = roadTypesOf(level).current().containsKey(saveId)
-                    ? Component.translatable("yungsroads.status.saved_road_type", saveId.toString(), RoadTypeExport.DATAPACK_NAME)
-                    : Component.translatable("yungsroads.status.saved_new_road_type", saveId.toString(), RoadTypeExport.DATAPACK_NAME);
+                    ? Component.translatable("yungsroads.status.saved_road_type", RoadTypeNames.styledId(saveId), RoadTypeExport.DATAPACK_NAME)
+                    : Component.translatable("yungsroads.status.saved_new_road_type", RoadTypeNames.styledId(saveId), RoadTypeExport.DATAPACK_NAME);
         } catch (IOException | RuntimeException e) {
             YungsRoadsCommon.LOGGER.error("Unable to save road type {}", typeId, e);
             status = Component.translatable("yungsroads.status.save_road_type_failed", String.valueOf(e.getMessage()));
@@ -292,11 +292,11 @@ public final class RoadTuning {
         Optional<TagKey<RoadType>> tag = network.get().roadTypes().unwrapKey();
         if (tag.isPresent()) {
             ResourceLocation tagId = tag.get().location();
-            return Component.translatable("yungsroads.screen.save.add_to.tag", id.toString(),
+            return Component.translatable("yungsroads.screen.save.add_to.tag", RoadTypeNames.styledId(id),
                     "data/" + tagId.getNamespace() + "/tags/yungsroads/road_type/" + tagId.getPath() + ".json");
         }
         ResourceLocation dimension = level.dimension().location();
-        return Component.translatable("yungsroads.screen.save.add_to.network", id.toString(),
+        return Component.translatable("yungsroads.screen.save.add_to.network", RoadTypeNames.styledId(id),
                 "data/" + dimension.getNamespace() + "/yungsroads/road_network/" + dimension.getPath() + ".json");
     }
 

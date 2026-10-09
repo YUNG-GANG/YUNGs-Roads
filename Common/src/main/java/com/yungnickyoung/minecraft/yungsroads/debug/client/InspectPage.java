@@ -2,6 +2,7 @@ package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.yungnickyoung.minecraft.yungsroads.YungsRoadsCommon;
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTuning;
+import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeNames;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadNetwork;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSetting;
 import com.yungnickyoung.minecraft.yungsroads.world.config.RoadSettings;
@@ -244,7 +245,7 @@ final class InspectPage implements DrawerPage {
         });
         addLine(Component.translatable("yungsroads.inspect.route_shares"));
         for (RoadTypes.RouteShare share : choice.shares()) {
-            addLine(Component.translatable("yungsroads.inspect.route_share", RoadTypeNames.name(share.typeId()),
+            addLine(Component.translatable("yungsroads.inspect.route_share", RoadTypeNames.styledName(share.typeId()),
                     Math.round(100.0 * share.samples() / choice.samples())));
         }
         addLine(Component.translatable("yungsroads.map.node", String.format("%.0f", node.g), String.format("%.0f", node.h),
@@ -260,11 +261,11 @@ final class InspectPage implements DrawerPage {
         addLine(Component.translatable("yungsroads.map.network.file", RoadMapWidget.networkFile(level)));
         network.ifPresent(roadNetwork -> {
             addLine(Component.translatable("yungsroads.map.network.structures", RoadMapWidget.describe(roadNetwork.structures(),
-                    holder -> holder.unwrapKey().map(key -> key.location().toString()).orElse("?"))));
+                    holder -> Component.literal(holder.unwrapKey().map(key -> key.location().toString()).orElse("?")))));
             addLine(Component.translatable("yungsroads.map.network.road_types", RoadMapWidget.describe(roadNetwork.roadTypes(),
-                    holder -> holder.unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?"))));
+                    holder -> holder.unwrapKey().<Component>map(key -> RoadTypeNames.styledName(key.location())).orElse(Component.literal("?")))));
             addLine(Component.translatable("yungsroads.map.network.default",
-                    roadNetwork.defaultRoadType().unwrapKey().map(key -> RoadTypeNames.name(key.location())).orElse("?")));
+                    roadNetwork.defaultRoadType().unwrapKey().<Component>map(key -> RoadTypeNames.styledName(key.location())).orElse(Component.literal("?"))));
         });
         this.text.addParagraph(Component.translatable("yungsroads.map.network.reload"), DETAIL_COLOR);
     }
@@ -291,8 +292,11 @@ final class InspectPage implements DrawerPage {
         this.text.addParagraph(subtitle.copy().withStyle(ChatFormatting.BOLD), SUBTITLE_COLOR, 1);
     }
 
-    /** A line of details, with its glossary words and setting names highlighted. Lines sit closer than paragraphs. */
+    /**
+     * A line of details, with its glossary words and setting names highlighted, keeping colored parts such as road type
+     * names. Lines sit closer than paragraphs.
+     */
     private void addLine(Component line) {
-        this.text.addParagraph(RoutingGlossary.highlight(line.getString()), TEXT_COLOR, LINE_GAP);
+        this.text.addParagraph(RoutingGlossary.highlight(line), TEXT_COLOR, LINE_GAP);
     }
 }

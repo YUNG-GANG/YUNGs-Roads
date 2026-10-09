@@ -80,7 +80,9 @@ final class Dropdown<T> extends AbstractWidget {
         guiGraphics.fill(getX(), getY(), getRight(), getBottom(), borderColor);
         guiGraphics.fill(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1, BOX_COLOR);
         int textColor = this.active ? TEXT_COLOR : INACTIVE_TEXT_COLOR;
-        renderOption(guiGraphics, font, this.label.apply(this.value), getY(), this.height, getRight() - 12, textColor);
+        // Inactive, the label is all one gray, without the colors of parts such as road type names
+        Component label = this.label.apply(this.value);
+        renderOption(guiGraphics, font, this.active ? label : Component.literal(label.getString()), getY(), this.height, getRight() - 12, textColor);
         if (this.active) {
             guiGraphics.drawString(font, this.open ? "▲" : "▼", getRight() - 9, getY() + (this.height - 8) / 2, textColor, false);
         }

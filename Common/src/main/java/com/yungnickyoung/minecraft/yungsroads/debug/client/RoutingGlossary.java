@@ -17,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -143,22 +144,47 @@ final class RoutingGlossary {
     }
 
     /**
+     * The text with glossary words and setting names highlighted, as {@link #highlight(String)}. Parts that already
+     * have a color, such as road type names, are kept as they are.
+     */
+    static MutableComponent highlight(Component text) {
+        MutableComponent result = Component.empty();
+        text.visit((style, part) -> {
+            result.append(style.getColor() == null ? highlight(part).withStyle(style) : Component.literal(part).withStyle(style));
+            return Optional.empty();
+        }, Style.EMPTY);
+        return result;
+    }
+
+    /** See {@link #withDefinitions(Component, Predicate)}. */
+    static MutableComponent withDefinitions(String text, Predicate<Component> fits) {
+        return withDefinitions(Component.literal(text), fits);
+    }
+
+    /**
      * The text with glossary words highlighted, followed by their definitions in the order the words appear. For
-     * tooltips, which can't be hovered to show definitions themselves.
+     * tooltips, which can't be hovered to show definitions themselves. Parts that already have a color are kept as
+     * they are, as in {@link #highlight(Component)}.
      *
      * @param fits Whether the text with the definitions added so far still fits. Definitions after the first that
      *             doesn't fit are left out, since the text and its first definitions matter most.
      */
-    static MutableComponent withDefinitions(String text, Predicate<Component> fits) {
+    static MutableComponent withDefinitions(Component text, Predicate<Component> fits) {
+        loadWords();
         MutableComponent result = highlight(text);
         // Only terms are defined. Setting names are left out, since each has a row of its own to hover.
         Set<Term> terms = new LinkedHashSet<>();
-        Matcher matcher = termPattern.matcher(text);
-        while (matcher.find()) {
-            if (matcher.group(2) != null) {
-                terms.add(termsByWord.get(matcher.group(2).toLowerCase(Locale.ROOT)));
+        text.visit((style, part) -> {
+            if (style.getColor() == null) {
+                Matcher matcher = termPattern.matcher(part);
+                while (matcher.find()) {
+                    if (matcher.group(2) != null) {
+                        terms.add(termsByWord.get(matcher.group(2).toLowerCase(Locale.ROOT)));
+                    }
+                }
             }
-        }
+            return Optional.empty();
+        }, Style.EMPTY);
         for (Term term : terms) {
             MutableComponent extended = result.copy().append("\n\n").append(definition(term));
             if (!fits.test(extended)) {

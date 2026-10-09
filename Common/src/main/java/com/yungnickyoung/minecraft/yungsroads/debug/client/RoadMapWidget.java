@@ -20,6 +20,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,7 +38,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * A top-down map of the roads and terrain around the player. Drag to pan, scroll to zoom, and right-click to teleport.
@@ -299,11 +299,17 @@ public class RoadMapWidget extends AbstractWidget {
     }
 
     /** A set's members, after the tag they come from if it's a tag. */
-    static <T> String describe(HolderSet<T> set, Function<Holder<T>, String> name) {
-        String members = set.size() == 0
-                ? Component.translatable("yungsroads.map.network.none").getString()
-                : set.stream().map(name).collect(Collectors.joining(", "));
-        return set.unwrapKey().map(tag -> "#" + tag.location() + ": " + members).orElse(members);
+    static <T> Component describe(HolderSet<T> set, Function<Holder<T>, Component> name) {
+        MutableComponent text = Component.empty();
+        set.unwrapKey().ifPresent(tag -> text.append("#" + tag.location() + ": "));
+        if (set.size() == 0) {
+            return text.append(Component.translatable("yungsroads.map.network.none"));
+        }
+        List<Holder<T>> members = set.stream().toList();
+        for (int i = 0; i < members.size(); i++) {
+            text.append(i == 0 ? "" : ", ").append(name.apply(members.get(i)));
+        }
+        return text;
     }
 
     static StructureRegionGenerator generatorOf(ServerLevel level) {

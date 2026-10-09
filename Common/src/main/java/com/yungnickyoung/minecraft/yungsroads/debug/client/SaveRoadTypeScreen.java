@@ -1,6 +1,7 @@
 package com.yungnickyoung.minecraft.yungsroads.debug.client;
 
 import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeExport;
+import com.yungnickyoung.minecraft.yungsroads.debug.RoadTypeNames;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -52,7 +53,7 @@ final class SaveRoadTypeScreen extends Screen {
 
     SaveRoadTypeScreen(Screen parent, ResourceLocation typeId, Set<ResourceLocation> existing, Function<ResourceLocation, Component> whereToAdd,
                        Consumer<ResourceLocation> onSave) {
-        super(Component.translatable("yungsroads.screen.save.title", RoadTypeNames.name(typeId)));
+        super(Component.translatable("yungsroads.screen.save.title", RoadTypeNames.styledName(typeId)));
         this.parent = parent;
         this.typeId = typeId;
         this.existing = existing;
@@ -119,12 +120,12 @@ final class SaveRoadTypeScreen extends Screen {
             return Component.translatable("yungsroads.screen.save.invalid").withColor(INVALID_COLOR);
         }
         if (id.equals(this.typeId)) {
-            return Component.translatable("yungsroads.screen.save.replaces_self", id.toString());
+            return Component.translatable("yungsroads.screen.save.replaces_self", RoadTypeNames.styledId(id));
         }
         if (this.existing.contains(id)) {
-            return Component.translatable("yungsroads.screen.save.replaces_other", id.toString(), this.typeId.toString());
+            return Component.translatable("yungsroads.screen.save.replaces_other", RoadTypeNames.styledId(id), RoadTypeNames.styledId(this.typeId));
         }
-        return Component.translatable("yungsroads.screen.save.new", id.toString()).append(" ").append(this.whereToAdd.apply(id));
+        return Component.translatable("yungsroads.screen.save.new", RoadTypeNames.styledId(id)).append(" ").append(this.whereToAdd.apply(id));
     }
 
     private void save() {
